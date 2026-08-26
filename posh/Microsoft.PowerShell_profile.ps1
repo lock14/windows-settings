@@ -92,12 +92,80 @@ function la {
     }
 }
 
-# Directory Visual Search Helper (fd with Solarized LS_COLORS or recursive search)
+# Visual Tree Path Formatter (Native PowerShell replacement for Linux `tree --fromfile`)
+function Format-PathTree {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline = $true, ValueFromRemainingArguments = $true)]
+        [string[]]$Paths
+    )
+
+    begin {
+        $allPaths = [System.Collections.Generic.List[string]]::new()
+    }
+    process {
+        if ($null -ne $Paths) {
+            foreach ($p in $Paths) {
+                if ($p) { $allPaths.Add($p.Trim()) }
+            }
+        }
+    }
+    end {
+        if ($allPaths.Count -eq 0) { return }
+
+        $root = [ordered]@{}
+        foreach ($rawPath in $allPaths) {
+            $parts = $rawPath -split '[\\/]' | Where-Object { $_ -ne '' }
+            $current = $root
+            foreach ($part in $parts) {
+                if (-not $current.Contains($part)) {
+                    $current[$part] = [ordered]@{}
+                }
+                $current = $current[$part]
+            }
+        }
+
+        function Render-TreeNode($node, $prefix) {
+            $keys = [string[]]$node.Keys
+            for ($i = 0; $i -lt $keys.Count; $i++) {
+                $key = $keys[$i]
+                $isLast = ($i -eq $keys.Count - 1)
+                $connector = if ($isLast) { [char]0x2514 + [char]0x2500 + [char]0x2500 + ' ' } else { [char]0x251C + [char]0x2500 + [char]0x2500 + ' ' }
+                $childPrefix = if ($isLast) { '    ' } else { [char]0x2502 + '   ' }
+
+                $isDir = ($node[$key].Keys.Count -gt 0)
+                $color = if ($isDir) {
+                    'Blue'
+                } elseif ($key -match '\.(go|py|rs|c|cpp|h|java|md|txt|json|yml|yaml|toml|xml)$') {
+                    'Green'
+                } elseif ($key -match '\.(exe|cmd|bat|ps1|sh)$') {
+                    'Red'
+                } elseif ($key -match '\.(zip|tar|gz|7z|rar|iso|png|jpg|svg|mp4)$') {
+                    'Yellow'
+                } else {
+                    'White'
+                }
+
+                Write-Host -NoNewline "$prefix$connector" -ForegroundColor DarkGray
+                Write-Host "$key" -ForegroundColor $color
+
+                if ($isDir) {
+                    Render-TreeNode $node[$key] "$prefix$childPrefix"
+                }
+            }
+        }
+
+        Write-Host '.' -ForegroundColor Cyan
+        Render-TreeNode $root ''
+    }
+}
+
+# Directory Visual Search Helper (fd piped to Format-PathTree visual hierarchy)
 function fs {
     if (Get-Command fd -ErrorAction SilentlyContinue) {
-        fd --no-ignore-vcs @args
+        fd --no-ignore-vcs @args | Format-PathTree
     } else {
-        Get-ChildItem -Recurse @args | Select-Object -ExpandProperty FullName
+        Get-ChildItem -Recurse @args | Select-Object -ExpandProperty FullName | Format-PathTree
     }
 }
 
