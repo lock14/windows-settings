@@ -1,5 +1,7 @@
 # windows-settings
 
+[![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
+
 Windows workstation configuration files and setup automation for PowerShell 7 and Windows Terminal.
 
 Designed to provide visual and functional parity with [`home-settings`](https://github.com/lock14/home-settings) (*nix / Zsh / Solarized Dark).

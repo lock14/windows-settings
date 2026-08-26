@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Windows Settings
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Oh My Posh
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          Invoke-RestMethod https://ohmyposh.dev/install.ps1 | Invoke-Expression
+          $env:Path += ";$HOME\AppData\Local\Programs\oh-my-posh\bin"
+          "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append
+          oh-my-posh --version
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+
+      - name: Lint PowerShell scripts with PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning
+          if ($results) {
+              $results | Format-Table -AutoSize
+              # Fail only on Errors or significant issues
+              $errors = $results | Where-Object { $_.Severity -eq 'Error' }
+              if ($errors) {
+                  Write-Error "PSScriptAnalyzer found errors!"
+                  exit 1
+              }
+          } else {
+              Write-Host "PSScriptAnalyzer: No errors or warnings found." -ForegroundColor Green
+          }
+
+      - name: Run Test Suite
+        shell: pwsh
+        run: |
+          ./tests/test_settings.ps1
