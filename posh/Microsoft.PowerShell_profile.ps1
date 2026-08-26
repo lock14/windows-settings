@@ -30,9 +30,18 @@ if (Get-Module -ListAvailable -Name PSReadLine) {
         Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
         Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue
 
-        # Styled in Solarized Dark muted tone (base01)
+        # Full Solarized Dark syntax highlighting
         Set-PSReadLineOption -Colors @{
-            InlinePrediction = '#586E75'
+            Command          = '#859900'  # Solarized Green
+            Parameter        = '#2AA198'  # Solarized Cyan (clear contrast for -Flags)
+            Operator         = '#839496'  # Solarized Base0
+            Variable         = '#B58900'  # Solarized Yellow
+            String           = '#2AA198'  # Solarized Cyan
+            Number           = '#D33682'  # Solarized Magenta
+            Type             = '#B58900'  # Solarized Yellow
+            Comment          = '#586E75'  # Solarized Base01
+            Keyword          = '#859900'  # Solarized Green
+            InlinePrediction = '#586E75'  # Solarized Base01 muted prediction
         } -ErrorAction SilentlyContinue
 
         # Tab menu completion
