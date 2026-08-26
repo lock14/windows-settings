@@ -194,3 +194,46 @@ function gsync {
 
     git checkout $targetBranch && git pull --rebase origin $targetBranch && git checkout $currentBranch && git rebase $targetBranch
 }
+
+# -------------------------------------------------------------
+# 5. Native CLI Utilities (gen-passwd, repeat-until-success, sum)
+# -------------------------------------------------------------
+$wsBinDir = if ($PSScriptRoot) { Join-Path (Split-Path -Parent $PSScriptRoot) "bin" } else { "C:\Users\brian\windows-settings\bin" }
+if (-not (Test-Path $wsBinDir)) {
+    $wsBinDir = "$HOME\windows-settings\bin"
+}
+
+if (Test-Path $wsBinDir) {
+    if ($env:Path -notlike "*$wsBinDir*") {
+        $env:Path = "$env:Path;$wsBinDir"
+    }
+
+    function global:gen-passwd {
+        & "$wsBinDir\gen-passwd.ps1" @args
+    }
+
+    function global:repeat-until-success {
+        & "$wsBinDir\repeat-until-success.ps1" @args
+    }
+
+    function global:sum {
+        [CmdletBinding()]
+        param(
+            [Parameter(ValueFromPipeline = $true, ValueFromRemainingArguments = $true, Position = 0)]
+            [object[]]$InputObject
+        )
+        begin {
+            $items = [System.Collections.Generic.List[object]]::new()
+        }
+        process {
+            if ($null -ne $InputObject) {
+                foreach ($i in $InputObject) {
+                    $items.Add($i)
+                }
+            }
+        }
+        end {
+            & "$wsBinDir\sum.ps1" @items
+        }
+    }
+}

@@ -4,12 +4,12 @@
 .DESCRIPTION
     Ported from home-settings/common-bin/sum for native PowerShell usage.
 .EXAMPLE
+    sum.ps1 1 2 3
     1..10 | sum.ps1
-    sum.ps1 10 20 30
 #>
 [CmdletBinding()]
 param(
-    [Parameter(ValueFromPipeline = $true, Position = 0)]
+    [Parameter(ValueFromPipeline = $true, ValueFromRemainingArguments = $true, Position = 0)]
     [object[]]$InputObject
 )
 
@@ -18,7 +18,7 @@ begin {
 }
 
 process {
-    if ($InputObject) {
+    if ($null -ne $InputObject) {
         foreach ($item in $InputObject) {
             if ($null -ne $item) {
                 # Handle multiline string blocks

@@ -131,13 +131,27 @@ if ($pass32.Length -eq 32) {
     Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
 }
 
-# Test sum.ps1
+# Test sum.ps1 & direct sum cmdlet
 $sumScript = Join-Path $RootDir "bin\sum.ps1"
 $sumResult = 1..10 | & $sumScript
 if ($sumResult -eq 55) {
     Pass "sum.ps1 correctly sums pipeline numbers (1..10 = 55)"
 } else {
     Fail "sum.ps1 result" "Expected 55, got $sumResult"
+}
+
+$sumDirect1 = sum 1 2
+if ($sumDirect1 -eq 3) {
+    Pass "sum cmdlet correctly sums positional arguments (sum 1 2 = 3)"
+} else {
+    Fail "sum cmdlet result" "Expected 3, got $sumDirect1"
+}
+
+$sumDirect2 = 1..10 | sum
+if ($sumDirect2 -eq 55) {
+    Pass "sum cmdlet correctly sums pipeline numbers (1..10 | sum = 55)"
+} else {
+    Fail "sum cmdlet pipeline" "Expected 55, got $sumDirect2"
 }
 
 # Test repeat-until-success.ps1
