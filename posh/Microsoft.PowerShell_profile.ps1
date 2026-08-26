@@ -87,8 +87,9 @@ function go_lint {
     golangci-lint run -c $cfg @args
 }
 
-# Terraform & YAML
+# Terraform & YAML & Editors
 Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
+Set-Alias -Name vi -Value vim -ErrorAction SilentlyContinue
 function yaml_lint { yamllint -c "$HOME\.yamllint.yml" @args }
 
 # Directory Listing (Ubuntu style)

@@ -110,6 +110,19 @@ if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
     Fail "Alias missing: tf" "Alias tf not found"
 }
 
+if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: vi -> vim"
+} else {
+    Fail "Alias missing: vi" "Alias vi not found"
+}
+
+$vimrcFile = Join-Path $RootDir "vim\_vimrc"
+if (Test-Path $vimrcFile) {
+    Pass "Vim configuration file exists: vim/_vimrc"
+} else {
+    Fail "Vim configuration missing" "vim/_vimrc does not exist"
+}
+
 if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Pass "LS_COLORS environment variable configured (Solarized Dark)"
 } else {

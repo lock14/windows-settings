@@ -28,7 +28,8 @@ $cliPackages = @(
     'jqlang.jq',
     'GoLang.Go',
     'Hashicorp.Terraform',
-    'Neovim.Neovim'
+    'Neovim.Neovim',
+    'vim.vim'
 )
 
 # GUI Developer Packages (Optional)

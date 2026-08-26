@@ -9,6 +9,7 @@ param(
     [switch]$SkipTerminal,
     [switch]$SkipPosh,
     [switch]$SkipCompletions,
+    [switch]$SkipVim,
     [switch]$InstallPackages
 )
 
@@ -21,40 +22,48 @@ Write-Host "=====================================================" -ForegroundCo
 
 # 1. Fonts Setup
 if (-not $SkipFonts) {
-    Write-Host "`n[1/5] Setting up Fonts (MesloLGS NF)..." -ForegroundColor Yellow
+    Write-Host "`n[1/6] Setting up Fonts (MesloLGS NF)..." -ForegroundColor Yellow
     & (Join-Path $RootDir "fonts\font-setup.ps1")
 } else {
-    Write-Host "`n[1/5] Skipping Fonts Setup." -ForegroundColor DarkCyan
+    Write-Host "`n[1/6] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
 
 # 2. Oh My Posh & Profile Setup
 if (-not $SkipPosh) {
-    Write-Host "`n[2/5] Setting up Oh My Posh & PowerShell Profile..." -ForegroundColor Yellow
+    Write-Host "`n[2/6] Setting up Oh My Posh & PowerShell Profile..." -ForegroundColor Yellow
     & (Join-Path $RootDir "posh\posh-setup.ps1")
 } else {
-    Write-Host "`n[2/5] Skipping Oh My Posh Setup." -ForegroundColor DarkCyan
+    Write-Host "`n[2/6] Skipping Oh My Posh Setup." -ForegroundColor DarkCyan
 }
 
 # 3. CLI Tab Completions Setup
 if (-not $SkipCompletions) {
-    Write-Host "`n[3/5] Setting up CLI Completions..." -ForegroundColor Yellow
+    Write-Host "`n[3/6] Setting up CLI Completions..." -ForegroundColor Yellow
     & (Join-Path $RootDir "completions\completions-setup.ps1")
 } else {
-    Write-Host "`n[3/5] Skipping CLI Completions." -ForegroundColor DarkCyan
+    Write-Host "`n[3/6] Skipping CLI Completions." -ForegroundColor DarkCyan
 }
 
 # 4. Windows Terminal Setup
 if (-not $SkipTerminal) {
-    Write-Host "`n[4/5] Setting up Windows Terminal..." -ForegroundColor Yellow
+    Write-Host "`n[4/6] Setting up Windows Terminal..." -ForegroundColor Yellow
     & (Join-Path $RootDir "terminal\terminal-setup.ps1")
 } else {
-    Write-Host "`n[4/5] Skipping Windows Terminal Setup." -ForegroundColor DarkCyan
+    Write-Host "`n[4/6] Skipping Windows Terminal Setup." -ForegroundColor DarkCyan
 }
 
-# 5. Add bin directory to User PATH
+# 5. Vim & _vimrc Setup
+if (-not $SkipVim) {
+    Write-Host "`n[5/6] Setting up Vim & _vimrc configuration..." -ForegroundColor Yellow
+    & (Join-Path $RootDir "vim\vim-setup.ps1")
+} else {
+    Write-Host "`n[5/6] Skipping Vim Setup." -ForegroundColor DarkCyan
+}
+
+# 6. Add bin directory to User PATH
 $binDir = Join-Path $RootDir "bin"
 if (Test-Path $binDir) {
-    Write-Host "`n[5/5] Checking User PATH for utility scripts ($binDir)..." -ForegroundColor Yellow
+    Write-Host "`n[6/6] Checking User PATH for utility scripts ($binDir)..." -ForegroundColor Yellow
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $pathParts = if ($userPath) { $userPath -split ';' } else { @() }
     if ($pathParts -notcontains $binDir) {
