@@ -146,7 +146,7 @@ function Format-PathTree {
                     'White'
                 }
 
-                Write-Host -NoNewline "$prefix$connector" -ForegroundColor DarkGray
+                Write-Host -NoNewline "$prefix$connector" -ForegroundColor Gray
                 Write-Host "$key" -ForegroundColor $color
 
                 if ($isDir) {
