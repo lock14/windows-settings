@@ -27,7 +27,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 # -------------------------------------------------------------
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
-Write-Host "`n[1/5] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
 $psFiles = Get-ChildItem -Path $RootDir -Recurse -Filter "*.ps1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
 
 foreach ($file in $psFiles) {
@@ -45,7 +45,7 @@ foreach ($file in $psFiles) {
 # -------------------------------------------------------------
 # Test 2: JSON Files Validity & Schema Verification
 # -------------------------------------------------------------
-Write-Host "`n[2/5] Validating JSON Configurations..." -ForegroundColor Yellow
+Write-Host "`n[2/6] Validating JSON Configurations..." -ForegroundColor Yellow
 
 # Test posh/p10k.omp.json
 $p10kPath = Join-Path $RootDir "posh\p10k.omp.json"
@@ -78,13 +78,15 @@ try {
 # -------------------------------------------------------------
 # Test 3: Profile Sourcing & Function Definitions
 # -------------------------------------------------------------
-Write-Host "`n[3/5] Testing PowerShell Profile & Git Aliases..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Testing PowerShell Profile, Aliases & PSReadLine..." -ForegroundColor Yellow
 $profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
 
 # Source the profile in current scope
 . $profileFile
 
 $expectedFunctions = @(
+    # Developer Tool Shortcuts
+    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fs',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
@@ -102,10 +104,55 @@ foreach ($func in $expectedFunctions) {
     }
 }
 
+if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: tf -> terraform"
+} else {
+    Fail "Alias missing: tf" "Alias tf not found"
+}
+
 # -------------------------------------------------------------
-# Test 4: Git Function Behavior Integration Tests
+# Test 4: Utility Scripts Functional Tests (bin/)
 # -------------------------------------------------------------
-Write-Host "`n[4/5] Testing Git Functions Behavior..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Testing Native Utility Scripts (bin/)..." -ForegroundColor Yellow
+
+# Test gen-passwd.ps1
+$genPasswdScript = Join-Path $RootDir "bin\gen-passwd.ps1"
+$pass16 = & $genPasswdScript -Length 16
+if ($pass16.Length -eq 16) {
+    Pass "gen-passwd.ps1 generates expected length (16)"
+} else {
+    Fail "gen-passwd.ps1 length" "Expected 16, got $($pass16.Length)"
+}
+
+$pass32 = & $genPasswdScript -Length 32
+if ($pass32.Length -eq 32) {
+    Pass "gen-passwd.ps1 generates expected length (32)"
+} else {
+    Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
+}
+
+# Test sum.ps1
+$sumScript = Join-Path $RootDir "bin\sum.ps1"
+$sumResult = 1..10 | & $sumScript
+if ($sumResult -eq 55) {
+    Pass "sum.ps1 correctly sums pipeline numbers (1..10 = 55)"
+} else {
+    Fail "sum.ps1 result" "Expected 55, got $sumResult"
+}
+
+# Test repeat-until-success.ps1
+$repeatScript = Join-Path $RootDir "bin\repeat-until-success.ps1"
+try {
+    & $repeatScript -Command "Write-Output 'ok'" -MaxAttempts 2 | Out-Null
+    Pass "repeat-until-success.ps1 succeeds on valid command"
+} catch {
+    Fail "repeat-until-success.ps1" $_.Exception.Message
+}
+
+# -------------------------------------------------------------
+# Test 5: Git Function Behavior Integration Tests
+# -------------------------------------------------------------
+Write-Host "`n[5/6] Testing Git Functions Behavior..." -ForegroundColor Yellow
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_test_" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -130,7 +177,7 @@ try {
     git commit -m "initial commit" 2>$null | Out-Null
     git push origin main 2>$null | Out-Null
 
-    # Test 4.1: gsync outside git repo
+    # Test 5.1: gsync outside git repo
     Pop-Location
     Push-Location $tempDir
     $outErr = ""
@@ -145,7 +192,7 @@ try {
         Fail "gsync outside repo" "Expected error, got: $outErr"
     }
 
-    # Test 4.2: gsync on feature branch
+    # Test 5.2: gsync on feature branch
     Push-Location $localDir
     git checkout -b feature-1 2>$null | Out-Null
     Add-Content -Path "file.txt" -Value "`nfeature work"
@@ -159,7 +206,7 @@ try {
         Fail "gsync branch preservation" "Expected feature-1, got $currentBranch"
     }
 
-    # Test 4.3: fix-abcxyz-branch-name
+    # Test 5.3: fix-abcxyz-branch-name
     $expectedUser = if ($env:USER) { $env:USER } else { $env:USERNAME }
     fix-abcxyz-branch-name
     $renamedBranch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -169,7 +216,7 @@ try {
         Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $renamedBranch"
     }
 
-    # Test 4.4: gprune deletes non-main branches
+    # Test 5.4: gprune deletes non-main branches
     git checkout main 2>$null | Out-Null
     git branch branch-to-delete 2>$null | Out-Null
     gprune 2>$null | Out-Null
@@ -189,9 +236,20 @@ try {
 }
 
 # -------------------------------------------------------------
-# Test 5: Oh My Posh Rendering Check (if installed)
+# Test 6: Completions & Oh My Posh Rendering
 # -------------------------------------------------------------
-Write-Host "`n[5/5] Testing Oh My Posh Rendering..." -ForegroundColor Yellow
+Write-Host "`n[6/6] Testing Completions & Oh My Posh Rendering..." -ForegroundColor Yellow
+
+# Test completions setup execution
+$completionsScript = Join-Path $RootDir "completions\completions-setup.ps1"
+try {
+    & $completionsScript | Out-Null
+    Pass "completions-setup.ps1 executed successfully"
+} catch {
+    Fail "completions-setup.ps1" $_.Exception.Message
+}
+
+# Test Oh My Posh rendering
 if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     try {
         $renderOutput = oh-my-posh print primary --config $p10kPath

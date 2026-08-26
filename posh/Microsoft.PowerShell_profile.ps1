@@ -11,7 +11,81 @@ if (Test-Path $themePath) {
 }
 
 # -------------------------------------------------------------
-# Git Shortcuts (Oh My Zsh Git plugin & custom shortcuts)
+# 2. PSReadLine & Predictive Auto-Suggestions (Solarized Dark)
+# -------------------------------------------------------------
+if (Get-Module -ListAvailable -Name PSReadLine) {
+    try {
+        # Inline predictive history (Fish / Zsh-autosuggestions style)
+        Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue
+
+        # Styled in Solarized Dark muted tone (base01)
+        Set-PSReadLineOption -Colors @{
+            InlinePrediction = '#586E75'
+        } -ErrorAction SilentlyContinue
+
+        # Tab menu completion
+        Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction SilentlyContinue
+        Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction SilentlyContinue
+        Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward -ErrorAction SilentlyContinue
+
+        # Interactive FZF History Search (Ctrl+R)
+        Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock {
+            if (Get-Command fzf -ErrorAction SilentlyContinue) {
+                $historyFile = (Get-PSReadLineOption).HistorySavePath
+                if (Test-Path $historyFile) {
+                    $selected = Get-Content $historyFile -Encoding UTF8 |
+                                Select-Object -Unique |
+                                fzf --tac --no-sort --reverse --prompt="History > "
+                    if ($selected) {
+                        [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+                        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+                    }
+                }
+            } else {
+                [Microsoft.PowerShell.PSConsoleReadLine]::ReverseSearchHistory()
+            }
+        } -ErrorAction SilentlyContinue
+    } catch {
+        # Ignored in non-interactive/redirected stdout sessions
+    }
+}
+
+# -------------------------------------------------------------
+# 3. Developer Tool Aliases (Go, Terraform, YAML, Search)
+# -------------------------------------------------------------
+# Go
+function go_testall  { go test ./... @args }
+function go_buildall { go build ./... @args }
+function go_lint {
+    $cacheDir = if ($env:XDG_CACHE_HOME) { "$env:XDG_CACHE_HOME" } else { "$HOME\.cache" }
+    if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
+    $cfg = Join-Path $cacheDir "golangci.yml"
+    if (-not (Test-Path $cfg)) {
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/abcxyz/pkg/main/.golangci.yml" -OutFile $cfg -UseBasicParsing
+    }
+    golangci-lint run -c $cfg @args
+}
+
+# Terraform & YAML
+Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
+function yaml_lint { yamllint -c "$HOME\.yamllint.yml" @args }
+
+# Directory Visual Search Helper (fd + tree or recursive search)
+function fs {
+    if (Get-Command fd -ErrorAction SilentlyContinue) {
+        if (Get-Command tree -ErrorAction SilentlyContinue) {
+            fd --no-ignore-vcs @args | tree --fromfile
+        } else {
+            fd --no-ignore-vcs @args
+        }
+    } else {
+        Get-ChildItem -Recurse @args | Select-Object FullName
+    }
+}
+
+# -------------------------------------------------------------
+# 4. Git Shortcuts (Oh My Zsh Git plugin & custom shortcuts)
 # -------------------------------------------------------------
 # Oh My Zsh Git Plugin Aliases
 function gco  { git checkout @args }
