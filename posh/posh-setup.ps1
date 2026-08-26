@@ -50,6 +50,13 @@ if (Test-Path $PROFILE) {
     } else {
         Write-Host "PowerShell profile already configured for p10k_single_line." -ForegroundColor Green
     }
+
+    # Ensure coreutils does not shadow custom numeric sum function
+    $currentProfileContent = Get-Content $PROFILE -Raw
+    if ($currentProfileContent -match '\$script:__COREUTILS__' -and $currentProfileContent -match "'sum'") {
+        $cleanedContent = $currentProfileContent -replace "'sum',\s*", ""
+        Set-Content -Path $PROFILE -Value $cleanedContent -Force
+    }
 } else {
     Write-Host "Creating new PowerShell profile at $PROFILE..." -ForegroundColor Cyan
     Copy-Item -Path $profileSource -Destination $PROFILE -Force
