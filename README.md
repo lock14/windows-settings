@@ -22,7 +22,7 @@ The following tools should be available on Windows:
 Open PowerShell 7 (`pwsh`) and run:
 
 ```powershell
-git clone https://github.com/<you>/windows-settings.git
+git clone https://github.com/lock14/windows-settings.git
 cd windows-settings
 .\setup.ps1
 ```
