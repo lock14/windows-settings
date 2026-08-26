@@ -13,9 +13,14 @@
     Use only uppercase letters.
 .PARAMETER LowerOnly
     Use only lowercase letters.
+.PARAMETER NoSymbols
+    Exclude symbols from the default character set.
+.PARAMETER NoNumbers
+    Exclude numbers from the default character set.
 .EXAMPLE
-    gen-passwd.ps1 20
-    gen-passwd.ps1 -Length 24 -IncludeSymbols
+    gen-passwd 20
+    gen-passwd -Length 24 -IncludeSymbols
+    gen-passwd -NoSymbols
 #>
 [CmdletBinding()]
 param(
@@ -23,10 +28,20 @@ param(
     [ValidateRange(1, 1024)]
     [int]$Length = 16,
 
-    [bool]$IncludeSymbols = $true,
-    [bool]$IncludeNumbers = $true,
+    [Alias('s', 'Symbols')]
+    [switch]$IncludeSymbols,
+
+    [Alias('n', 'Numbers')]
+    [switch]$IncludeNumbers,
+
+    [Alias('u')]
     [switch]$UpperOnly,
-    [switch]$LowerOnly
+
+    [Alias('l')]
+    [switch]$LowerOnly,
+
+    [switch]$NoSymbols,
+    [switch]$NoNumbers
 )
 
 $upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -37,19 +52,23 @@ $symbols = '^*@#&%$!'
 $charSet = ''
 
 if ($UpperOnly) {
-    $charSet = $upper
-} elseif ($LowerOnly) {
-    $charSet = $lower
-} else {
-    $charSet = $upper + $lower
+    $charSet += $upper
 }
-
-if ($IncludeNumbers -and -not $UpperOnly -and -not $LowerOnly) {
+if ($LowerOnly) {
+    $charSet += $lower
+}
+if ($IncludeNumbers) {
     $charSet += $numbers
 }
-
-if ($IncludeSymbols -and -not $UpperOnly -and -not $LowerOnly) {
+if ($IncludeSymbols) {
     $charSet += $symbols
+}
+
+# Default character set when no specific subset is selected
+if ($charSet -eq '') {
+    $charSet = $upper + $lower
+    if (-not $NoNumbers) { $charSet += $numbers }
+    if (-not $NoSymbols) { $charSet += $symbols }
 }
 
 $bytes = [byte[]]::new($Length)

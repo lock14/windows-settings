@@ -137,6 +137,20 @@ if ($pass32.Length -eq 32) {
     Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
 }
 
+$passSymbols = & $genPasswdScript -Length 24 -IncludeSymbols
+if ($passSymbols.Length -eq 24 -and $passSymbols -match '[\^\*\@\#\&\%\$\!]') {
+    Pass "gen-passwd.ps1 generates password with symbols (-IncludeSymbols)"
+} else {
+    Fail "gen-passwd.ps1 symbols" "Expected symbols in $passSymbols"
+}
+
+$passAlpha = & $genPasswdScript -Length 20 -NoSymbols
+if ($passAlpha.Length -eq 20 -and $passAlpha -notmatch '[\^\*\@\#\&\%\$\!]') {
+    Pass "gen-passwd.ps1 generates password without symbols (-NoSymbols)"
+} else {
+    Fail "gen-passwd.ps1 no-symbols" "Did not expect symbols in $passAlpha"
+}
+
 # Test sum.ps1 & direct sum cmdlet
 $sumScript = Join-Path $RootDir "bin\sum.ps1"
 $sumResult = 1..10 | & $sumScript
