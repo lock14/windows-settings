@@ -1,6 +1,6 @@
 # windows-settings
 
-[![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
+[![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
 
 Windows workstation configuration files and setup automation for PowerShell 7 and Windows Terminal.
 
