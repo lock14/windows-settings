@@ -27,6 +27,7 @@ $cliPackages = @(
     'junegunn.fzf',
     'jqlang.jq',
     'GoLang.Go',
+    'Python.Python.3.12',
     'Hashicorp.Terraform',
     'Neovim.Neovim',
     'vim.vim'

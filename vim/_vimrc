@@ -3,10 +3,25 @@
 " Ported from home-settings/.vimrc
 " =============================================================
 
+" Set runtimepath to include standard Unix and Windows locations
+set runtimepath^=~/.vim,~/.vim/after,~/vimfiles,~/vimfiles/after
+
 " Plugin management (Pathogen)
-if filereadable(expand('~/vimfiles/autoload/pathogen.vim')) || filereadable(expand('~/.vim/autoload/pathogen.vim'))
+if filereadable(expand('~/.vim/autoload/pathogen.vim'))
+    source ~/.vim/autoload/pathogen.vim
+endif
+if filereadable(expand('~/vimfiles/autoload/pathogen.vim'))
+    source ~/vimfiles/autoload/pathogen.vim
+endif
+
+if exists('*pathogen#infect')
     execute pathogen#infect()
     execute pathogen#helptags()
+endif
+
+" Python 3 Configuration for UltiSnips on Windows
+if has('win32') || has('win64')
+    set pythonthreedll=python3.dll
 endif
 
 " Suppress Python syntax/deprecation warnings
