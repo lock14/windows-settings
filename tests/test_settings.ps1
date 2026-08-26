@@ -110,6 +110,12 @@ if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
     Fail "Alias missing: tf" "Alias tf not found"
 }
 
+if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
+    Pass "LS_COLORS environment variable configured (Solarized Dark)"
+} else {
+    Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
+}
+
 # -------------------------------------------------------------
 # Test 4: Utility Scripts Functional Tests (bin/)
 # -------------------------------------------------------------

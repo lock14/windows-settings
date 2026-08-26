@@ -47,7 +47,8 @@ To run individual components:
 - Direct port of Powerlevel10k Rainbow adapted to a single-line prompt with Solarized Dark palette tones.
 - Right prompt (`rprompt`) with execution time, status codes, and language environment indicators (Go, Python, Node, .NET, Rust, AWS).
 
-### 2. Shell Intelligence & Auto-Suggestions
+### 2. Shell Intelligence & Colors
+- **Solarized Dark `LS_COLORS`**: Exact port of `home-settings/LS_COLORS` coloring files by type/extension for `ls`, `ll`, `la`, `fd`, `fzf`, and `tree`.
 - **Predictive IntelliSense (`PSReadLine`)**: Fish/Zsh-style inline history prediction styled in Solarized Dark muted tones (`#586E75`).
 - **Interactive History Search (`Ctrl+R`)**: Live fuzzy search over persistent command history using `fzf`.
 - **Menu Completion (`Tab`)**: Visual, interactive dropdown menu navigation for command arguments and paths.
