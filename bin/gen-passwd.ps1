@@ -6,17 +6,21 @@
 .PARAMETER Length
     Length of the generated password (default: 16).
 .PARAMETER IncludeSymbols
-    Include special symbols in the password character set.
+    Include special symbols in the password (enabled by default).
 .PARAMETER IncludeNumbers
-    Include numbers in the password character set.
+    Include numbers in the password (enabled by default).
 .PARAMETER UpperOnly
     Use only uppercase letters.
 .PARAMETER LowerOnly
     Use only lowercase letters.
+.PARAMETER NumbersOnly
+    Use only digits (0-9).
+.PARAMETER SymbolsOnly
+    Use only special symbols.
 .PARAMETER NoSymbols
-    Exclude symbols from the default character set.
+    Exclude symbols from the password character set.
 .PARAMETER NoNumbers
-    Exclude numbers from the default character set.
+    Exclude numbers from the password character set.
 .EXAMPLE
     gen-passwd 20
     gen-passwd -Length 24 -IncludeSymbols
@@ -28,10 +32,10 @@ param(
     [ValidateRange(1, 1024)]
     [int]$Length = 16,
 
-    [Alias('s', 'Symbols')]
+    [Alias('s')]
     [switch]$IncludeSymbols,
 
-    [Alias('n', 'Numbers')]
+    [Alias('n')]
     [switch]$IncludeNumbers,
 
     [Alias('u')]
@@ -40,6 +44,8 @@ param(
     [Alias('l')]
     [switch]$LowerOnly,
 
+    [switch]$NumbersOnly,
+    [switch]$SymbolsOnly,
     [switch]$NoSymbols,
     [switch]$NoNumbers
 )
@@ -52,23 +58,22 @@ $symbols = '^*@#&%$!'
 $charSet = ''
 
 if ($UpperOnly) {
-    $charSet += $upper
-}
-if ($LowerOnly) {
-    $charSet += $lower
-}
-if ($IncludeNumbers) {
-    $charSet += $numbers
-}
-if ($IncludeSymbols) {
-    $charSet += $symbols
-}
-
-# Default character set when no specific subset is selected
-if ($charSet -eq '') {
+    $charSet = $upper
+} elseif ($LowerOnly) {
+    $charSet = $lower
+} elseif ($NumbersOnly) {
+    $charSet = $numbers
+} elseif ($SymbolsOnly) {
+    $charSet = $symbols
+} else {
+    # Default is full set: uppercase + lowercase + numbers + symbols
     $charSet = $upper + $lower
-    if (-not $NoNumbers) { $charSet += $numbers }
-    if (-not $NoSymbols) { $charSet += $symbols }
+    if ((-not $NoNumbers) -or $IncludeNumbers) {
+        $charSet += $numbers
+    }
+    if ((-not $NoSymbols) -or $IncludeSymbols) {
+        $charSet += $symbols
+    }
 }
 
 $bytes = [byte[]]::new($Length)

@@ -150,11 +150,11 @@ if ($pass32.Length -eq 32) {
     Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
 }
 
-$passSymbols = & $genPasswdScript -Length 24 -IncludeSymbols
-if ($passSymbols.Length -eq 24 -and $passSymbols -match '[\^\*\@\#\&\%\$\!]') {
-    Pass "gen-passwd.ps1 generates password with symbols (-IncludeSymbols)"
+$passSymbols = & $genPasswdScript -Length 24 -SymbolsOnly
+if ($passSymbols.Length -eq 24 -and $passSymbols -match '^[\^\*\@\#\&\%\$\!]+$') {
+    Pass "gen-passwd.ps1 generates symbols-only password (-SymbolsOnly)"
 } else {
-    Fail "gen-passwd.ps1 symbols" "Expected symbols in $passSymbols"
+    Fail "gen-passwd.ps1 symbols" "Expected only symbols in $passSymbols"
 }
 
 $passAlpha = & $genPasswdScript -Length 20 -NoSymbols
