@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs Vim and deploys _vimrc configuration.
+    Installs Vim, deploys _vimrc configuration, and provisions plugins.
 .DESCRIPTION
     Ported from home-settings/vim-setup.sh for Windows.
 #>
@@ -32,6 +32,48 @@ if (Test-Path $vimDir) {
         $newPath = ($pathParts + $vimDir) -join ';'
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
         $env:Path = "$env:Path;$vimDir"
+    }
+}
+
+# Setup Vim Runtime Directories & Pathogen
+$vimDirs = @(
+    (Join-Path $HOME '.vim'),
+    (Join-Path $HOME 'vimfiles')
+)
+
+foreach ($base in $vimDirs) {
+    $autoload = Join-Path $base 'autoload'
+    $bundle = Join-Path $base 'bundle'
+    if (-not (Test-Path $autoload)) {
+        New-Item -ItemType Directory -Force -Path $autoload | Out-Null
+    }
+    if (-not (Test-Path $bundle)) {
+        New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+    }
+
+    # Install Pathogen
+    $pathogenFile = Join-Path $autoload 'pathogen.vim'
+    if (-not (Test-Path $pathogenFile)) {
+        Write-Host "Installing Pathogen to $pathogenFile..." -ForegroundColor Cyan
+        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim' -OutFile $pathogenFile -UseBasicParsing
+    }
+}
+
+# Install Vim Bundles (auto-pairs for brace matching, solarized, ultisnips, supertab)
+$plugins = @(
+    @{ Name = 'auto-pairs'; Url = 'https://github.com/jiangmiao/auto-pairs.git' },
+    @{ Name = 'vim-colors-solarized'; Url = 'https://github.com/altercation/vim-colors-solarized.git' },
+    @{ Name = 'ultisnips'; Url = 'https://github.com/SirVer/ultisnips.git' },
+    @{ Name = 'supertab'; Url = 'https://github.com/ervandew/supertab.git' }
+)
+
+foreach ($p in $plugins) {
+    foreach ($base in $vimDirs) {
+        $dest = Join-Path $base "bundle\$($p.Name)"
+        if (-not (Test-Path "$dest\.git")) {
+            Write-Host "Cloning $($p.Name) into $dest..." -ForegroundColor Cyan
+            git clone --depth=1 $p.Url $dest
+        }
     }
 }
 

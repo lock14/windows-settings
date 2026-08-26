@@ -4,8 +4,9 @@
 " =============================================================
 
 " Plugin management (Pathogen)
-if filereadable(expand('~/.vim/autoload/pathogen.vim'))
+if filereadable(expand('~/vimfiles/autoload/pathogen.vim')) || filereadable(expand('~/.vim/autoload/pathogen.vim'))
     execute pathogen#infect()
+    execute pathogen#helptags()
 endif
 
 " Suppress Python syntax/deprecation warnings
@@ -16,7 +17,7 @@ let g:UltiSnipsExpandTrigger = "<tab>"
 let g:UltiSnipsJumpForwardTrigger = "<c-j>"
 let g:UltiSnipsJumpBackwardTrigger = "<c-k>"
 
-" Auto-Pairs configuration
+" Auto-Pairs configuration (Brace matching and auto-closing)
 let g:AutoPairsShortcutJump = '<c-l>'
 
 " Indentation & Formatting
@@ -24,6 +25,8 @@ filetype plugin indent on
 set tabstop=4
 set shiftwidth=4
 set expandtab
+set showmatch
+set matchtime=2
 
 " Syntax & Visual Theme
 syntax enable
