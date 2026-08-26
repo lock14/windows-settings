@@ -150,11 +150,25 @@ if ($pass32.Length -eq 32) {
     Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
 }
 
-$passSymbols = & $genPasswdScript -Length 24 -SymbolsOnly
+$passSymbols = & $genPasswdScript -Length 24 -s
 if ($passSymbols.Length -eq 24 -and $passSymbols -match '^[\^\*\@\#\&\%\$\!]+$') {
-    Pass "gen-passwd.ps1 generates symbols-only password (-SymbolsOnly)"
+    Pass "gen-passwd.ps1 generates symbols-only password (-s)"
 } else {
     Fail "gen-passwd.ps1 symbols" "Expected only symbols in $passSymbols"
+}
+
+$passDigits = & $genPasswdScript -Length 16 -n
+if ($passDigits.Length -eq 16 -and $passDigits -match '^[0-9]+$') {
+    Pass "gen-passwd.ps1 generates digits-only password (-n)"
+} else {
+    Fail "gen-passwd.ps1 digits" "Expected only digits in $passDigits"
+}
+
+$passUpperDigits = & $genPasswdScript -Length 16 -u -n
+if ($passUpperDigits.Length -eq 16 -and $passUpperDigits -match '^[A-Z0-9]+$') {
+    Pass "gen-passwd.ps1 generates uppercase and numbers (-u -n)"
+} else {
+    Fail "gen-passwd.ps1 upper+digits" "Expected only uppercase and digits in $passUpperDigits"
 }
 
 $passAlpha = & $genPasswdScript -Length 20 -NoSymbols

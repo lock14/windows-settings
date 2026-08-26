@@ -2,29 +2,27 @@
 .SYNOPSIS
     Generates a cryptographically secure random password.
 .DESCRIPTION
-    Ported from home-settings/common-bin/gen-passwd for native PowerShell usage.
+    Ported from home-settings/common-bin/gen-passwd with exact flag and composability parity.
 .PARAMETER Length
     Length of the generated password (default: 16).
-.PARAMETER IncludeSymbols
-    Include special symbols in the password (enabled by default).
-.PARAMETER IncludeNumbers
-    Include numbers in the password (enabled by default).
-.PARAMETER UpperOnly
-    Use only uppercase letters.
-.PARAMETER LowerOnly
-    Use only lowercase letters.
-.PARAMETER NumbersOnly
-    Use only digits (0-9).
-.PARAMETER SymbolsOnly
-    Use only special symbols.
+.PARAMETER Symbols
+    Include special symbols in custom subset, or select symbols only (-s).
+.PARAMETER Numbers
+    Include numbers in custom subset, or select numbers only (-n).
+.PARAMETER Upper
+    Include uppercase letters in custom subset, or select uppercase only (-u).
+.PARAMETER Lower
+    Include lowercase letters in custom subset, or select lowercase only (-l).
 .PARAMETER NoSymbols
-    Exclude symbols from the password character set.
+    Exclude symbols from default character set.
 .PARAMETER NoNumbers
-    Exclude numbers from the password character set.
+    Exclude numbers from default character set.
 .EXAMPLE
     gen-passwd 20
-    gen-passwd -Length 24 -IncludeSymbols
-    gen-passwd -NoSymbols
+    gen-passwd -n 16
+    gen-passwd -u -n 16
+    gen-passwd -u -l -n 16
+    gen-passwd -NoSymbols 24
 #>
 [CmdletBinding()]
 param(
@@ -32,47 +30,51 @@ param(
     [ValidateRange(1, 1024)]
     [int]$Length = 16,
 
-    [Alias('s')]
-    [switch]$IncludeSymbols,
+    [Alias('s', 'SymbolsOnly', 'IncludeSymbols')]
+    [switch]$Symbols,
 
-    [Alias('n')]
-    [switch]$IncludeNumbers,
+    [Alias('n', 'NumbersOnly', 'IncludeNumbers')]
+    [switch]$Numbers,
 
-    [Alias('u')]
-    [switch]$UpperOnly,
+    [Alias('u', 'UpperOnly')]
+    [switch]$Upper,
 
-    [Alias('l')]
-    [switch]$LowerOnly,
+    [Alias('l', 'LowerOnly')]
+    [switch]$Lower,
 
-    [switch]$NumbersOnly,
-    [switch]$SymbolsOnly,
     [switch]$NoSymbols,
     [switch]$NoNumbers
 )
 
-$upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-$lower = 'abcdefghijklmnopqrstuvwxyz'
-$numbers = '0123456789'
-$symbols = '^*@#&%$!'
+$upperChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+$lowerChars = 'abcdefghijklmnopqrstuvwxyz'
+$numberChars = '0123456789'
+$symbolChars = '^*@#&%$!'
 
 $charSet = ''
 
-if ($UpperOnly) {
-    $charSet = $upper
-} elseif ($LowerOnly) {
-    $charSet = $lower
-} elseif ($NumbersOnly) {
-    $charSet = $numbers
-} elseif ($SymbolsOnly) {
-    $charSet = $symbols
+# If any specific subset flag was provided, compose only the selected sets (exact home-settings parity)
+if ($Upper -or $Lower -or $Numbers -or $Symbols) {
+    if ($Upper) {
+        $charSet += $upperChars
+    }
+    if ($Lower) {
+        $charSet += $lowerChars
+    }
+    if ($Numbers) {
+        $charSet += $numberChars
+    }
+    if ($Symbols) {
+        $charSet += $symbolChars
+    }
 } else {
     # Default is full set: uppercase + lowercase + numbers + symbols
-    $charSet = $upper + $lower
-    if ((-not $NoNumbers) -or $IncludeNumbers) {
-        $charSet += $numbers
+    $charSet = $upperChars + $lowerChars
+    if (-not $NoNumbers) {
+        $charSet += $numberChars
     }
-    if ((-not $NoSymbols) -or $IncludeSymbols) {
-        $charSet += $symbols
+    if (-not $NoSymbols) {
+        $charSet += $symbolChars
     }
 }
 
