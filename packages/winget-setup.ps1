@@ -50,7 +50,7 @@ Write-Host "=====================================================" -ForegroundCo
 foreach ($pkg in $targetPackages) {
     Write-Host "`n==> Checking package: $pkg" -ForegroundColor Yellow
     if ($DryRun) {
-        Write-Host "  [DryRun] Would install $pkg via winget" -ForegroundColor DarkGray
+        Write-Host "  [DryRun] Would install $pkg via winget" -ForegroundColor DarkCyan
         continue
     }
 

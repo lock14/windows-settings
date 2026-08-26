@@ -24,7 +24,7 @@ if (-not $SkipFonts) {
     Write-Host "`n[1/5] Setting up Fonts (MesloLGS NF)..." -ForegroundColor Yellow
     & (Join-Path $RootDir "fonts\font-setup.ps1")
 } else {
-    Write-Host "`n[1/5] Skipping Fonts Setup." -ForegroundColor DarkGray
+    Write-Host "`n[1/5] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
 
 # 2. Oh My Posh & Profile Setup
@@ -32,7 +32,7 @@ if (-not $SkipPosh) {
     Write-Host "`n[2/5] Setting up Oh My Posh & PowerShell Profile..." -ForegroundColor Yellow
     & (Join-Path $RootDir "posh\posh-setup.ps1")
 } else {
-    Write-Host "`n[2/5] Skipping Oh My Posh Setup." -ForegroundColor DarkGray
+    Write-Host "`n[2/5] Skipping Oh My Posh Setup." -ForegroundColor DarkCyan
 }
 
 # 3. CLI Tab Completions Setup
@@ -40,7 +40,7 @@ if (-not $SkipCompletions) {
     Write-Host "`n[3/5] Setting up CLI Completions..." -ForegroundColor Yellow
     & (Join-Path $RootDir "completions\completions-setup.ps1")
 } else {
-    Write-Host "`n[3/5] Skipping CLI Completions." -ForegroundColor DarkGray
+    Write-Host "`n[3/5] Skipping CLI Completions." -ForegroundColor DarkCyan
 }
 
 # 4. Windows Terminal Setup
@@ -48,7 +48,7 @@ if (-not $SkipTerminal) {
     Write-Host "`n[4/5] Setting up Windows Terminal..." -ForegroundColor Yellow
     & (Join-Path $RootDir "terminal\terminal-setup.ps1")
 } else {
-    Write-Host "`n[4/5] Skipping Windows Terminal Setup." -ForegroundColor DarkGray
+    Write-Host "`n[4/5] Skipping Windows Terminal Setup." -ForegroundColor DarkCyan
 }
 
 # 5. Add bin directory to User PATH

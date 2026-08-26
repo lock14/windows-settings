@@ -281,7 +281,7 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         Fail "Oh My Posh rendering error" $_.Exception.Message
     }
 } else {
-    Write-Host "  [SKIP] oh-my-posh not installed in current environment" -ForegroundColor DarkGray
+    Write-Host "  [SKIP] oh-my-posh not installed in current environment" -ForegroundColor DarkCyan
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
