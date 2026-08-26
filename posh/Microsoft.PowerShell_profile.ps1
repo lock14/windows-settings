@@ -92,16 +92,12 @@ function la {
     }
 }
 
-# Directory Visual Search Helper (fd + tree or recursive search)
+# Directory Visual Search Helper (fd with Solarized LS_COLORS or recursive search)
 function fs {
     if (Get-Command fd -ErrorAction SilentlyContinue) {
-        if (Get-Command tree -ErrorAction SilentlyContinue) {
-            fd --no-ignore-vcs @args | tree --fromfile
-        } else {
-            fd --no-ignore-vcs @args
-        }
+        fd --no-ignore-vcs @args
     } else {
-        Get-ChildItem -Recurse @args | Select-Object FullName
+        Get-ChildItem -Recurse @args | Select-Object -ExpandProperty FullName
     }
 }
 
