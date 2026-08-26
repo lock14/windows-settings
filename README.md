@@ -47,11 +47,12 @@ To run individual components:
 - Direct port of Powerlevel10k Rainbow adapted to a single-line prompt with Solarized Dark palette tones.
 - Right prompt (`rprompt`) with execution time, status codes, and language environment indicators (Go, Python, Node, .NET, Rust, AWS).
 
-### 2. Shell Intelligence & Colors
-- **Solarized Dark `LS_COLORS`**: Exact port of `home-settings/LS_COLORS` coloring files by type/extension for `ls`, `ll`, `la`, `fd`, `fzf`, and `tree`.
+### 2. Shell Intelligence, Colors & Performance
+- **Solarized Dark `LS_COLORS`**: Exact port of `home-settings/LS_COLORS` defining file and directory colors by type/extension for `ls`, `ll`, `la`, `fd`, `fzf`, and `fs`.
 - **Predictive IntelliSense (`PSReadLine`)**: Fish/Zsh-style inline history prediction styled in Solarized Dark muted tones (`#586E75`).
-- **Interactive History Search (`Ctrl+R`)**: Live fuzzy search over persistent command history using `fzf`.
+- **Interactive History Search (`Ctrl+R`)**: Live fuzzy search over persistent command history powered by `fzf`.
 - **Menu Completion (`Tab`)**: Visual, interactive dropdown menu navigation for command arguments and paths.
+- **High-Speed Startup Caching**: Compiles Oh My Posh themes and CLI tab completions into `$HOME\.cache\powershell\` for silent sub-second startup.
 
 ### 3. Git & Developer Shortcuts
 Includes the full Oh My Zsh Git plugin suite and custom workflow helpers:
@@ -82,16 +83,19 @@ Includes the full Oh My Zsh Git plugin suite and custom workflow helpers:
 | `yaml_lint` | `yamllint -c ~/.yamllint.yml` |
 | `ll` | List directory contents with details (`ls -alFh --color=auto`) |
 | `la` | List all files including hidden (`ls -AFhl --color=auto`) |
-| `fs` | Fast recursive directory tree search (`fd --no-ignore-vcs` + `tree`) |
+| `fs` | Fast recursive directory tree search (`fd --no-ignore-vcs` + `Format-PathTree`) |
+| `Format-PathTree` | Native trie-based visual tree formatter (*parity with Linux `tree --fromfile`*) |
 
 ### 4. Native CLI Utilities (`bin/`)
-Ported from `home-settings/common-bin/` for native PowerShell execution:
+Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 
 | Utility | Description | Example Usage |
 | :--- | :--- | :--- |
-| `gen-passwd.ps1` | Cryptographically secure random password generator | `gen-passwd.ps1 -Length 24 -IncludeSymbols` |
-| `repeat-until-success.ps1` | Retries a command until exit code 0 | `repeat-until-success.ps1 -Command "curl https://example.com"` |
-| `sum.ps1` | Sums numbers from standard input / pipeline | `1..100 \| sum.ps1` |
+| `gen-passwd` | Cryptographically secure random password generator | `gen-passwd -Length 24 -IncludeSymbols` |
+| `repeat-until-success` | Retries a command until exit code 0 | `repeat-until-success -Command "curl https://example.com"` |
+| `sum` | Sums numbers from positional arguments or pipeline | `sum 1 2 3` or `1..100 \| sum` |
+
+*Note: All utilities in `bin/` include `.cmd` wrappers and are registered as global cmdlets.*
 
 ### 5. Solarized Dark & MesloLGS NF Windows Terminal (`terminal/settings.json`)
 - Canonical Solarized Dark color scheme.
@@ -105,13 +109,15 @@ Ported from `home-settings/common-bin/` for native PowerShell execution:
 | Path | Description |
 | :--- | :--- |
 | `setup.ps1` | Master setup script orchestrating fonts, prompt, completions, PATH, and terminal |
-| `bin/` | Native CLI utilities (`gen-passwd.ps1`, `repeat-until-success.ps1`, `sum.ps1`) |
-| `completions/` | Tab completions for `gh`, `winget`, `docker`, `kubectl`, `helm`, `terraform` |
+| `bin/` | Native CLI utilities and batch wrappers (`gen-passwd`, `repeat-until-success`, `sum`) |
+| `colors/` | Solarized Dark `LS_COLORS` definition database matching `home-settings` |
+| `completions/` | Tab completions with high-speed disk caching (`gh`, `winget`, `docker`, `kubectl`, `helm`, `terraform`) |
 | `fonts/` | Downloads and installs MesloLGS NF fonts |
-| `packages/` | Workstation developer tool provisioning with `winget` |
+| `packages/` | Workstation developer tool provisioning with `winget` (`fzf`, `rg`, `fd`, `jq`, `terraform`, `nvim`) |
 | `posh/p10k.omp.json` | Oh My Posh Solarized Dark single-line Powerlevel10k theme |
-| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + PSReadLine) |
+| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + PSReadLine + LS_COLORS) |
 | `posh/posh-setup.ps1` | Installs Oh My Posh via winget, deploys theme & profile |
 | `terminal/settings.json` | Windows Terminal configuration & color schemes |
 | `terminal/terminal-setup.ps1` | Deploys `settings.json` to Windows Terminal `LocalState` with backups |
-| `tests/test_settings.ps1` | Comprehensive test suite for CI and local verification |
+| `tests/test_settings.ps1` | Comprehensive automated test suite (77 tests) for CI and local verification |
+| `PSScriptAnalyzerSettings.psd1` | Quality gate & linter settings for strict CI validation |
