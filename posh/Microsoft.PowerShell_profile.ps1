@@ -47,7 +47,7 @@ if (Get-Module -ListAvailable -Name PSReadLine) {
             }
         } -ErrorAction SilentlyContinue
     } catch {
-        # Ignored in non-interactive/redirected stdout sessions
+        $null = $_
     }
 }
 

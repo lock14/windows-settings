@@ -9,7 +9,7 @@ param(
     [switch]$SkipTerminal,
     [switch]$SkipPosh,
     [switch]$SkipCompletions,
-    [switch]$SkipPackages
+    [switch]$InstallPackages
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +66,12 @@ if (Test-Path $binDir) {
     } else {
         Write-Host "  $binDir is already in User PATH." -ForegroundColor Green
     }
+}
+
+# Optional: Workstation Package Provisioning
+if ($InstallPackages) {
+    Write-Host "`n[Optional] Installing Workstation Packages via winget..." -ForegroundColor Yellow
+    & (Join-Path $RootDir "packages\winget-setup.ps1")
 }
 
 Write-Host "`n=====================================================" -ForegroundColor Green

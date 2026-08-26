@@ -20,7 +20,7 @@ begin {
 process {
     if ($InputObject) {
         foreach ($item in $InputObject) {
-            if ($item -ne $null) {
+            if ($null -ne $item) {
                 # Handle multiline string blocks
                 $lines = "$item" -split "`r?`n"
                 foreach ($line in $lines) {

@@ -44,7 +44,7 @@ if (Test-Path $PROFILE) {
     if ($content -notmatch 'p10k_single_line\.omp\.json') {
         Write-Host "Backing up existing profile to $PROFILE.bak..." -ForegroundColor Yellow
         Copy-Item -Path $PROFILE -Destination "$PROFILE.bak" -Force
-        
+
         Write-Host "Appending windows-settings profile additions to $PROFILE..." -ForegroundColor Cyan
         Add-Content -Path $PROFILE -Value "`n# --- Added by windows-settings ---`n$(Get-Content $profileSource -Raw)"
     } else {

@@ -33,15 +33,11 @@ jobs:
       - name: Lint PowerShell scripts with PSScriptAnalyzer
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
           if ($results) {
               $results | Format-Table -AutoSize
-              # Fail only on Errors or significant issues
-              $errors = $results | Where-Object { $_.Severity -eq 'Error' }
-              if ($errors) {
-                  Write-Error "PSScriptAnalyzer found errors!"
-                  exit 1
-              }
+              Write-Error "PSScriptAnalyzer found lint issues!"
+              exit 1
           } else {
               Write-Host "PSScriptAnalyzer: No errors or warnings found." -ForegroundColor Green
           }

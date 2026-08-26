@@ -23,8 +23,8 @@ param(
     [ValidateRange(1, 1024)]
     [int]$Length = 16,
 
-    [switch]$IncludeSymbols = $true,
-    [switch]$IncludeNumbers = $true,
+    [bool]$IncludeSymbols = $true,
+    [bool]$IncludeNumbers = $true,
     [switch]$UpperOnly,
     [switch]$LowerOnly
 )

@@ -6,18 +6,18 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $ScriptDir
 
-$TestsPassed = 0
-$TestsFailed = 0
+$script:TestsPassed = 0
+$script:TestsFailed = 0
 
 function Pass($name) {
     Write-Host "  [PASS] $name" -ForegroundColor Green
-    $global:TestsPassed++
+    $script:TestsPassed++
 }
 
 function Fail($name, $reason) {
     Write-Host "  [FAIL] $name" -ForegroundColor Red
     Write-Host "         $reason" -ForegroundColor DarkRed
-    $global:TestsFailed++
+    $script:TestsFailed++
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -180,11 +180,10 @@ try {
     # Test 5.1: gsync outside git repo
     Pop-Location
     Push-Location $tempDir
-    $outErr = ""
-    try {
-        gsync 2>&1 | Out-String | ForEach-Object { $outErr = $_ }
+    $outErr = try {
+        gsync 2>&1 | Out-String
     } catch {
-        $outErr = $_.Exception.Message
+        $_.Exception.Message
     }
     if ($outErr -match "Error") {
         Pass "gsync fails gracefully when not in a git repository"

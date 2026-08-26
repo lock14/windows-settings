@@ -5,6 +5,7 @@
     Ported and expanded from home-settings/completions-setup.sh for PowerShell 7.
 #>
 [CmdletBinding()]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
