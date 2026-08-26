@@ -20,6 +20,19 @@ if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
     Write-Host "Oh My Posh is already installed." -ForegroundColor Green
 }
 
+# Check fzf installation (for interactive Ctrl+R search)
+Write-Host "==> Checking fzf installation..." -ForegroundColor Cyan
+if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host "Installing fzf via winget..." -ForegroundColor Yellow
+        winget install --id junegunn.fzf -e --source winget --accept-package-agreements --accept-source-agreements
+    } else {
+        Write-Warning "winget not found. Please install fzf manually."
+    }
+} else {
+    Write-Host "fzf is already installed." -ForegroundColor Green
+}
+
 # Ensure .poshthemes directory exists and copy theme
 $poshThemesDir = Join-Path $HOME ".poshthemes"
 if (-not (Test-Path $poshThemesDir)) {
