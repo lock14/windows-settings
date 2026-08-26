@@ -2,10 +2,21 @@
 # PowerShell Profile - windows-settings
 # =============================================================
 
-# 1. Oh My Posh Theme Initialization
+# 1. Oh My Posh Theme Initialization (High-speed cached load)
 $themePath = "$HOME\.poshthemes\p10k_single_line.omp.json"
+$ompCacheDir = "$HOME\.cache\powershell"
+$ompInit = "$ompCacheDir\omp_init.ps1"
+
 if (Test-Path $themePath) {
-    oh-my-posh init pwsh --config $themePath | Invoke-Expression
+    if (-not (Test-Path $ompInit) -or ((Get-Item $themePath).LastWriteTime -gt (Get-Item $ompInit).LastWriteTime)) {
+        if (-not (Test-Path $ompCacheDir)) {
+            New-Item -ItemType Directory -Force -Path $ompCacheDir | Out-Null
+        }
+        oh-my-posh init pwsh --config $themePath --print | Out-File -FilePath $ompInit -Encoding utf8 -Force
+    }
+    if (Test-Path $ompInit) {
+        . $ompInit
+    }
 } elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     oh-my-posh init pwsh | Invoke-Expression
 }

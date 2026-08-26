@@ -2,7 +2,7 @@
 .SYNOPSIS
     Registers dynamic argument completions for installed CLI tools.
 .DESCRIPTION
-    Ported and expanded from home-settings/completions-setup.sh for PowerShell 7.
+    High-performance completions loader with disk caching to eliminate startup overhead.
 #>
 [CmdletBinding()]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
@@ -10,17 +10,24 @@ param()
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "==> Registering CLI tab completions..." -ForegroundColor Cyan
-
-# 1. GitHub CLI (gh)
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: gh" -ForegroundColor Green
-    Invoke-Expression (gh completion -s powershell | Out-String)
+$cacheDir = Join-Path $HOME '.cache\powershell'
+if (-not (Test-Path $cacheDir)) {
+    New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 }
 
-# 2. winget (Windows Package Manager)
+# 1. GitHub CLI (gh) - Cached
+if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $ghCache = Join-Path $cacheDir 'gh_completion.ps1'
+    if (-not (Test-Path $ghCache)) {
+        gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
+    }
+    if (Test-Path $ghCache) {
+        . $ghCache
+    }
+}
+
+# 2. winget (Windows Package Manager) - Pure In-Memory Completer (<1ms)
 if (Get-Command winget -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: winget" -ForegroundColor Green
     Register-ArgumentCompleter -Native -CommandName winget -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
         [System.String[]]$commands = @(
@@ -33,9 +40,8 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
     }
 }
 
-# 3. Docker CLI
+# 3. Docker CLI - Pure In-Memory Completer (<1ms)
 if (Get-Command docker -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: docker" -ForegroundColor Green
     Register-ArgumentCompleter -Native -CommandName docker -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
         [System.String[]]$commands = @(
@@ -48,21 +54,30 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     }
 }
 
-# 4. Kubernetes CLI (kubectl)
+# 4. Kubernetes CLI (kubectl) - Cached
 if (Get-Command kubectl -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: kubectl" -ForegroundColor Green
-    kubectl completion powershell | Out-String | Invoke-Expression
+    $k8sCache = Join-Path $cacheDir 'kubectl_completion.ps1'
+    if (-not (Test-Path $k8sCache)) {
+        kubectl completion powershell | Out-File -FilePath $k8sCache -Encoding utf8 -Force
+    }
+    if (Test-Path $k8sCache) {
+        . $k8sCache
+    }
 }
 
-# 5. Helm CLI
+# 5. Helm CLI - Cached
 if (Get-Command helm -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: helm" -ForegroundColor Green
-    helm completion powershell | Out-String | Invoke-Expression
+    $helmCache = Join-Path $cacheDir 'helm_completion.ps1'
+    if (-not (Test-Path $helmCache)) {
+        helm completion powershell | Out-File -FilePath $helmCache -Encoding utf8 -Force
+    }
+    if (Test-Path $helmCache) {
+        . $helmCache
+    }
 }
 
-# 6. Terraform CLI
+# 6. Terraform CLI - Pure In-Memory Completer (<1ms)
 if (Get-Command terraform -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: terraform" -ForegroundColor Green
     Register-ArgumentCompleter -Native -CommandName terraform -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
         [System.String[]]$commands = @(
@@ -77,7 +92,6 @@ if (Get-Command terraform -ErrorAction SilentlyContinue) {
 
 # 7. .NET CLI (dotnet)
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    Write-Host "  Registering completions for: dotnet" -ForegroundColor Green
     Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)
         dotnet complete --position $cursorPosition "$commandAst" | ForEach-Object {
@@ -85,5 +99,3 @@ if (Get-Command dotnet -ErrorAction SilentlyContinue) {
         }
     }
 }
-
-Write-Host "==> CLI completions registered successfully." -ForegroundColor Green
