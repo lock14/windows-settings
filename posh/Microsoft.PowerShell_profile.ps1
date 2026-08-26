@@ -71,6 +71,27 @@ function go_lint {
 Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
 function yaml_lint { yamllint -c "$HOME\.yamllint.yml" @args }
 
+# Directory Listing (Ubuntu style)
+function ll {
+    if (Get-Command 'C:\Program Files\coreutils\cmd\ls.cmd' -ErrorAction SilentlyContinue) {
+        & 'C:\Program Files\coreutils\cmd\ls.cmd' --color=auto -alFh @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -alFh @args
+    } else {
+        Get-ChildItem -Force @args
+    }
+}
+
+function la {
+    if (Get-Command 'C:\Program Files\coreutils\cmd\ls.cmd' -ErrorAction SilentlyContinue) {
+        & 'C:\Program Files\coreutils\cmd\ls.cmd' --color=auto -AFhl @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -AFhl @args
+    } else {
+        Get-ChildItem -Force @args
+    }
+}
+
 # Directory Visual Search Helper (fd + tree or recursive search)
 function fs {
     if (Get-Command fd -ErrorAction SilentlyContinue) {

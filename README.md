@@ -79,6 +79,8 @@ Includes the full Oh My Zsh Git plugin suite and custom workflow helpers:
 | `go_lint` | `golangci-lint run` (with auto-cached configuration) |
 | `tf` | `terraform` |
 | `yaml_lint` | `yamllint -c ~/.yamllint.yml` |
+| `ll` | List directory contents with details (`ls -alFh --color=auto`) |
+| `la` | List all files including hidden (`ls -AFhl --color=auto`) |
 | `fs` | Fast recursive directory tree search (`fd --no-ignore-vcs` + `tree`) |
 
 ### 4. Native CLI Utilities (`bin/`)

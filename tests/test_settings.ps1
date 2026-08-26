@@ -86,7 +86,7 @@ $profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
 
 $expectedFunctions = @(
     # Developer Tool Shortcuts
-    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fs',
+    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fs', 'll', 'la',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
