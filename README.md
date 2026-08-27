@@ -26,17 +26,23 @@ Open PowerShell 7 (`pwsh`) and run:
 ```powershell
 git clone https://github.com/lock14/windows-settings.git
 cd windows-settings
+
+# Full automated setup
 .\setup.ps1
+
+# Full automated setup including winget package installation
+.\setup.ps1 -InstallPackages
 ```
 
 To run individual components:
 
 ```powershell
+.\packages\winget-setup.ps1         # Install essential developer tools via winget
 .\fonts\font-setup.ps1              # Download & install MesloLGS NF fonts
 .\posh\posh-setup.ps1               # Install Oh My Posh & configure profile
-.\completions\completions-setup.ps1 # Register CLI tab completions (gh, winget, docker)
+.\completions\completions-setup.ps1 # Register CLI tab completions (gh, winget, docker, kubectl, helm)
 .\terminal\terminal-setup.ps1       # Apply Windows Terminal settings (Solarized Dark)
-.\packages\winget-setup.ps1         # Install essential developer tools via winget
+.\vim\vim-setup.ps1                 # Provision Vim, Pathogen plugins & _vimrc
 ```
 
 ---
@@ -102,22 +108,29 @@ Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 - MesloLGS NF font pre-configured for powerline glyphs.
 - Custom keybindings (`Ctrl+C` copy, `Ctrl+V` paste, `Alt+Shift+D` split pane).
 
+### 6. Vim & Plugin Setup (`vim/_vimrc`)
+- Pre-configured `_vimrc` matching `home-settings` with Solarized Dark theme.
+- Automated Pathogen bundle provisioning (`auto-pairs`, `vim-colors-solarized`, `ultisnips`, `supertab`).
+- Automatic user PATH registration for Vim.
+
 ---
 
 ## Directory Overview
 
 | Path | Description |
 | :--- | :--- |
-| `setup.ps1` | Master setup script orchestrating fonts, prompt, completions, PATH, and terminal |
+| `setup.ps1` | Master setup script orchestrating fonts, prompt, completions, PATH, terminal, and vim |
 | `bin/` | Native CLI utilities and batch wrappers (`gen-passwd`, `repeat-until-success`, `sum`) |
 | `colors/` | Solarized Dark `LS_COLORS` definition database matching `home-settings` |
 | `completions/` | Tab completions with high-speed disk caching (`gh`, `winget`, `docker`, `kubectl`, `helm`, `terraform`) |
 | `fonts/` | Downloads and installs MesloLGS NF fonts |
 | `packages/` | Workstation developer tool provisioning with `winget` (`fzf`, `rg`, `fd`, `jq`, `terraform`, `nvim`) |
 | `posh/p10k.omp.json` | Oh My Posh Solarized Dark single-line Powerlevel10k theme |
-| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + PSReadLine + LS_COLORS) |
+| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + PSReadLine + LS_COLORS + Completions) |
 | `posh/posh-setup.ps1` | Installs Oh My Posh via winget, deploys theme & profile |
 | `terminal/settings.json` | Windows Terminal configuration & color schemes |
 | `terminal/terminal-setup.ps1` | Deploys `settings.json` to Windows Terminal `LocalState` with backups |
-| `tests/test_settings.ps1` | Comprehensive automated test suite (77 tests) for CI and local verification |
+| `vim/_vimrc` | Vim configuration file with Solarized Dark and plugin settings |
+| `vim/vim-setup.ps1` | Provisions Vim, Pathogen runtime plugins, and deploys `_vimrc` with backups |
+| `tests/test_settings.ps1` | Comprehensive automated test suite (92 tests) for CI and local verification |
 | `PSScriptAnalyzerSettings.psd1` | Quality gate & linter settings for strict CI validation |

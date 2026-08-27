@@ -80,12 +80,33 @@ foreach ($p in $plugins) {
 # Deploy _vimrc configuration
 $vimrcSource = Join-Path $ScriptDir '_vimrc'
 if (Test-Path $vimrcSource) {
-    $dest1 = Join-Path $HOME '_vimrc'
-    $dest2 = Join-Path $HOME '.vimrc'
-    Write-Host "==> Deploying Vim configuration to $dest1..." -ForegroundColor Cyan
-    Copy-Item -Path $vimrcSource -Destination $dest1 -Force
-    Copy-Item -Path $vimrcSource -Destination $dest2 -Force
-    Write-Host "Vim configuration deployed successfully." -ForegroundColor Green
+    $sourceContent = Get-Content $vimrcSource -Raw
+    $destFiles = @(
+        (Join-Path $HOME '_vimrc'),
+        (Join-Path $HOME '.vimrc')
+    )
+
+    foreach ($dest in $destFiles) {
+        if (Test-Path $dest) {
+            $existingContent = Get-Content $dest -Raw
+            if ($existingContent -ne $sourceContent) {
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                $backupFile = "$dest.bak_$timestamp"
+                Write-Host "Backing up existing Vim config to $backupFile..." -ForegroundColor Yellow
+                Copy-Item -Path $dest -Destination $backupFile -Force
+
+                Write-Host "==> Deploying Vim configuration to $dest..." -ForegroundColor Cyan
+                Copy-Item -Path $vimrcSource -Destination $dest -Force
+                Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+            } else {
+                Write-Host "==> Vim configuration at $dest is already up to date." -ForegroundColor Green
+            }
+        } else {
+            Write-Host "==> Deploying Vim configuration to $dest..." -ForegroundColor Cyan
+            Copy-Item -Path $vimrcSource -Destination $dest -Force
+            Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+        }
+    }
 }
 
 Write-Host "==> Vim setup complete!" -ForegroundColor Green

@@ -8,8 +8,6 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
 param()
 
-$ErrorActionPreference = 'SilentlyContinue'
-
 $cacheDir = Join-Path $HOME '.cache\powershell'
 if (-not (Test-Path $cacheDir)) {
     New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null

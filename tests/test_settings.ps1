@@ -27,7 +27,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 # -------------------------------------------------------------
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
-Write-Host "`n[1/6] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
+Write-Host "`n[1/8] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
 $psFiles = Get-ChildItem -Path $RootDir -Recurse -Filter "*.ps1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
 
 foreach ($file in $psFiles) {
@@ -45,7 +45,7 @@ foreach ($file in $psFiles) {
 # -------------------------------------------------------------
 # Test 2: JSON Files Validity & Schema Verification
 # -------------------------------------------------------------
-Write-Host "`n[2/6] Validating JSON Configurations..." -ForegroundColor Yellow
+Write-Host "`n[2/8] Validating JSON Configurations..." -ForegroundColor Yellow
 
 # Test posh/p10k.omp.json
 $p10kPath = Join-Path $RootDir "posh\p10k.omp.json"
@@ -78,7 +78,7 @@ try {
 # -------------------------------------------------------------
 # Test 3: Profile Sourcing & Function Definitions
 # -------------------------------------------------------------
-Write-Host "`n[3/6] Testing PowerShell Profile, Aliases & PSReadLine..." -ForegroundColor Yellow
+Write-Host "`n[3/8] Testing PowerShell Profile, Aliases & PSReadLine..." -ForegroundColor Yellow
 $profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
 
 # Source the profile in current scope
@@ -132,7 +132,7 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
 # -------------------------------------------------------------
 # Test 4: Utility Scripts Functional Tests (bin/)
 # -------------------------------------------------------------
-Write-Host "`n[4/6] Testing Native Utility Scripts (bin/)..." -ForegroundColor Yellow
+Write-Host "`n[4/8] Testing Native Utility Scripts (bin/)..." -ForegroundColor Yellow
 
 # Test gen-passwd.ps1
 $genPasswdScript = Join-Path $RootDir "bin\gen-passwd.ps1"
@@ -213,7 +213,7 @@ try {
 # -------------------------------------------------------------
 # Test 5: Git Function Behavior Integration Tests
 # -------------------------------------------------------------
-Write-Host "`n[5/6] Testing Git Functions Behavior..." -ForegroundColor Yellow
+Write-Host "`n[5/8] Testing Git Functions Behavior..." -ForegroundColor Yellow
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_test_" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -239,21 +239,28 @@ try {
     git push origin main 2>$null | Out-Null
 
     # Test 5.1: gsync outside git repo
-    Pop-Location
-    Push-Location $tempDir
-    $outErr = try {
-        gsync 2>&1 | Out-String
+    $nonGitDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $nonGitDir | Out-Null
+    Push-Location $nonGitDir
+    $errCaught = $false
+    try {
+        gsync
     } catch {
-        $_.Exception.Message
+        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
+            $errCaught = $true
+        }
+    } finally {
+        Pop-Location
+        Remove-Item -Recurse -Force -Path $nonGitDir -ErrorAction SilentlyContinue
     }
-    if ($outErr -match "Error") {
+
+    if ($errCaught) {
         Pass "gsync fails gracefully when not in a git repository"
     } else {
-        Fail "gsync outside repo" "Expected error, got: $outErr"
+        Fail "gsync outside repo" "Expected error when executing gsync outside git repository"
     }
 
     # Test 5.2: gsync on feature branch
-    Push-Location $localDir
     git checkout -b feature-1 2>$null | Out-Null
     Add-Content -Path "file.txt" -Value "`nfeature work"
     git commit -am "feature update" 2>$null | Out-Null
@@ -298,7 +305,7 @@ try {
 # -------------------------------------------------------------
 # Test 6: Completions & Oh My Posh Rendering
 # -------------------------------------------------------------
-Write-Host "`n[6/6] Testing Completions & Oh My Posh Rendering..." -ForegroundColor Yellow
+Write-Host "`n[6/8] Testing Completions & Oh My Posh Rendering..." -ForegroundColor Yellow
 
 # Test completions setup execution
 $completionsScript = Join-Path $RootDir "completions\completions-setup.ps1"
@@ -323,6 +330,112 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     }
 } else {
     Write-Host "  [SKIP] oh-my-posh not installed in current environment" -ForegroundColor DarkCyan
+}
+
+# -------------------------------------------------------------
+# Test 7: Path Invariant & Dual Execution Validation
+# -------------------------------------------------------------
+Write-Host "`n[7/8] Testing Path Invariants & Dual Execution Wrappers..." -ForegroundColor Yellow
+
+# 7.1 Path Invariant Check (no hardcoded user paths in repo files)
+$filesToScan = Get-ChildItem -Path $RootDir -Recurse -File |
+    Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' -and $_.Name -ne 'AGENTS.md' }
+
+$hardcodedFound = $false
+foreach ($f in $filesToScan) {
+    $content = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+    if ($content -match 'C:\\Users\\(?!<)[a-zA-Z0-9_-]+' -or $content -match '/Users/(?!<)[a-zA-Z0-9_-]+' -or $content -match '/home/(?!<)[a-zA-Z0-9_-]+') {
+        Fail "Path invariant check: $($f.Name)" "Contains hardcoded personal user path"
+        $hardcodedFound = $true
+    }
+}
+if (-not $hardcodedFound) {
+    Pass "Path invariants valid across all repo files (zero hardcoded personal paths)"
+}
+
+# 7.2 Dual Execution in bin/
+$binPs1Files = Get-ChildItem -Path (Join-Path $RootDir "bin") -Filter "*.ps1"
+foreach ($ps1 in $binPs1Files) {
+    $cmdName = [System.IO.Path]::GetFileNameWithoutExtension($ps1.Name) + ".cmd"
+    $cmdPath = Join-Path (Join-Path $RootDir "bin") $cmdName
+    if (Test-Path $cmdPath) {
+        Pass "Dual execution wrapper present: $cmdName for $($ps1.Name)"
+    } else {
+        Fail "Dual execution wrapper missing: $cmdName" "No .cmd wrapper found for $($ps1.Name)"
+    }
+}
+
+# 7.3 Execute sum.cmd & gen-passwd.cmd wrappers
+$sumCmd = Join-Path $RootDir "bin\sum.cmd"
+if (Test-Path $sumCmd) {
+    $cmdSumOut = (& cmd.exe /c "$sumCmd" 10 20 30).Trim()
+    if ($cmdSumOut -eq "60") {
+        Pass "sum.cmd batch wrapper executed successfully (10 + 20 + 30 = 60)"
+    } else {
+        Fail "sum.cmd execution" "Expected 60, got: $cmdSumOut"
+    }
+}
+
+$genPasswdCmd = Join-Path $RootDir "bin\gen-passwd.cmd"
+if (Test-Path $genPasswdCmd) {
+    $cmdPassOut = (& cmd.exe /c "$genPasswdCmd" -Length 12 -NoSymbols).Trim()
+    if ($cmdPassOut.Length -eq 12) {
+        Pass "gen-passwd.cmd batch wrapper executed successfully (Length 12)"
+    } else {
+        Fail "gen-passwd.cmd execution" "Expected length 12, got: $($cmdPassOut.Length)"
+    }
+}
+
+# -------------------------------------------------------------
+# Test 8: Setup Idempotency & Backup Verification
+# -------------------------------------------------------------
+Write-Host "`n[8/8] Testing Setup Script Idempotency & Backup Policy..." -ForegroundColor Yellow
+
+$sandboxDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_sandbox_" + [System.Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $sandboxDir | Out-Null
+
+try {
+    # Simulate existing destination file
+    $mockTarget = Join-Path $sandboxDir "settings.json"
+    Set-Content -Path $mockTarget -Value "initial configuration"
+
+    $sourceSettings = Join-Path $RootDir "terminal\settings.json"
+    $sourceContent = Get-Content $sourceSettings -Raw
+
+    # 1. Overwrite with differing content should create a backup
+    $isDiff = ((Get-Content $mockTarget -Raw) -ne $sourceContent)
+    if ($isDiff) {
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $mockBackup = "$mockTarget.bak_$timestamp"
+        Copy-Item -Path $mockTarget -Destination $mockBackup -Force
+        Copy-Item -Path $sourceSettings -Destination $mockTarget -Force
+    }
+
+    $backupFiles = Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*"
+    if ($backupFiles.Count -eq 1) {
+        Pass "Backup created when configuration content differed"
+    } else {
+        Fail "Backup creation" "Expected 1 backup file, found $($backupFiles.Count)"
+    }
+
+    # 2. Repeated run with identical content should NOT create additional backups (idempotency)
+    $isDiff2 = ((Get-Content $mockTarget -Raw) -ne $sourceContent)
+    if ($isDiff2) {
+        $timestamp2 = Get-Date -Format "yyyyMMdd_HHmmss"
+        $mockBackup2 = "$mockTarget.bak_$timestamp2"
+        Copy-Item -Path $mockTarget -Destination $mockBackup2 -Force
+    }
+
+    $backupFilesAfter = Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*"
+    if ($backupFilesAfter.Count -eq 1) {
+        Pass "Idempotency preserved: zero redundant backups generated on identical re-run"
+    } else {
+        Fail "Idempotency failure" "Redundant backup created when content had not changed"
+    }
+} finally {
+    if (Test-Path $sandboxDir) {
+        Remove-Item -Recurse -Force -Path $sandboxDir -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan

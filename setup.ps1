@@ -20,6 +20,12 @@ Write-Host "=====================================================" -ForegroundCo
 Write-Host "         Windows Settings Setup Automation           " -ForegroundColor Cyan
 Write-Host "=====================================================" -ForegroundColor Cyan
 
+# 0. Optional: Workstation Package Provisioning (Install CLI tools upfront)
+if ($InstallPackages) {
+    Write-Host "`n[0/6] Installing Workstation Packages via winget..." -ForegroundColor Yellow
+    & (Join-Path $RootDir "packages\winget-setup.ps1")
+}
+
 # 1. Fonts Setup
 if (-not $SkipFonts) {
     Write-Host "`n[1/6] Setting up Fonts (MesloLGS NF)..." -ForegroundColor Yellow
@@ -75,12 +81,6 @@ if (Test-Path $binDir) {
     } else {
         Write-Host "  $binDir is already in User PATH." -ForegroundColor Green
     }
-}
-
-# Optional: Workstation Package Provisioning
-if ($InstallPackages) {
-    Write-Host "`n[Optional] Installing Workstation Packages via winget..." -ForegroundColor Yellow
-    & (Join-Path $RootDir "packages\winget-setup.ps1")
 }
 
 Write-Host "`n=====================================================" -ForegroundColor Green

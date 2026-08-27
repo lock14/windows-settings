@@ -41,8 +41,23 @@ if (-not (Test-Path $poshThemesDir)) {
 
 $themeSource = Join-Path $ScriptDir "p10k.omp.json"
 $themeDest = Join-Path $poshThemesDir "p10k_single_line.omp.json"
-Write-Host "==> Installing theme to $themeDest..." -ForegroundColor Cyan
-Copy-Item -Path $themeSource -Destination $themeDest -Force
+if (Test-Path $themeDest) {
+    $existingTheme = Get-Content $themeDest -Raw
+    $newTheme = Get-Content $themeSource -Raw
+    if ($existingTheme -ne $newTheme) {
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $backupTheme = "$themeDest.bak_$timestamp"
+        Write-Host "Backing up existing theme to $backupTheme..." -ForegroundColor Yellow
+        Copy-Item -Path $themeDest -Destination $backupTheme -Force
+        Copy-Item -Path $themeSource -Destination $themeDest -Force
+        Write-Host "==> Updated theme at $themeDest" -ForegroundColor Green
+    } else {
+        Write-Host "==> Theme at $themeDest is already up to date." -ForegroundColor Green
+    }
+} else {
+    Write-Host "==> Installing theme to $themeDest..." -ForegroundColor Cyan
+    Copy-Item -Path $themeSource -Destination $themeDest -Force
+}
 
 # Setup PowerShell Profile
 $profileDir = Split-Path -Parent $PROFILE
@@ -55,8 +70,10 @@ if (Test-Path $PROFILE) {
     # Check if profile already loads p10k_single_line
     $content = Get-Content $PROFILE -Raw
     if ($content -notmatch 'p10k_single_line\.omp\.json') {
-        Write-Host "Backing up existing profile to $PROFILE.bak..." -ForegroundColor Yellow
-        Copy-Item -Path $PROFILE -Destination "$PROFILE.bak" -Force
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $backupProfile = "$PROFILE.bak_$timestamp"
+        Write-Host "Backing up existing profile to $backupProfile..." -ForegroundColor Yellow
+        Copy-Item -Path $PROFILE -Destination $backupProfile -Force
 
         Write-Host "Appending windows-settings profile additions to $PROFILE..." -ForegroundColor Cyan
         Add-Content -Path $PROFILE -Value "`n# --- Added by windows-settings ---`n$(Get-Content $profileSource -Raw)"

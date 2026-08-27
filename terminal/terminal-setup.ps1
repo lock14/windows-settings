@@ -37,14 +37,30 @@ $sourceFile = Join-Path $ScriptDir "settings.json"
 Write-Host "==> Target Windows Terminal settings: $destFile" -ForegroundColor Cyan
 
 if (Test-Path $destFile) {
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $backupFile = "$destFile.bak_$timestamp"
-    Write-Host "Backing up existing settings to $backupFile..." -ForegroundColor Yellow
-    Copy-Item -Path $destFile -Destination $backupFile -Force
-}
+    $existingContent = Get-Content $destFile -Raw
+    $sourceContent = Get-Content $sourceFile -Raw
+    $isDiff = ($existingContent -ne $sourceContent)
 
-if (-not $BackupOnly) {
-    Write-Host "Deploying repository settings.json to Windows Terminal..." -ForegroundColor Cyan
-    Copy-Item -Path $sourceFile -Destination $destFile -Force
-    Write-Host "==> Windows Terminal settings applied successfully!" -ForegroundColor Green
+    if ($BackupOnly -or $isDiff) {
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        $backupFile = "$destFile.bak_$timestamp"
+        Write-Host "Backing up existing settings to $backupFile..." -ForegroundColor Yellow
+        Copy-Item -Path $destFile -Destination $backupFile -Force
+    }
+
+    if (-not $BackupOnly) {
+        if ($isDiff) {
+            Write-Host "Deploying repository settings.json to Windows Terminal..." -ForegroundColor Cyan
+            Copy-Item -Path $sourceFile -Destination $destFile -Force
+            Write-Host "==> Windows Terminal settings applied successfully!" -ForegroundColor Green
+        } else {
+            Write-Host "==> Windows Terminal settings are already up to date." -ForegroundColor Green
+        }
+    }
+} else {
+    if (-not $BackupOnly) {
+        Write-Host "Deploying repository settings.json to Windows Terminal..." -ForegroundColor Cyan
+        Copy-Item -Path $sourceFile -Destination $destFile -Force
+        Write-Host "==> Windows Terminal settings applied successfully!" -ForegroundColor Green
+    }
 }
