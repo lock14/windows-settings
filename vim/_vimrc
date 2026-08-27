@@ -41,7 +41,11 @@ set expandtab
 set showmatch
 set matchtime=2
 
-" Syntax & Visual Theme
+" Syntax & Visual Theme (Solarized Dark + TrueColor)
+if has('termguicolors')
+    set termguicolors
+endif
+let g:solarized_termcolors = 16
 syntax enable
 set background=dark
 silent! colorscheme solarized
