@@ -20,7 +20,7 @@ Any agent modifying this repository must follow these core principles.
   - **Oh My Posh Theme**: `$HOME\.poshthemes\p10k_single_line.omp.json`
   - **Shell Startup Cache**: `$HOME\.cache\powershell\` (`omp_init.ps1`, `gh_completion.ps1`, etc.)
   - **Windows Terminal Settings**: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` (or Preview / unpacked locations)
-  - **Vim Runtime & Configuration**: `$HOME\_vimrc`, `$HOME\.vim\`, `$HOME\vimfiles\`
+  - **Vim Runtime & Configuration**: `$HOME\_vimrc`, `$HOME\.vim\`
   - **User Fonts**: `%LOCALAPPDATA%\Microsoft\Windows\Fonts\` (registered in `HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts`)
   - **User Binaries**: `$HOME\windows-settings\bin\` (registered in user `$env:Path`)
 - **Windows Terminal Dynamic Resolution**:

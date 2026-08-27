@@ -3,8 +3,8 @@
 " Ported from home-settings/.vimrc
 " =============================================================
 
-" Set runtimepath to include standard Unix and Windows locations
-set runtimepath^=~/.vim,~/.vim/after,~/vimfiles,~/vimfiles/after
+" Set runtimepath to include standard user .vim location
+set runtimepath^=~/.vim,~/.vim/after
 
 " Plugin management (Pathogen)
 runtime! autoload/pathogen.vim

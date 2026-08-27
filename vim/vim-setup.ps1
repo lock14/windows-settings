@@ -35,28 +35,28 @@ if (Test-Path $vimDir) {
     }
 }
 
-# Setup Vim Runtime Directories & Pathogen
-$vimDirs = @(
-    (Join-Path $HOME '.vim'),
-    (Join-Path $HOME 'vimfiles')
-)
+# Setup Vim Runtime Directory & Pathogen ($HOME\.vim)
+$vimDir = Join-Path $HOME '.vim'
+$autoload = Join-Path $vimDir 'autoload'
+$bundle = Join-Path $vimDir 'bundle'
+if (-not (Test-Path $autoload)) {
+    New-Item -ItemType Directory -Force -Path $autoload | Out-Null
+}
+if (-not (Test-Path $bundle)) {
+    New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+}
 
-foreach ($base in $vimDirs) {
-    $autoload = Join-Path $base 'autoload'
-    $bundle = Join-Path $base 'bundle'
-    if (-not (Test-Path $autoload)) {
-        New-Item -ItemType Directory -Force -Path $autoload | Out-Null
-    }
-    if (-not (Test-Path $bundle)) {
-        New-Item -ItemType Directory -Force -Path $bundle | Out-Null
-    }
+# Clean up legacy redundant vimfiles directory if present to prevent duplicate snippet mappings
+$legacyVimfiles = Join-Path $HOME 'vimfiles'
+if (Test-Path $legacyVimfiles) {
+    Remove-Item -Recurse -Force -Path $legacyVimfiles -ErrorAction SilentlyContinue
+}
 
-    # Install Pathogen
-    $pathogenFile = Join-Path $autoload 'pathogen.vim'
-    if (-not (Test-Path $pathogenFile)) {
-        Write-Host "Installing Pathogen to $pathogenFile..." -ForegroundColor Cyan
-        Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim' -OutFile $pathogenFile -UseBasicParsing
-    }
+# Install Pathogen
+$pathogenFile = Join-Path $autoload 'pathogen.vim'
+if (-not (Test-Path $pathogenFile)) {
+    Write-Host "Installing Pathogen to $pathogenFile..." -ForegroundColor Cyan
+    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim' -OutFile $pathogenFile -UseBasicParsing
 }
 
 # Install Vim Bundles (auto-pairs for brace matching, solarized, ultisnips, supertab)
@@ -68,12 +68,10 @@ $plugins = @(
 )
 
 foreach ($p in $plugins) {
-    foreach ($base in $vimDirs) {
-        $dest = Join-Path $base "bundle\$($p.Name)"
-        if (-not (Test-Path "$dest\.git")) {
-            Write-Host "Cloning $($p.Name) into $dest..." -ForegroundColor Cyan
-            git clone --depth=1 $p.Url $dest
-        }
+    $dest = Join-Path $bundle $p.Name
+    if (-not (Test-Path "$dest\.git")) {
+        Write-Host "Cloning $($p.Name) into $dest..." -ForegroundColor Cyan
+        git clone --depth=1 $p.Url $dest
     }
 }
 
@@ -112,27 +110,25 @@ if (Test-Path $vimrcSource) {
 # Deploy UltiSnips Snippets
 $snippetsSource = Join-Path $ScriptDir 'UltiSnips'
 if (Test-Path $snippetsSource) {
-    foreach ($base in $vimDirs) {
-        $snippetsDest = Join-Path $base 'UltiSnips'
-        if (-not (Test-Path $snippetsDest)) {
-            New-Item -ItemType Directory -Force -Path $snippetsDest | Out-Null
-        }
-        $snippetFiles = Get-ChildItem -Path $snippetsSource -Filter "*.snippets"
-        foreach ($sf in $snippetFiles) {
-            $destFile = Join-Path $snippetsDest $sf.Name
-            $srcContent = Get-Content $sf.FullName -Raw
-            if (Test-Path $destFile) {
-                $dstContent = Get-Content $destFile -Raw
-                if ($srcContent -ne $dstContent) {
-                    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                    Copy-Item -Path $destFile -Destination "$destFile.bak_$timestamp" -Force
-                    Copy-Item -Path $sf.FullName -Destination $destFile -Force
-                    Write-Host "Updated snippet: $destFile" -ForegroundColor Green
-                }
-            } else {
+    $snippetsDest = Join-Path $vimDir 'UltiSnips'
+    if (-not (Test-Path $snippetsDest)) {
+        New-Item -ItemType Directory -Force -Path $snippetsDest | Out-Null
+    }
+    $snippetFiles = Get-ChildItem -Path $snippetsSource -Filter "*.snippets"
+    foreach ($sf in $snippetFiles) {
+        $destFile = Join-Path $snippetsDest $sf.Name
+        $srcContent = Get-Content $sf.FullName -Raw
+        if (Test-Path $destFile) {
+            $dstContent = Get-Content $destFile -Raw
+            if ($srcContent -ne $dstContent) {
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                Copy-Item -Path $destFile -Destination "$destFile.bak_$timestamp" -Force
                 Copy-Item -Path $sf.FullName -Destination $destFile -Force
-                Write-Host "Installed snippet: $destFile" -ForegroundColor Green
+                Write-Host "Updated snippet: $destFile" -ForegroundColor Green
             }
+        } else {
+            Copy-Item -Path $sf.FullName -Destination $destFile -Force
+            Write-Host "Installed snippet: $destFile" -ForegroundColor Green
         }
     }
 }
