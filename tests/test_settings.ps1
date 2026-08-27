@@ -123,6 +123,14 @@ if (Test-Path $vimrcFile) {
     Fail "Vim configuration missing" "vim/_vimrc does not exist"
 }
 
+$javaSnippets = Join-Path $RootDir "vim\UltiSnips\java.snippets"
+$cSnippets = Join-Path $RootDir "vim\UltiSnips\c.snippets"
+if ((Test-Path $javaSnippets) -and (Test-Path $cSnippets)) {
+    Pass "UltiSnips snippet definitions exist (java.snippets & c.snippets)"
+} else {
+    Fail "UltiSnips snippet definitions missing" "java.snippets or c.snippets not found in vim/UltiSnips"
+}
+
 if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Pass "LS_COLORS environment variable configured (Solarized Dark)"
 } else {

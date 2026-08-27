@@ -7,16 +7,10 @@
 set runtimepath^=~/.vim,~/.vim/after,~/vimfiles,~/vimfiles/after
 
 " Plugin management (Pathogen)
-if filereadable(expand('~/.vim/autoload/pathogen.vim'))
-    source ~/.vim/autoload/pathogen.vim
-endif
-if filereadable(expand('~/vimfiles/autoload/pathogen.vim'))
-    source ~/vimfiles/autoload/pathogen.vim
-endif
-
+runtime! autoload/pathogen.vim
 if exists('*pathogen#infect')
-    execute pathogen#infect()
-    execute pathogen#helptags()
+    call pathogen#infect()
+    silent! call pathogen#helptags()
 endif
 
 " Python 3 Configuration for UltiSnips on Windows
@@ -27,10 +21,14 @@ endif
 " Suppress Python syntax/deprecation warnings
 let $PYTHONWARNINGS = "ignore"
 
-" UltiSnips snippet triggers
+" UltiSnips snippet triggers & directory configuration
 let g:UltiSnipsExpandTrigger = "<tab>"
 let g:UltiSnipsJumpForwardTrigger = "<c-j>"
 let g:UltiSnipsJumpBackwardTrigger = "<c-k>"
+let g:UltiSnipsSnippetDirectories = ["UltiSnips"]
+
+" SuperTab default completion
+let g:SuperTabDefaultCompletionType = "<c-n>"
 
 " Auto-Pairs configuration (Brace matching and auto-closing)
 let g:AutoPairsShortcutJump = '<c-l>'

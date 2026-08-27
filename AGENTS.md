@@ -102,7 +102,7 @@ Before completing any task:
    ```powershell
    pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all 92 tests pass across all 8 test modules:
+   Ensure all 93 tests pass across all 8 test modules:
    - `[1/8]` PowerShell Script Syntax
    - `[2/8]` JSON Validity & Schema Verification
    - `[3/8]` Profile Sourcing, Aliases & PSReadLine

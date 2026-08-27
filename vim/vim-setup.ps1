@@ -109,4 +109,32 @@ if (Test-Path $vimrcSource) {
     }
 }
 
+# Deploy UltiSnips Snippets
+$snippetsSource = Join-Path $ScriptDir 'UltiSnips'
+if (Test-Path $snippetsSource) {
+    foreach ($base in $vimDirs) {
+        $snippetsDest = Join-Path $base 'UltiSnips'
+        if (-not (Test-Path $snippetsDest)) {
+            New-Item -ItemType Directory -Force -Path $snippetsDest | Out-Null
+        }
+        $snippetFiles = Get-ChildItem -Path $snippetsSource -Filter "*.snippets"
+        foreach ($sf in $snippetFiles) {
+            $destFile = Join-Path $snippetsDest $sf.Name
+            $srcContent = Get-Content $sf.FullName -Raw
+            if (Test-Path $destFile) {
+                $dstContent = Get-Content $destFile -Raw
+                if ($srcContent -ne $dstContent) {
+                    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                    Copy-Item -Path $destFile -Destination "$destFile.bak_$timestamp" -Force
+                    Copy-Item -Path $sf.FullName -Destination $destFile -Force
+                    Write-Host "Updated snippet: $destFile" -ForegroundColor Green
+                }
+            } else {
+                Copy-Item -Path $sf.FullName -Destination $destFile -Force
+                Write-Host "Installed snippet: $destFile" -ForegroundColor Green
+            }
+        }
+    }
+}
+
 Write-Host "==> Vim setup complete!" -ForegroundColor Green
