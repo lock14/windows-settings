@@ -68,8 +68,7 @@ Any agent modifying this repository must follow these core principles.
   - Maintain developer shortcuts (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fs`, `Format-PathTree`, `ll`, `la`).
 - **Native Utilities & Vim Snippets Parity**:
   - Ensure all ported utilities in `bin/` (`gen-passwd`, `repeat-until-success`, `sum`) match the behavior, arguments, and pipeline support of their `home-settings` equivalents.
-  - Centralize Vim runtime plugins and snippet definitions under `$HOME\.vim\` to prevent duplicate mapping warnings across `~/.vim` and `~/vimfiles`.
-  - Maintain custom UltiSnips snippet definitions in `vim/UltiSnips/` (`java.snippets`, `c.snippets`) matching `home-settings`.
+  - Install curated community snippets via `honza/vim-snippets` bundle under Pathogen, eliminating the need to store snippet files in the repository.
 
 ---
 

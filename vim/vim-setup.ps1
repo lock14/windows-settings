@@ -46,10 +46,14 @@ if (-not (Test-Path $bundle)) {
     New-Item -ItemType Directory -Force -Path $bundle | Out-Null
 }
 
-# Clean up legacy redundant vimfiles directory if present to prevent duplicate snippet mappings
+# Clean up legacy redundant vimfiles and standalone UltiSnips directory if present
 $legacyVimfiles = Join-Path $HOME 'vimfiles'
 if (Test-Path $legacyVimfiles) {
     Remove-Item -Recurse -Force -Path $legacyVimfiles -ErrorAction SilentlyContinue
+}
+$legacyUltiSnips = Join-Path $vimDir 'UltiSnips'
+if (Test-Path $legacyUltiSnips) {
+    Remove-Item -Recurse -Force -Path $legacyUltiSnips -ErrorAction SilentlyContinue
 }
 
 # Install Pathogen
@@ -59,11 +63,12 @@ if (-not (Test-Path $pathogenFile)) {
     Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim' -OutFile $pathogenFile -UseBasicParsing
 }
 
-# Install Vim Bundles (auto-pairs for brace matching, solarized, ultisnips, supertab)
+# Install Vim Bundles (auto-pairs for brace matching, solarized, ultisnips, vim-snippets, supertab)
 $plugins = @(
     @{ Name = 'auto-pairs'; Url = 'https://github.com/jiangmiao/auto-pairs.git' },
     @{ Name = 'vim-colors-solarized'; Url = 'https://github.com/altercation/vim-colors-solarized.git' },
     @{ Name = 'ultisnips'; Url = 'https://github.com/SirVer/ultisnips.git' },
+    @{ Name = 'vim-snippets'; Url = 'https://github.com/honza/vim-snippets.git' },
     @{ Name = 'supertab'; Url = 'https://github.com/ervandew/supertab.git' }
 )
 
@@ -103,32 +108,6 @@ if (Test-Path $vimrcSource) {
             Write-Host "==> Deploying Vim configuration to $dest..." -ForegroundColor Cyan
             Copy-Item -Path $vimrcSource -Destination $dest -Force
             Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
-        }
-    }
-}
-
-# Deploy UltiSnips Snippets
-$snippetsSource = Join-Path $ScriptDir 'UltiSnips'
-if (Test-Path $snippetsSource) {
-    $snippetsDest = Join-Path $vimDir 'UltiSnips'
-    if (-not (Test-Path $snippetsDest)) {
-        New-Item -ItemType Directory -Force -Path $snippetsDest | Out-Null
-    }
-    $snippetFiles = Get-ChildItem -Path $snippetsSource -Filter "*.snippets"
-    foreach ($sf in $snippetFiles) {
-        $destFile = Join-Path $snippetsDest $sf.Name
-        $srcContent = Get-Content $sf.FullName -Raw
-        if (Test-Path $destFile) {
-            $dstContent = Get-Content $destFile -Raw
-            if ($srcContent -ne $dstContent) {
-                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                Copy-Item -Path $destFile -Destination "$destFile.bak_$timestamp" -Force
-                Copy-Item -Path $sf.FullName -Destination $destFile -Force
-                Write-Host "Updated snippet: $destFile" -ForegroundColor Green
-            }
-        } else {
-            Copy-Item -Path $sf.FullName -Destination $destFile -Force
-            Write-Host "Installed snippet: $destFile" -ForegroundColor Green
         }
     }
 }

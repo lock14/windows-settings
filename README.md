@@ -131,6 +131,6 @@ Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 | `terminal/settings.json` | Windows Terminal configuration & color schemes |
 | `terminal/terminal-setup.ps1` | Deploys `settings.json` to Windows Terminal `LocalState` with backups |
 | `vim/_vimrc` | Vim configuration file with Solarized Dark and plugin settings |
-| `vim/vim-setup.ps1` | Provisions Vim, Pathogen runtime plugins, and deploys `_vimrc` and snippets with backups |
+| `vim/vim-setup.ps1` | Provisions Vim, Pathogen runtime plugins (`honza/vim-snippets`, `ultisnips`, `supertab`, `auto-pairs`), and deploys `_vimrc` with backups |
 | `tests/test_settings.ps1` | Comprehensive automated test suite (93 tests) for CI and local verification |
 | `PSScriptAnalyzerSettings.psd1` | Quality gate & linter settings for strict CI validation |
