@@ -54,7 +54,8 @@ Any agent modifying this repository must follow these core principles.
 - **PSScriptAnalyzer Compliance**:
   - All PowerShell scripts (`.ps1`) must pass static analysis configured in `PSScriptAnalyzerSettings.psd1` with zero errors or warnings.
 - **Solarized Dark & Powerline Theme Integrity**:
-  - All visual components—Oh My Posh single-line Powerlevel10k theme (`posh/p10k.omp.json`), Windows Terminal color schemes (`terminal/settings.json`), `PSReadLine` syntax and prediction colors, and `colors/LS_COLORS`—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
+  - All visual components—Oh My Posh single-line Powerlevel10k theme (`posh/p10k.omp.json`), Windows Terminal color schemes (`terminal/settings.json`), `PSReadLine` syntax and prediction colors, `colors/LS_COLORS`, and Vim Solarized Dark styling—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
+  - In Vim, `highlight Normal ctermbg=NONE` and `highlight NonText ctermbg=NONE` must be used with `vim-colors-solarized` to inherit the terminal's `#002B36` background seamlessly without rectangular text box artifacts. Do not enable `termguicolors` with legacy `vim-colors-solarized`.
 - **JSON Integrity**:
   - All JSON configuration files (`posh/p10k.omp.json`, `terminal/settings.json`) must remain valid, well-formatted JSON with correct block and profile structures.
 
@@ -65,8 +66,10 @@ Any agent modifying this repository must follow these core principles.
 - **Maintain Alias & Shortcut Parity**:
   - Maintain the Oh My Zsh Git plugin suite and custom workflow helpers (`gco`, `gcb`, `gcm`, `ga`, `gst`, `gcommit`, `gamend`, `gup`, `gprune`, `gsync`, `fix-abcxyz-branch-name`).
   - Maintain developer shortcuts (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fs`, `Format-PathTree`, `ll`, `la`).
-- **Native Utilities in `bin/`**:
-  - Ensure all ported utilities (`gen-passwd`, `repeat-until-success`, `sum`) match the behavior, arguments, and pipeline support of their `home-settings` equivalents.
+- **Native Utilities & Vim Snippets Parity**:
+  - Ensure all ported utilities in `bin/` (`gen-passwd`, `repeat-until-success`, `sum`) match the behavior, arguments, and pipeline support of their `home-settings` equivalents.
+  - Centralize Vim runtime plugins and snippet definitions under `$HOME\.vim\` to prevent duplicate mapping warnings across `~/.vim` and `~/vimfiles`.
+  - Maintain custom UltiSnips snippet definitions in `vim/UltiSnips/` (`java.snippets`, `c.snippets`) matching `home-settings`.
 
 ---
 
