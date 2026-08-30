@@ -2,6 +2,14 @@
 # Git Shortcuts (Oh My Zsh Git plugin & custom workflow helpers)
 # =============================================================
 
+# Un-alias default PowerShell redirects that conflict with Git plugin
+$gitConflictAliases = @('gcm', 'gl', 'gp')
+foreach ($a in $gitConflictAliases) {
+    if (Test-Path "Alias:$a") {
+        Remove-Item "Alias:$a" -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function gco  { git checkout @args }
 function gcb  { git checkout -b @args }
 function gcm  {

@@ -9,4 +9,4 @@ if ((Test-Path $userModulesDir) -and ($env:PSModulePath -notlike "*$userModulesD
 }
 
 # Import Modern Workstation Module
-Import-Module WindowsSettings -ErrorAction SilentlyContinue
+Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue
