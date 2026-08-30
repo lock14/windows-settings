@@ -2,15 +2,43 @@
 
 [![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
 
-Windows workstation configuration files and setup automation for PowerShell 7 and Windows Terminal.
+Modern Windows developer workstation configuration and setup automation for **PowerShell 7+**, **Starship**, **Neovim**, and **Windows Terminal**.
 
-Designed to provide visual and functional parity with [`home-settings`](https://github.com/lock14/home-settings) (*nix / Zsh / Solarized Dark).
+---
+
+## Architecture Overview
+
+```text
+windows-settings/
+├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
+├── starship.toml                  # Blazing fast cross-shell prompt (Solarized Powerlevel10k 1:1)
+├── mise.toml                      # Declarative polyglot toolchains (Go, Python, Terraform, Node)
+├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
+├── setup.ps1                      # Master setup engine
+│
+├── Modules/
+│   └── WindowsSettings/           # Native PowerShell module (autoloaded, zero profile hacks)
+│       ├── WindowsSettings.psd1
+│       ├── WindowsSettings.psm1
+│       ├── Public/                # Git shortcuts, developer tools, navigation, utilities
+│       └── Completions/           # Dynamic CLI argument completions
+│
+├── config/
+│   └── nvim/                      # Modern Lua Neovim (Mason LSP, Treesitter, Telescope)
+│       └── init.lua
+│
+├── terminal/
+│   └── Fragments/                 # Windows Terminal JSON fragment extension (zero-touch)
+│       └── windows-settings.json
+│
+├── bin/                           # Native CLI utilities (gen-passwd, repeat-until-success, sum)
+└── tests/
+    └── test_settings.ps1          # 125 automated tests across all 8 test modules
+```
 
 ---
 
 ## Prerequisites
-
-The following tools should be available on Windows:
 
 - **PowerShell 7+** (`pwsh`)
 - **Git for Windows**
@@ -29,7 +57,15 @@ Stream and run directly in PowerShell 7 (`pwsh`) without pre-cloning:
 irm https://raw.githubusercontent.com/lock14/windows-settings/main/bootstrap.ps1 | iex
 ```
 
-### 2. Automated Master Setup (Existing Clone)
+### 2. Declarative WinGet Configuration (Microsoft DSC v3)
+
+Provision the complete workstation toolchain natively via Microsoft DSC:
+
+```powershell
+winget configure .\configuration.dsc.yaml
+```
+
+### 3. Automated Master Setup (Existing Clone)
 
 ```powershell
 git clone https://github.com/lock14/windows-settings.git
@@ -38,63 +74,62 @@ cd windows-settings
 # Full automated bootstrap
 .\setup.ps1 -Bootstrap
 
-# User dotfiles only (fonts, terminal, profile, completions, vim, bin)
+# User dotfiles only (module, prompt, nvim, terminal fragments)
 .\setup.ps1 -DotfilesOnly
 
 # Preview actions without making system changes
 .\setup.ps1 -DryRun
 ```
 
-### 3. Command-Line Options (`setup.ps1` & `bootstrap.ps1`)
+### 4. Command-Line Options (`setup.ps1` & `bootstrap.ps1`)
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `-Bootstrap` | *disabled* | Full new machine bootstrap (winget packages, fonts, posh, completions, terminal, vim, bin) |
-| `-DotfilesOnly` | *disabled* | Configure user dotfiles, fonts, vim, terminal, and shell profile only (no package install) |
+| `-Bootstrap` | *disabled* | Full new machine bootstrap (packages, fonts, starship, module, terminal, nvim) |
+| `-DotfilesOnly` | *disabled* | Configure user dotfiles, fonts, nvim, terminal, and shell module only (no package install) |
 | `-SystemOnly` | *disabled* | Provision winget packages and CLI tools only |
+| `-UseDSC` | *disabled* | Provision workstation packages using declarative WinGet DSC manifest (`configuration.dsc.yaml`) |
 | `-DryRun` | *disabled* | Preview actions without modifying the system |
 | `-WithGUI` / `-IncludeGUI` | *disabled* | Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget) |
 | `-SkipPackages` | *disabled* | Skip winget package installation |
 | `-SkipFonts` | *disabled* | Skip MesloLGS NF font installation |
-| `-SkipPosh` | *disabled* | Skip Oh My Posh & PowerShell profile configuration |
+| `-SkipPosh` | *disabled* | Skip Starship & PowerShell module configuration |
 | `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
-| `-SkipTerminal` | *disabled* | Skip Windows Terminal settings deployment |
-| `-SkipVim` | *disabled* | Skip Vim & _vimrc configuration |
+| `-SkipTerminal` | *disabled* | Skip Windows Terminal settings & JSON fragment deployment |
+| `-SkipVim` | *disabled* | Skip Neovim & Vim configuration |
 | `-SkipBin` | *disabled* | Skip adding `bin/` directory to User PATH |
-
-To run individual components directly:
-
-```powershell
-.\packages\winget-setup.ps1         # Install essential developer tools via winget
-.\fonts\font-setup.ps1              # Download & install MesloLGS NF fonts
-.\posh\posh-setup.ps1               # Install Oh My Posh & configure profile
-.\completions\completions-setup.ps1 # Register CLI tab completions (gh, winget, docker, kubectl, helm, terraform)
-.\terminal\terminal-setup.ps1       # Apply Windows Terminal settings (Solarized Dark)
-.\vim\vim-setup.ps1                 # Provision Vim, Pathogen plugins & _vimrc
-```
 
 ---
 
 ## What's Included
 
-### 1. Powerlevel10k Single-Line Prompt (`posh/p10k.omp.json`)
-- Direct port of Powerlevel10k Rainbow adapted to a single-line prompt with Solarized Dark palette tones.
-- Right prompt (`rprompt`) with execution time, status codes, and language environment indicators (Go, Python, Node, .NET, Rust, AWS).
+### 1. Starship Prompt (`starship.toml`)
+- Recreates the single-line Powerlevel10k Solarized Dark prompt with **<1ms render latency**.
+- Left side: OS glyph $\to$ Directory (``) $\to$ Git branch & status.
+- Right side (`rprompt`): Node, Go, Python, .NET, Rust, AWS context, execution duration, and exit status.
 
-### 2. Shell Intelligence, Colors & Performance
-- **Solarized Dark `LS_COLORS`**: Exact port of `home-settings/LS_COLORS` defining file and directory colors by type/extension for `ls`, `ll`, `la`, `fd`, `fzf`, and `fs`.
-- **Dynamic Go PATH Discovery**: Dynamically resolves `go env GOPATH` and registers `$GOPATH\bin` (or `$HOME\go\bin`) in `$env:Path`.
-- **Predictive IntelliSense (`PSReadLine`)**: Fish/Zsh-style inline history prediction styled in Solarized Dark muted tones (`#586E75`).
-- **Interactive History Search (`Ctrl+R`)**: Live fuzzy search over persistent command history powered by `fzf`.
-- **Menu Completion (`Tab`)**: Visual, interactive dropdown menu navigation for command arguments and paths.
-- **High-Speed Startup Caching**: Compiles Oh My Posh themes and CLI tab completions into `$HOME\.cache\powershell\` for silent sub-second startup.
+### 2. First-Class PowerShell Module (`WindowsSettings`)
+- Clean autoloaded PowerShell Module (`$HOME\Documents\PowerShell\Modules\WindowsSettings`).
+- Clean 1-line `$PROFILE`:
+  ```powershell
+  Import-Module WindowsSettings
+  ```
+- Instant updates via `git pull` without modifying or corrupting profile files.
 
-### 3. Git & Developer Shortcuts
-Includes the full Oh My Zsh Git plugin suite and custom workflow helpers (standardized on kebab-case with backward-compatible aliases):
+### 3. Modern Rust CLI Developer Toolchain
+- **`eza`**: Modern `ls` with Git status, icons, and tree views (`ls`, `ll`, `la`, `lt`).
+- **`zoxide` (`z`)**: Frecency-based smart directory jumping.
+- **`bat`**: Syntax-highlighted paging with Git modification markers.
+- **`uutils-coreutils`**: Fast, memory-safe compiled Rust GNU coreutils.
+- **`PSReadLine`**: Predictive IntelliSense and interactive fuzzy history search (`Ctrl+R`) via `fzf`.
+
+### 4. Git & Developer Shortcuts
+Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 
 | Shortcut | Description |
 | :--- | :--- |
 | `Ctrl+R` | Interactive fuzzy search command history via `fzf` |
+| `z <dir>` | Smart jump to directory via `zoxide` |
 | `gco` | `git checkout` |
 | `gcb` | `git checkout -b` |
 | `gcm` | `git checkout main` (or `master`) |
@@ -111,62 +146,45 @@ Includes the full Oh My Zsh Git plugin suite and custom workflow helpers (standa
 | `gup` | `git fetch && git pull --rebase origin HEAD` |
 | `gprune` | Delete local branches except `main`/`master` |
 | `gsync` | Rebase current branch onto latest `main`/`master` |
-| `guser-branch` | Rename branch to `<user>/<branch>` (*legacy: `fix-abcxyz-branch-name`*) |
-| `go-testall` | `go test ./...` (*legacy: `go_testall`*) |
-| `go-buildall` | `go build ./...` (*legacy: `go_buildall`*) |
-| `go-lint` | `golangci-lint run` (*legacy: `go_lint`*) |
+| `guser-branch` | Prefix branch with `$USER/` (stripping redundant prefixes) |
+| `go-testall` | `go test ./...` |
+| `go-buildall` | `go build ./...` |
+| `go-lint` | `golangci-lint run` (with auto-cached configuration) |
 | `tf` | `terraform` |
-| `yaml-lint` | `yamllint -c ~/.yamllint.yml` (*legacy: `yaml_lint`*) |
-| `ll` | List directory contents with details (`ls -alFh --color=auto`) |
-| `la` | List all files including hidden (`ls -AFhl --color=auto`) |
-| `fs` | Fast recursive directory tree search (`fd --no-ignore-vcs` + `Format-PathTree`) |
-| `Format-PathTree` | Native trie-based visual tree formatter (*parity with Linux `tree --fromfile`*) |
+| `yaml-lint` | `yamllint -c ~/.yamllint.yml` |
+| `ls` | Modern directory listing (`eza --icons=auto`) |
+| `ll` | Detailed directory listing with Git status (`eza -la --git`) |
+| `la` | List all files including hidden (`eza -a`) |
+| `lt` | Tree view listing (`eza --tree --level=2`) |
+| `fs` | Fast recursive directory tree search (`fd` + `Format-PathTree`) |
 
-### 4. uutils-coreutils Integration (Rust GNU Coreutils)
-- **Rust GNU Coreutils (`uutils-coreutils`) & Diffutils (`uutils-diffutils`)**: Automatically provisioned via `winget`.
-- **High-Speed Native Shell Execution**: The PowerShell profile removes conflicting legacy PowerShell cmdlet aliases (`cat`, `sort`, `tee`, `diff`, `echo`, `sleep`) when `coreutils` is detected, enabling direct invocation of compiled Rust utilities.
-- **Pipeline & Checksum Hygiene**: Preserves the repository's arithmetic accumulator (`sum 1 2 3` or `1..10 | sum = 55`) without collision.
+### 5. Modern Lua Neovim (`config/nvim/init.lua`)
+- Lua-first Neovim configuration with **Lazy.nvim**.
+- **Native LSP (`mason.nvim` + `nvim-lspconfig`)**: Auto-manages Go (`gopls`), Terraform (`terraform-ls`), Python (`pyright`), YAML.
+- **Tree-sitter**: AST-based syntax highlighting.
+- **Telescope**: Fast in-editor fuzzy file finding (`<leader>ff`, `<leader>fg`).
+- **Solarized Dark**: Seamless `#002B36` terminal background matching.
 
-### 5. Native CLI Utilities (`bin/`)
-Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
-
-| Utility | Description | Example Usage |
-| :--- | :--- | :--- |
-| `gen-passwd` | Cryptographically secure random password generator | `gen-passwd -Length 24 -IncludeSymbols` |
-| `repeat-until-success` | Retries a command until exit code 0 | `repeat-until-success -Command "curl https://example.com"` |
-| `sum` | Sums numbers from positional arguments or pipeline | `sum 1 2 3` or `1..100 \| sum` |
-
-*Note: All utilities in `bin/` include `.cmd` wrappers and are registered as global cmdlets.*
-
-### 6. Solarized Dark & MesloLGS NF Windows Terminal (`terminal/settings.json`)
-- Canonical Solarized Dark color scheme.
-- MesloLGS NF font pre-configured for powerline glyphs.
-- Custom keybindings (`Ctrl+C` copy, `Ctrl+V` paste, `Alt+Shift+D` split pane).
-
-### 7. Vim & Plugin Setup (`vim/_vimrc`)
-- Pre-configured `_vimrc` matching `home-settings` with Solarized Dark theme.
-- Automated Pathogen bundle provisioning (`auto-pairs`, `vim-colors-solarized`, `ultisnips`, `supertab`, `vim-snippets`).
-- Automatic user PATH registration for Vim.
+### 6. Zero-Touch Windows Terminal (`terminal/Fragments/`)
+- Native Windows Terminal JSON Fragment extension (`terminal/Fragments/windows-settings.json`).
+- Automatically loads Solarized Dark, MesloLGS NF font, and keybindings without ever modifying `settings.json` or conflicting with WSL profiles.
 
 ---
 
-## Directory Overview
+## Testing & Quality Gates
 
-| Path | Description |
-| :--- | :--- |
-| `bootstrap.ps1` | Zero-dependency turnkey bootstrapper (clones repo and launches `setup.ps1`) |
-| `setup.ps1` | Master setup engine with `-Bootstrap`, `-DotfilesOnly`, `-SystemOnly`, and `-DryRun` |
-| `bin/` | Native CLI utilities and batch wrappers (`gen-passwd`, `repeat-until-success`, `sum`) |
-| `colors/` | Solarized Dark `LS_COLORS` definition database matching `home-settings` |
-| `completions/` | Tab completions with high-speed disk caching (`gh`, `winget`, `docker`, `kubectl`, `helm`, `terraform`) |
-| `fonts/` | Downloads and installs MesloLGS NF fonts |
-| `packages/` | Workstation developer tool provisioning with `winget` (`uutils`, `fzf`, `rg`, `fd`, `jq`, `terraform`, `nvim`) |
-| `posh/p10k.omp.json` | Oh My Posh Solarized Dark single-line Powerlevel10k theme |
-| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + uutils + PSReadLine + LS_COLORS + Completions) |
-| `posh/posh-setup.ps1` | Installs Oh My Posh via winget, deploys theme & profile |
-| `terminal/settings.json` | Windows Terminal configuration & color schemes |
-| `terminal/terminal-setup.ps1` | Deploys `settings.json` to Windows Terminal `LocalState` with backups |
-| `vim/_vimrc` | Vim configuration file with Solarized Dark and plugin settings |
-| `vim/vim-setup.ps1` | Provisions Vim, Pathogen runtime plugins (`honza/vim-snippets`, `ultisnips`, `supertab`, `auto-pairs`), and deploys `_vimrc` with backups |
-| `tests/test_settings.ps1` | Comprehensive automated test suite (110 tests) for CI and local verification |
-| `PSScriptAnalyzerSettings.psd1` | Quality gate & linter settings for strict CI validation |
+Run the automated test suite locally:
+
+```powershell
+pwsh -NoProfile -File ./tests/test_settings.ps1
+```
+
+Runs **125 automated tests across all 8 modules**:
+1. PowerShell Script & Module Syntax
+2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `starship.toml`, `settings.json`, fragments)
+3. WindowsSettings Module Import & Function Exports (60 functions)
+4. Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
+5. Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)
+6. Completions & Prompt Rendering
+7. Path Invariants & Dual Execution Wrappers
+8. Setup Script Idempotency, DryRun & Backup Policy

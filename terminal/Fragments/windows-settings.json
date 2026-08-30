@@ -1,0 +1,44 @@
+{
+    "$schema": "https://aka.ms/terminal-profiles-schema",
+    "profiles": {
+        "defaults": {
+            "colorScheme": "Solarized Dark",
+            "font": {
+                "face": "MesloLGS NF",
+                "size": 11.0
+            },
+            "cursorShape": "bar",
+            "useAcrylic": false
+        }
+    },
+    "schemes": [
+        {
+            "name": "Solarized Dark",
+            "background": "#002B36",
+            "black": "#073642",
+            "blue": "#268BD2",
+            "brightBlack": "#586E75",
+            "brightBlue": "#839496",
+            "brightCyan": "#93A1A1",
+            "brightGreen": "#586E75",
+            "brightPurple": "#6C71C4",
+            "brightRed": "#CB4B16",
+            "brightWhite": "#FDF6E3",
+            "brightYellow": "#657B83",
+            "cursorColor": "#839496",
+            "cyan": "#2AA198",
+            "foreground": "#839496",
+            "green": "#859900",
+            "purple": "#D33682",
+            "red": "#DC322F",
+            "selectionBackground": "#073642",
+            "white": "#EEE8D5",
+            "yellow": "#B58900"
+        }
+    ],
+    "actions": [
+        { "command": { "action": "copy", "singleLine": false }, "keys": "ctrl+c" },
+        { "command": "paste", "keys": "ctrl+v" },
+        { "command": { "action": "splitPane", "split": "auto" }, "keys": "alt+shift+d" }
+    ]
+}

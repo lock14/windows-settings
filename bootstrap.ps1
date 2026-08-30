@@ -11,6 +11,7 @@ param(
     [switch]$Bootstrap,
     [switch]$DotfilesOnly,
     [switch]$SystemOnly,
+    [switch]$UseDSC,
     [switch]$DryRun,
     [switch]$WithGUI,
     [switch]$IncludeGUI,

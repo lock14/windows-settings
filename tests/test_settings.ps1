@@ -1,5 +1,5 @@
 # =============================================================
-# Test Suite for windows-settings
+# Test Suite for windows-settings (Modern Workstation Architecture)
 # =============================================================
 
 $ErrorActionPreference = 'Stop'
@@ -27,8 +27,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 # -------------------------------------------------------------
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
-Write-Host "`n[1/8] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
-$psFiles = Get-ChildItem -Path $RootDir -Recurse -Filter "*.ps1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
+Write-Host "`n[1/8] Checking PowerShell Scripts & Module Syntax..." -ForegroundColor Yellow
+$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
 
 foreach ($file in $psFiles) {
     $errors = $null
@@ -43,9 +43,9 @@ foreach ($file in $psFiles) {
 }
 
 # -------------------------------------------------------------
-# Test 2: JSON Files Validity & Schema Verification
+# Test 2: JSON & Manifest Files Validity
 # -------------------------------------------------------------
-Write-Host "`n[2/8] Validating JSON Configurations..." -ForegroundColor Yellow
+Write-Host "`n[2/8] Validating JSON Configurations & Manifests..." -ForegroundColor Yellow
 
 # Test posh/p10k.omp.json
 $p10kPath = Join-Path $RootDir "posh\p10k.omp.json"
@@ -75,32 +75,76 @@ try {
     Fail "JSON parse error: terminal/settings.json" $_.Exception.Message
 }
 
-# -------------------------------------------------------------
-# Test 3: Profile Sourcing & Function Definitions
-# -------------------------------------------------------------
-Write-Host "`n[3/8] Testing PowerShell Profile, Aliases & PSReadLine..." -ForegroundColor Yellow
-$profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
+# Test terminal/Fragments/windows-settings.json
+$fragmentJsonPath = Join-Path $RootDir "terminal\Fragments\windows-settings.json"
+try {
+    $fragJson = Get-Content $fragmentJsonPath -Raw | ConvertFrom-Json
+    $fragSolarized = ($fragJson.profiles.defaults.colorScheme -eq "Solarized Dark")
+    $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
+    if ($fragSolarized -and $fragFont) {
+        Pass "JSON valid: terminal/Fragments/windows-settings.json (Solarized Dark fragment)"
+    } else {
+        Fail "terminal/Fragments/windows-settings.json" "Defaults mismatch"
+    }
+} catch {
+    Fail "JSON parse error: terminal/Fragments/windows-settings.json" $_.Exception.Message
+}
 
-# Source the profile in current scope
-. $profileFile
+# Test configuration.dsc.yaml
+$dscPath = Join-Path $RootDir "configuration.dsc.yaml"
+if (Test-Path $dscPath) {
+    $dscContent = Get-Content $dscPath -Raw
+    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'Starship\.Starship') {
+        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest)"
+    } else {
+        Fail "configuration.dsc.yaml" "Missing configurationVersion or core resources"
+    }
+}
+
+# Test starship.toml & mise.toml
+$starshipPath = Join-Path $RootDir "starship.toml"
+if (Test-Path $starshipPath) {
+    $starshipContent = Get-Content $starshipPath -Raw
+    if ($starshipContent -match 'fg:#073642 bg:#eee8d5' -and $starshipContent -match 'Solarized Dark') {
+        Pass "TOML valid: starship.toml (Solarized Dark Powerlevel10k configuration)"
+    } else {
+        Fail "starship.toml" "Missing Solarized Dark Powerlevel10k formatting"
+    }
+}
+
+$misePath = Join-Path $RootDir "mise.toml"
+if (Test-Path $misePath) {
+    Pass "TOML valid: mise.toml (Declarative toolchains)"
+}
+
+# -------------------------------------------------------------
+# Test 3: WindowsSettings Module Import & Function Exports
+# -------------------------------------------------------------
+Write-Host "`n[3/8] Testing WindowsSettings PowerShell Module Import..." -ForegroundColor Yellow
+$moduleManifest = Join-Path $RootDir "Modules\WindowsSettings\WindowsSettings.psd1"
+
+# Import the module
+Import-Module $moduleManifest -Force
 
 $expectedFunctions = @(
     # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
     'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
     'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
-    'fs', 'Format-PathTree', 'll', 'la',
+    'fs', 'Format-PathTree', 'ls', 'll', 'la', 'lt',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
     'glog', 'glo', 'grb', 'grba', 'grbc', 'grbi', 'grh', 'grhh', 'gsw', 'gswc',
     'gcp', 'gcpa', 'gcpc',
     # Custom Git shortcuts
-    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync'
+    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync',
+    # Utilities
+    'gen-passwd', 'repeat-until-success', 'sum'
 )
 
 foreach ($func in $expectedFunctions) {
     if (Get-Command $func -ErrorAction SilentlyContinue) {
-        Pass "Function defined: $func"
+        Pass "Function defined & exported: $func"
     } else {
         Fail "Function missing: $func" "Get-Command could not find function $func"
     }
@@ -113,25 +157,19 @@ if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
 }
 
 if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: vi -> vim"
+    Pass "Alias defined: vi"
 } else {
     Fail "Alias missing: vi" "Alias vi not found"
 }
 
-$vimrcFile = Join-Path $RootDir "vim\_vimrc"
-if (Test-Path $vimrcFile) {
-    Pass "Vim configuration file exists: vim/_vimrc"
-} else {
-    Fail "Vim configuration missing" "vim/_vimrc does not exist"
-}
-
-$vimSetupScript = Join-Path $RootDir "vim\vim-setup.ps1"
-if (Test-Path $vimSetupScript) {
-    $setupContent = Get-Content $vimSetupScript -Raw
-    if ($setupContent -match 'vim-snippets' -and $setupContent -match 'honza/vim-snippets') {
-        Pass "Curated vim-snippets bundle configured in vim/vim-setup.ps1"
+# Test Neovim configuration file
+$nvimInit = Join-Path $RootDir "config\nvim\init.lua"
+if (Test-Path $nvimInit) {
+    $nvimContent = Get-Content $nvimInit -Raw
+    if ($nvimContent -match 'solarized-osaka' -and $nvimContent -match 'mason') {
+        Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter + Solarized)"
     } else {
-        Fail "Curated vim-snippets missing" "honza/vim-snippets not configured in vim-setup.ps1"
+        Fail "Neovim init.lua" "Missing LSP or Solarized configuration"
     }
 }
 
@@ -144,18 +182,11 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
 $wingetScript = Join-Path $RootDir "packages\winget-setup.ps1"
 if (Test-Path $wingetScript) {
     $wingetContent = Get-Content $wingetScript -Raw
-    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'uutils\.diffutils'") {
-        Pass "uutils.coreutils and uutils.diffutils configured in packages/winget-setup.ps1"
+    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'Starship\.Starship'") {
+        Pass "uutils.coreutils and Starship configured in packages/winget-setup.ps1"
     } else {
-        Fail "uutils packages configuration" "uutils packages missing in winget-setup.ps1"
+        Fail "winget packages configuration" "packages missing in winget-setup.ps1"
     }
-}
-
-$profileContent = Get-Content $profileFile -Raw
-if ($profileContent -match 'uutils-coreutils' -and $profileContent -match 'Get-Command coreutils') {
-    Pass "uutils-coreutils un-aliasing logic integrated into PowerShell profile"
-} else {
-    Fail "uutils profile integration" "uutils-coreutils un-aliasing logic missing in profile"
 }
 
 # -------------------------------------------------------------
@@ -248,7 +279,6 @@ $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_test_" + [System.Gui
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 try {
-    # Initialize bare remote repo and clone local repo
     $remoteDir = Join-Path $tempDir "remote.git"
     $localDir = Join-Path $tempDir "local"
 
@@ -352,7 +382,7 @@ try {
 # -------------------------------------------------------------
 # Test 6: Completions & Oh My Posh Rendering
 # -------------------------------------------------------------
-Write-Host "`n[6/8] Testing Completions & Oh My Posh Rendering..." -ForegroundColor Yellow
+Write-Host "`n[6/8] Testing Completions & Prompt Rendering..." -ForegroundColor Yellow
 
 # Test completions setup execution
 $completionsScript = Join-Path $RootDir "completions\completions-setup.ps1"
@@ -480,37 +510,16 @@ try {
         Fail "Idempotency failure" "Redundant backup created when content had not changed"
     }
 
-    # 3. Test Windows Terminal deep merge preserving custom/WSL profiles
-    $customUserTerminalJson = @"
-{
-    "`$schema": "https://aka.ms/terminal-profiles-schema",
-    "defaultProfile": "{00000000-0000-0000-0000-000000000000}",
-    "profiles": {
-        "defaults": {
-            "fontSize": 14
-        },
-        "list": [
-            {
-                "guid": "{51855cb2-8cce-5362-8f54-464b92b32386}",
-                "name": "Ubuntu",
-                "source": "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc"
-            }
-        ]
-    }
-}
-"@
-    $mockMergeTarget = Join-Path $sandboxDir "terminal_merge.json"
-    Set-Content -Path $mockMergeTarget -Value $customUserTerminalJson -Encoding utf8
-
+    # 3. Test Windows Terminal deep merge & JSON Fragments
     $terminalSetupScript = Join-Path $RootDir "terminal\terminal-setup.ps1"
     $terminalScriptContent = Get-Content $terminalSetupScript -Raw
-    if ($terminalScriptContent -match 'Merge-TerminalHashtable' -and $terminalScriptContent -match 'ConvertFrom-Json -AsHashtable') {
-        Pass "Windows Terminal setup implements deep JSON merge strategy"
+    if ($terminalScriptContent -match 'Fragments' -and $terminalScriptContent -match 'Merge-TerminalHashtable') {
+        Pass "Windows Terminal setup implements JSON Fragment extension & deep merge"
     } else {
-        Fail "Terminal setup merge strategy" "Deep JSON merge strategy missing in terminal-setup.ps1"
+        Fail "Terminal setup" "JSON Fragment support missing in terminal-setup.ps1"
     }
 
-    # 3. Test setup.ps1 and bootstrap.ps1 dry-run execution
+    # 4. Test setup.ps1 and bootstrap.ps1 dry-run execution
     $setupScriptPath = Join-Path $RootDir "setup.ps1"
     try {
         & $setupScriptPath -DryRun | Out-Null

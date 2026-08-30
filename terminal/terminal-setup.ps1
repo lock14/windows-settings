@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Configures Windows Terminal settings, color schemes, and fonts.
+    Configures Windows Terminal using native JSON Fragment Extensions (zero-touch)
+    and optional deep JSON settings merge.
 #>
 [CmdletBinding()]
 param(
@@ -11,7 +12,39 @@ param(
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Locate Windows Terminal LocalState directory
+# -------------------------------------------------------------
+# 1. Deploy Windows Terminal JSON Fragment Extension
+# -------------------------------------------------------------
+$fragmentSource = Join-Path $ScriptDir "Fragments\windows-settings.json"
+if (-not (Test-Path $fragmentSource)) {
+    $fragmentSource = Join-Path $ScriptDir "settings.json"
+}
+
+$fragmentDirs = @(
+    "$env:LOCALAPPDATA\Microsoft\Windows Terminal\Fragments\WindowsSettings",
+    "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings",
+    "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings"
+)
+
+foreach ($fDir in $fragmentDirs) {
+    $parentPkgDir = Split-Path -Parent (Split-Path -Parent $fDir)
+    if ((Test-Path $parentPkgDir) -or ($fDir -like "*Microsoft\Windows Terminal*")) {
+        $fDest = Join-Path $fDir "windows-settings.json"
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would install Windows Terminal JSON Fragment at $fDest" -ForegroundColor DarkCyan
+        } else {
+            if (-not (Test-Path $fDir)) {
+                New-Item -ItemType Directory -Force -Path $fDir | Out-Null
+            }
+            Copy-Item -Path $fragmentSource -Destination $fDest -Force
+            Write-Host "==> Windows Terminal JSON Fragment installed at $fDest" -ForegroundColor Green
+        }
+    }
+}
+
+# -------------------------------------------------------------
+# 2. Settings.json Deep Merge (Legacy / Default Profile alignment)
+# -------------------------------------------------------------
 $possiblePaths = @(
     "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState",
     "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState",
@@ -27,7 +60,6 @@ foreach ($path in $possiblePaths) {
 }
 
 if (-not $targetDir) {
-    # If not installed yet, default to standard package path
     $targetDir = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
@@ -115,7 +147,6 @@ if (Test-Path $destFile) {
         $mergedNormalized = ($mergedJson | ConvertFrom-Json | ConvertTo-Json -Depth 15)
         $isDiff = ($existingNormalized -ne $mergedNormalized)
     } catch {
-        # Fallback to direct comparison if JSON parsing fails
         $isDiff = $true
         $mergedJson = Get-Content $sourceFile -Raw
     }
@@ -145,13 +176,11 @@ if (Test-Path $destFile) {
         }
     }
 } else {
-    if (-not $BackupOnly) {
-        if ($DryRun) {
-            Write-Host "  [DryRun] Would deploy repository settings.json to $destFile" -ForegroundColor DarkCyan
-        } else {
-            Write-Host "Deploying repository settings.json to Windows Terminal..." -ForegroundColor Cyan
-            Copy-Item -Path $sourceFile -Destination $destFile -Force
-            Write-Host "==> Windows Terminal settings applied successfully!" -ForegroundColor Green
-        }
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would deploy new Windows Terminal settings to $destFile" -ForegroundColor DarkCyan
+    } else {
+        Write-Host "==> Deploying initial Windows Terminal settings to $destFile..." -ForegroundColor Cyan
+        Copy-Item -Path $sourceFile -Destination $destFile -Force
+        Write-Host "==> Windows Terminal settings deployed successfully!" -ForegroundColor Green
     }
 }
