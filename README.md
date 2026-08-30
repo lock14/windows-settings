@@ -21,26 +21,54 @@ The following tools should be available on Windows:
 
 ## Quick Start
 
-Open PowerShell 7 (`pwsh`) and run:
+### 1. Turnkey Bootstrap (New Machines)
+
+Stream and run directly in PowerShell 7 (`pwsh`) without pre-cloning:
+
+```powershell
+irm https://raw.githubusercontent.com/lock14/windows-settings/main/bootstrap.ps1 | iex
+```
+
+### 2. Automated Master Setup (Existing Clone)
 
 ```powershell
 git clone https://github.com/lock14/windows-settings.git
 cd windows-settings
 
-# Full automated setup
-.\setup.ps1
+# Full automated bootstrap
+.\setup.ps1 -Bootstrap
 
-# Full automated setup including winget package installation
-.\setup.ps1 -InstallPackages
+# User dotfiles only (fonts, terminal, profile, completions, vim, bin)
+.\setup.ps1 -DotfilesOnly
+
+# Preview actions without making system changes
+.\setup.ps1 -DryRun
 ```
 
-To run individual components:
+### 3. Command-Line Options (`setup.ps1` & `bootstrap.ps1`)
+
+| Option | Default | Description |
+| :--- | :--- | :--- |
+| `-Bootstrap` | *disabled* | Full new machine bootstrap (winget packages, fonts, posh, completions, terminal, vim, bin) |
+| `-DotfilesOnly` | *disabled* | Configure user dotfiles, fonts, vim, terminal, and shell profile only (no package install) |
+| `-SystemOnly` | *disabled* | Provision winget packages and CLI tools only |
+| `-DryRun` | *disabled* | Preview actions without modifying the system |
+| `-WithGUI` / `-IncludeGUI` | *disabled* | Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget) |
+| `-SkipPackages` | *disabled* | Skip winget package installation |
+| `-SkipFonts` | *disabled* | Skip MesloLGS NF font installation |
+| `-SkipPosh` | *disabled* | Skip Oh My Posh & PowerShell profile configuration |
+| `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
+| `-SkipTerminal` | *disabled* | Skip Windows Terminal settings deployment |
+| `-SkipVim` | *disabled* | Skip Vim & _vimrc configuration |
+| `-SkipBin` | *disabled* | Skip adding `bin/` directory to User PATH |
+
+To run individual components directly:
 
 ```powershell
 .\packages\winget-setup.ps1         # Install essential developer tools via winget
 .\fonts\font-setup.ps1              # Download & install MesloLGS NF fonts
 .\posh\posh-setup.ps1               # Install Oh My Posh & configure profile
-.\completions\completions-setup.ps1 # Register CLI tab completions (gh, winget, docker, kubectl, helm)
+.\completions\completions-setup.ps1 # Register CLI tab completions (gh, winget, docker, kubectl, helm, terraform)
 .\terminal\terminal-setup.ps1       # Apply Windows Terminal settings (Solarized Dark)
 .\vim\vim-setup.ps1                 # Provision Vim, Pathogen plugins & _vimrc
 ```
@@ -55,13 +83,14 @@ To run individual components:
 
 ### 2. Shell Intelligence, Colors & Performance
 - **Solarized Dark `LS_COLORS`**: Exact port of `home-settings/LS_COLORS` defining file and directory colors by type/extension for `ls`, `ll`, `la`, `fd`, `fzf`, and `fs`.
+- **Dynamic Go PATH Discovery**: Dynamically resolves `go env GOPATH` and registers `$GOPATH\bin` (or `$HOME\go\bin`) in `$env:Path`.
 - **Predictive IntelliSense (`PSReadLine`)**: Fish/Zsh-style inline history prediction styled in Solarized Dark muted tones (`#586E75`).
 - **Interactive History Search (`Ctrl+R`)**: Live fuzzy search over persistent command history powered by `fzf`.
 - **Menu Completion (`Tab`)**: Visual, interactive dropdown menu navigation for command arguments and paths.
 - **High-Speed Startup Caching**: Compiles Oh My Posh themes and CLI tab completions into `$HOME\.cache\powershell\` for silent sub-second startup.
 
 ### 3. Git & Developer Shortcuts
-Includes the full Oh My Zsh Git plugin suite and custom workflow helpers:
+Includes the full Oh My Zsh Git plugin suite and custom workflow helpers (standardized on kebab-case with backward-compatible aliases):
 
 | Shortcut | Description |
 | :--- | :--- |
@@ -82,17 +111,23 @@ Includes the full Oh My Zsh Git plugin suite and custom workflow helpers:
 | `gup` | `git fetch && git pull --rebase origin HEAD` |
 | `gprune` | Delete local branches except `main`/`master` |
 | `gsync` | Rebase current branch onto latest `main`/`master` |
-| `go_testall` | `go test ./...` |
-| `go_buildall` | `go build ./...` |
-| `go_lint` | `golangci-lint run` (with auto-cached configuration) |
+| `guser-branch` | Rename branch to `<user>/<branch>` (*legacy: `fix-abcxyz-branch-name`*) |
+| `go-testall` | `go test ./...` (*legacy: `go_testall`*) |
+| `go-buildall` | `go build ./...` (*legacy: `go_buildall`*) |
+| `go-lint` | `golangci-lint run` (*legacy: `go_lint`*) |
 | `tf` | `terraform` |
-| `yaml_lint` | `yamllint -c ~/.yamllint.yml` |
+| `yaml-lint` | `yamllint -c ~/.yamllint.yml` (*legacy: `yaml_lint`*) |
 | `ll` | List directory contents with details (`ls -alFh --color=auto`) |
 | `la` | List all files including hidden (`ls -AFhl --color=auto`) |
 | `fs` | Fast recursive directory tree search (`fd --no-ignore-vcs` + `Format-PathTree`) |
 | `Format-PathTree` | Native trie-based visual tree formatter (*parity with Linux `tree --fromfile`*) |
 
-### 4. Native CLI Utilities (`bin/`)
+### 4. uutils-coreutils Integration (Rust GNU Coreutils)
+- **Rust GNU Coreutils (`uutils-coreutils`) & Diffutils (`uutils-diffutils`)**: Automatically provisioned via `winget`.
+- **High-Speed Native Shell Execution**: The PowerShell profile removes conflicting legacy PowerShell cmdlet aliases (`cat`, `sort`, `tee`, `diff`, `echo`, `sleep`) when `coreutils` is detected, enabling direct invocation of compiled Rust utilities.
+- **Pipeline & Checksum Hygiene**: Preserves the repository's arithmetic accumulator (`sum 1 2 3` or `1..10 | sum = 55`) without collision.
+
+### 5. Native CLI Utilities (`bin/`)
 Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 
 | Utility | Description | Example Usage |
@@ -103,14 +138,14 @@ Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 
 *Note: All utilities in `bin/` include `.cmd` wrappers and are registered as global cmdlets.*
 
-### 5. Solarized Dark & MesloLGS NF Windows Terminal (`terminal/settings.json`)
+### 6. Solarized Dark & MesloLGS NF Windows Terminal (`terminal/settings.json`)
 - Canonical Solarized Dark color scheme.
 - MesloLGS NF font pre-configured for powerline glyphs.
 - Custom keybindings (`Ctrl+C` copy, `Ctrl+V` paste, `Alt+Shift+D` split pane).
 
-### 6. Vim & Plugin Setup (`vim/_vimrc`)
+### 7. Vim & Plugin Setup (`vim/_vimrc`)
 - Pre-configured `_vimrc` matching `home-settings` with Solarized Dark theme.
-- Automated Pathogen bundle provisioning (`auto-pairs`, `vim-colors-solarized`, `ultisnips`, `supertab`).
+- Automated Pathogen bundle provisioning (`auto-pairs`, `vim-colors-solarized`, `ultisnips`, `supertab`, `vim-snippets`).
 - Automatic user PATH registration for Vim.
 
 ---
@@ -119,18 +154,19 @@ Ported from `home-settings/common-bin/` for native PowerShell and cmd execution:
 
 | Path | Description |
 | :--- | :--- |
-| `setup.ps1` | Master setup script orchestrating fonts, prompt, completions, PATH, terminal, and vim |
+| `bootstrap.ps1` | Zero-dependency turnkey bootstrapper (clones repo and launches `setup.ps1`) |
+| `setup.ps1` | Master setup engine with `-Bootstrap`, `-DotfilesOnly`, `-SystemOnly`, and `-DryRun` |
 | `bin/` | Native CLI utilities and batch wrappers (`gen-passwd`, `repeat-until-success`, `sum`) |
 | `colors/` | Solarized Dark `LS_COLORS` definition database matching `home-settings` |
 | `completions/` | Tab completions with high-speed disk caching (`gh`, `winget`, `docker`, `kubectl`, `helm`, `terraform`) |
 | `fonts/` | Downloads and installs MesloLGS NF fonts |
-| `packages/` | Workstation developer tool provisioning with `winget` (`fzf`, `rg`, `fd`, `jq`, `terraform`, `nvim`) |
+| `packages/` | Workstation developer tool provisioning with `winget` (`uutils`, `fzf`, `rg`, `fd`, `jq`, `terraform`, `nvim`) |
 | `posh/p10k.omp.json` | Oh My Posh Solarized Dark single-line Powerlevel10k theme |
-| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + PSReadLine + LS_COLORS + Completions) |
+| `posh/Microsoft.PowerShell_profile.ps1` | PowerShell profile (Oh My Posh + Git/Dev aliases + uutils + PSReadLine + LS_COLORS + Completions) |
 | `posh/posh-setup.ps1` | Installs Oh My Posh via winget, deploys theme & profile |
 | `terminal/settings.json` | Windows Terminal configuration & color schemes |
 | `terminal/terminal-setup.ps1` | Deploys `settings.json` to Windows Terminal `LocalState` with backups |
 | `vim/_vimrc` | Vim configuration file with Solarized Dark and plugin settings |
 | `vim/vim-setup.ps1` | Provisions Vim, Pathogen runtime plugins (`honza/vim-snippets`, `ultisnips`, `supertab`, `auto-pairs`), and deploys `_vimrc` with backups |
-| `tests/test_settings.ps1` | Comprehensive automated test suite (93 tests) for CI and local verification |
+| `tests/test_settings.ps1` | Comprehensive automated test suite (110 tests) for CI and local verification |
 | `PSScriptAnalyzerSettings.psd1` | Quality gate & linter settings for strict CI validation |

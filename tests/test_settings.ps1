@@ -85,15 +85,17 @@ $profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
 . $profileFile
 
 $expectedFunctions = @(
-    # Developer Tool Shortcuts
-    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fs', 'Format-PathTree', 'll', 'la',
+    # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
+    'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
+    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
+    'fs', 'Format-PathTree', 'll', 'la',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
     'glog', 'glo', 'grb', 'grba', 'grbc', 'grbi', 'grh', 'grhh', 'gsw', 'gswc',
     'gcp', 'gcpa', 'gcpc',
     # Custom Git shortcuts
-    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync', 'fix-abcxyz-branch-name'
+    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync'
 )
 
 foreach ($func in $expectedFunctions) {
@@ -137,6 +139,23 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Pass "LS_COLORS environment variable configured (Solarized Dark)"
 } else {
     Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
+}
+
+$wingetScript = Join-Path $RootDir "packages\winget-setup.ps1"
+if (Test-Path $wingetScript) {
+    $wingetContent = Get-Content $wingetScript -Raw
+    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'uutils\.diffutils'") {
+        Pass "uutils.coreutils and uutils.diffutils configured in packages/winget-setup.ps1"
+    } else {
+        Fail "uutils packages configuration" "uutils packages missing in winget-setup.ps1"
+    }
+}
+
+$profileContent = Get-Content $profileFile -Raw
+if ($profileContent -match 'uutils-coreutils' -and $profileContent -match 'Get-Command coreutils') {
+    Pass "uutils-coreutils un-aliasing logic integrated into PowerShell profile"
+} else {
+    Fail "uutils profile integration" "uutils-coreutils un-aliasing logic missing in profile"
 }
 
 # -------------------------------------------------------------
@@ -283,14 +302,32 @@ try {
         Fail "gsync branch preservation" "Expected feature-1, got $currentBranch"
     }
 
-    # Test 5.3: fix-abcxyz-branch-name
+    # Test 5.3: guser-branch & fix-abcxyz-branch-name
     $expectedUser = if ($env:USER) { $env:USER } else { $env:USERNAME }
-    fix-abcxyz-branch-name
+    guser-branch
     $renamedBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($renamedBranch -eq "$expectedUser/feature-1") {
-        Pass "fix-abcxyz-branch-name successfully renamed branch"
+        Pass "guser-branch successfully prefixed branch ($expectedUser/feature-1)"
     } else {
-        Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $renamedBranch"
+        Fail "guser-branch" "Expected $expectedUser/feature-1, got $renamedBranch"
+    }
+
+    # Test 5.3.1: guser-branch idempotency (does not duplicate prefix)
+    guser-branch
+    $idempotentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($idempotentBranch -eq "$expectedUser/feature-1") {
+        Pass "guser-branch strips redundant user prefix idempotently"
+    } else {
+        Fail "guser-branch prefix strip" "Redundant prefix introduced: $idempotentBranch"
+    }
+
+    # Test 5.3.2: fix-abcxyz-branch-name compatibility alias
+    fix-abcxyz-branch-name
+    $aliasBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($aliasBranch -eq "$expectedUser/feature-1") {
+        Pass "fix-abcxyz-branch-name compatibility alias works identically"
+    } else {
+        Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $aliasBranch"
     }
 
     # Test 5.4: gprune deletes non-main branches
@@ -441,6 +478,79 @@ try {
         Pass "Idempotency preserved: zero redundant backups generated on identical re-run"
     } else {
         Fail "Idempotency failure" "Redundant backup created when content had not changed"
+    }
+
+    # 3. Test Windows Terminal deep merge preserving custom/WSL profiles
+    $customUserTerminalJson = @"
+{
+    "`$schema": "https://aka.ms/terminal-profiles-schema",
+    "defaultProfile": "{00000000-0000-0000-0000-000000000000}",
+    "profiles": {
+        "defaults": {
+            "fontSize": 14
+        },
+        "list": [
+            {
+                "guid": "{51855cb2-8cce-5362-8f54-464b92b32386}",
+                "name": "Ubuntu",
+                "source": "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc"
+            }
+        ]
+    }
+}
+"@
+    $mockMergeTarget = Join-Path $sandboxDir "terminal_merge.json"
+    Set-Content -Path $mockMergeTarget -Value $customUserTerminalJson -Encoding utf8
+
+    $terminalSetupScript = Join-Path $RootDir "terminal\terminal-setup.ps1"
+    $terminalScriptContent = Get-Content $terminalSetupScript -Raw
+    if ($terminalScriptContent -match 'Merge-TerminalHashtable' -and $terminalScriptContent -match 'ConvertFrom-Json -AsHashtable') {
+        Pass "Windows Terminal setup implements deep JSON merge strategy"
+    } else {
+        Fail "Terminal setup merge strategy" "Deep JSON merge strategy missing in terminal-setup.ps1"
+    }
+
+    # 3. Test setup.ps1 and bootstrap.ps1 dry-run execution
+    $setupScriptPath = Join-Path $RootDir "setup.ps1"
+    try {
+        & $setupScriptPath -DryRun | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun mode"
+    } catch {
+        Fail "setup.ps1 dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -DotfilesOnly | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -DotfilesOnly mode"
+    } catch {
+        Fail "setup.ps1 dotfiles-only dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -SystemOnly | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -SystemOnly mode"
+    } catch {
+        Fail "setup.ps1 system-only dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -WithGUI | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -WithGUI mode"
+    } catch {
+        Fail "setup.ps1 with-gui dry-run" $_.Exception.Message
+    }
+
+    $bootstrapScriptPath = Join-Path $RootDir "bootstrap.ps1"
+    if (Test-Path $bootstrapScriptPath) {
+        Pass "bootstrap.ps1 exists in repository root"
+        try {
+            & $bootstrapScriptPath -DryRun -SkipPackages | Out-Null
+            Pass "bootstrap.ps1 executes cleanly in -DryRun -SkipPackages mode"
+        } catch {
+            Fail "bootstrap.ps1 dry-run" $_.Exception.Message
+        }
+    } else {
+        Fail "bootstrap.ps1 missing" "bootstrap.ps1 not found in repository root"
     }
 } finally {
     if (Test-Path $sandboxDir) {

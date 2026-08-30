@@ -38,6 +38,9 @@ Any agent modifying this repository must follow these core principles.
 - **Idempotency Requirement**:
   - Running setup scripts repeatedly must not corrupt configuration files, create duplicate profile blocks, or generate redundant backups when the file content has not changed.
   - Sourcing profiles or re-running installers must be safe to execute multiple times in the same session.
+- **Support `-DryRun` and Granular Execution Switches**:
+  - All provisioning and setup logic in `setup.ps1`, `bootstrap.ps1`, and sub-scripts must support `-DryRun` preview mode without mutating files, registry entries, or system state.
+  - Provide modular execution switches: `-Bootstrap`, `-DotfilesOnly`, `-SystemOnly`, `-WithGUI` (GUI applications disabled by default).
 - **Preserve Unrelated Configuration**:
   - When modifying configuration files (e.g., Windows Terminal `settings.json`, PowerShell `$PROFILE`, Vim `_vimrc`), preserve existing user custom profiles, keybindings, actions, or third-party settings unless explicitly instructed to overwrite or replace them.
 - **Graceful Failure & Error Handling**:
@@ -51,6 +54,7 @@ Any agent modifying this repository must follow these core principles.
 - **High-Speed Shell Startup**:
   - The PowerShell profile (`posh/Microsoft.PowerShell_profile.ps1`) must remain lightning fast.
   - Heavy initializations (e.g. Oh My Posh initialization scripts, CLI completions) must be compiled and cached to disk in `$HOME\.cache\powershell\` to maintain sub-second startup times.
+  - Dynamic Go workspace paths (`go env GOPATH`) must be resolved safely without slowing shell startup.
 - **PSScriptAnalyzer Compliance**:
   - All PowerShell scripts (`.ps1`) must pass static analysis configured in `PSScriptAnalyzerSettings.psd1` with zero errors or warnings.
 - **Solarized Dark & Powerline Theme Integrity**:
@@ -63,11 +67,15 @@ Any agent modifying this repository must follow these core principles.
 
 ## 4. Cross-Platform Parity with `home-settings`
 
-- **Maintain Alias & Shortcut Parity**:
-  - Maintain the Oh My Zsh Git plugin suite and custom workflow helpers (`gco`, `gcb`, `gcm`, `ga`, `gst`, `gcommit`, `gamend`, `gup`, `gprune`, `gsync`, `fix-abcxyz-branch-name`).
-  - Maintain developer shortcuts (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fs`, `Format-PathTree`, `ll`, `la`).
-- **Native Utilities & Vim Snippets Parity**:
-  - Ensure all ported utilities in `bin/` (`gen-passwd`, `repeat-until-success`, `sum`) match the behavior, arguments, and pipeline support of their `home-settings` equivalents.
+- **Maintain Kebab-Case Naming with Backward Compatibility**:
+  - Maintain the Oh My Zsh Git plugin suite and custom workflow helpers (`gco`, `gcb`, `gcm`, `ga`, `gst`, `gcommit`, `gamend`, `gup`, `gprune`, `gsync`, `guser-branch`).
+  - Maintain developer shortcuts: `go-testall`, `go-buildall`, `go-lint`, `yaml-lint`, `fs`, `Format-PathTree`, `ll`, `la`.
+  - Provide backward-compatible wrappers for legacy aliases (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fix-abcxyz-branch-name`).
+  - `guser-branch` must cleanly strip redundant user prefixes (`$env:USERNAME/` or `$env:USER/`) before renaming.
+- **Native Utilities & Scope Boundaries**:
+  - Ported native utilities in `bin/` (`gen-passwd`, `repeat-until-success`, `sum`) must match the behavior and arguments of their `home-settings` equivalents with dual `.ps1` and `.cmd` wrappers.
+  - **uutils-coreutils Integration**: Provision `uutils.coreutils` and `uutils.diffutils` via `winget`. The PowerShell profile must un-alias conflicting text cmdlet aliases (`cat`, `sort`, `tee`, `diff`, `echo`, `sleep`) when `coreutils` is detected, enabling direct native Rust binary invocation while preserving custom arithmetic `sum`.
+  - **Explicit User Exclusions**: `mvn-release` and `code-style/` are intentionally omitted from `windows-settings`.
   - Install curated community snippets via `honza/vim-snippets` bundle under Pathogen, eliminating the need to store snippet files in the repository.
 
 ---
@@ -104,15 +112,15 @@ Before completing any task:
    ```powershell
    pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all 93 tests pass across all 8 test modules:
+   Ensure all 110 tests pass across all 8 test modules:
    - `[1/8]` PowerShell Script Syntax
    - `[2/8]` JSON Validity & Schema Verification
-   - `[3/8]` Profile Sourcing, Aliases & PSReadLine
+   - `[3/8]` Profile Sourcing, Aliases, PSReadLine & uutils Integration
    - `[4/8]` Native CLI Utilities & Pipeline Handling
-   - `[5/8]` Git Workflow Behavior (`gsync`, `gprune`, `fix-abcxyz-branch-name`)
+   - `[5/8]` Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)
    - `[6/8]` Completions & Oh My Posh Rendering
    - `[7/8]` Path Invariants & Dual Execution Wrappers
-   - `[8/8]` Setup Script Idempotency & Backup Policy
+   - `[8/8]` Setup Script Idempotency, DryRun & Backup Policy
 3. **Verify Path Invariants**:
    Inspect `git diff` to confirm no hardcoded personal usernames or machine-specific paths were introduced.
 4. **Update Documentation**:
