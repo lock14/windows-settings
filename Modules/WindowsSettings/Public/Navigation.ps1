@@ -129,7 +129,15 @@ function fs {
     }
 }
 
-# Initialize Zoxide (Smart directory jumping)
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& zoxide init powershell | Out-String)
+# Initialize Zoxide (Smart directory jumping with compiled cache)
+$zoxideCache = "$HOME\.cache\powershell\zoxide_init.ps1"
+if (Test-Path $zoxideCache) {
+    . $zoxideCache
+} elseif (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    $cacheDir = "$HOME\.cache\powershell"
+    if (-not (Test-Path $cacheDir)) {
+        New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+    }
+    zoxide init powershell | Out-File -FilePath $zoxideCache -Encoding utf8 -Force
+    . $zoxideCache
 }
