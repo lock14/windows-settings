@@ -3,7 +3,9 @@
     Downloads and installs MesloLGS NF fonts for the current user.
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$DryRun
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -16,7 +18,7 @@ $fonts = @(
 )
 
 $userFontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
-if (-not (Test-Path $userFontsDir)) {
+if (-not $DryRun -and -not (Test-Path $userFontsDir)) {
     New-Item -ItemType Directory -Force -Path $userFontsDir | Out-Null
 }
 
@@ -28,6 +30,17 @@ foreach ($font in $fonts) {
     $destPath = Join-Path $userFontsDir $font
     $encodedFont = [System.Uri]::EscapeDataString($font)
     $fontUrl = "$baseUrl/$encodedFont"
+    $fontName = [System.IO.Path]::GetFileNameWithoutExtension($font) + " (TrueType)"
+
+    if ($DryRun) {
+        if (-not (Test-Path $destPath)) {
+            Write-Host "  [DryRun] Would download $font to $destPath" -ForegroundColor DarkCyan
+        } else {
+            Write-Host "  [DryRun] $font already downloaded." -ForegroundColor DarkCyan
+        }
+        Write-Host "  [DryRun] Would register font $fontName in $registryKey" -ForegroundColor DarkCyan
+        continue
+    }
 
     if (-not (Test-Path $destPath)) {
         Write-Host "Downloading $font..." -ForegroundColor Yellow
@@ -37,7 +50,6 @@ foreach ($font in $fonts) {
     }
 
     # Register in user registry
-    $fontName = [System.IO.Path]::GetFileNameWithoutExtension($font) + " (TrueType)"
     Set-ItemProperty -Path $registryKey -Name $fontName -Value $destPath -ErrorAction SilentlyContinue
 }
 

@@ -7,10 +7,12 @@
 [CmdletBinding()]
 param(
     [switch]$IncludeGUI,
+    [switch]$WithGUI,
     [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
+$enableGUI = $IncludeGUI -or $WithGUI
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     Write-Error "winget is required but was not found. Please install the Windows App Installer."
@@ -19,6 +21,8 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 
 # Core CLI Developer Packages
 $cliPackages = @(
+    'uutils.coreutils',
+    'uutils.diffutils',
     'Git.Git',
     'GitHub.cli',
     'JanDeDobbeleer.OhMyPosh',
@@ -41,7 +45,7 @@ $guiPackages = @(
 )
 
 $targetPackages = $cliPackages
-if ($IncludeGUI) {
+if ($enableGUI) {
     $targetPackages += $guiPackages
 }
 

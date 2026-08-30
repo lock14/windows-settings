@@ -75,9 +75,9 @@ if (Get-Module -ListAvailable -Name PSReadLine) {
 # 3. Developer Tool Aliases (Go, Terraform, YAML, Search)
 # -------------------------------------------------------------
 # Go
-function go_testall  { go test ./... @args }
-function go_buildall { go build ./... @args }
-function go_lint {
+function go-testall  { go test ./... @args }
+function go-buildall { go build ./... @args }
+function go-lint {
     $cacheDir = if ($env:XDG_CACHE_HOME) { "$env:XDG_CACHE_HOME" } else { "$HOME\.cache" }
     if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
     $cfg = Join-Path $cacheDir "golangci.yml"
@@ -87,12 +87,55 @@ function go_lint {
     golangci-lint run -c $cfg @args
 }
 
+# Dynamic Go workspace bin path
+if (Get-Command go -ErrorAction SilentlyContinue) {
+    $goPath = (go env GOPATH 2>$null)
+    if ($goPath) {
+        $goBin = Join-Path $goPath.Trim() "bin"
+        if (Test-Path $goBin) {
+            if ($env:Path -notlike "*$goBin*") {
+                $env:Path = "$env:Path;$goBin"
+            }
+        }
+    }
+} elseif ($env:GOPATH) {
+    $goBin = Join-Path $env:GOPATH "bin"
+    if (Test-Path $goBin) {
+        if ($env:Path -notlike "*$goBin*") {
+            $env:Path = "$env:Path;$goBin"
+        }
+    }
+} elseif (Test-Path "$HOME\go\bin") {
+    $goBin = "$HOME\go\bin"
+    if ($env:Path -notlike "*$goBin*") {
+        $env:Path = "$env:Path;$goBin"
+    }
+}
+
 # Terraform & YAML & Editors
 Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
 Set-Alias -Name vi -Value vim -ErrorAction SilentlyContinue
-function yaml_lint { yamllint -c "$HOME\.yamllint.yml" @args }
+function yaml-lint { yamllint -c "$HOME\.yamllint.yml" @args }
 
-# Directory Listing (Ubuntu style)
+# Backward compatibility wrappers for legacy snake_case aliases
+function go_testall  { go-testall @args }
+function go_buildall { go-buildall @args }
+function go_lint     { go-lint @args }
+function yaml_lint   { yaml-lint @args }
+
+# Directory Listing (Ubuntu style with Solarized Dark color)
+if (Test-Path "Alias:ls") { Remove-Item "Alias:ls" -Force -ErrorAction SilentlyContinue }
+
+function ls {
+    if (Get-Command 'C:\Program Files\coreutils\cmd\ls.cmd' -ErrorAction SilentlyContinue) {
+        & 'C:\Program Files\coreutils\cmd\ls.cmd' --color=auto @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto @args
+    } else {
+        Get-ChildItem @args
+    }
+}
+
 function ll {
     if (Get-Command 'C:\Program Files\coreutils\cmd\ls.cmd' -ErrorAction SilentlyContinue) {
         & 'C:\Program Files\coreutils\cmd\ls.cmd' --color=auto -alFh @args
@@ -246,13 +289,17 @@ function gprune {
     }
 }
 
-function fix-abcxyz-branch-name {
+function guser-branch {
     $user = if ($env:USER) { $env:USER } else { $env:USERNAME }
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
     if ($branch) {
-        git branch -m "$user/$($branch.Trim())"
+        $branchName = $branch.Trim()
+        $cleanBranch = $branchName -replace "^($([regex]::Escape($user))/)+", ""
+        git branch -m "$user/$cleanBranch"
     }
 }
+
+function fix-abcxyz-branch-name { guser-branch @args }
 
 function gsync {
     $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
@@ -338,4 +385,38 @@ $completionsScript = if ($PSScriptRoot) {
 }
 if (Test-Path $completionsScript) {
     . $completionsScript
+}
+
+# -------------------------------------------------------------
+# 8. uutils-coreutils Integration (Rust GNU Coreutils)
+# -------------------------------------------------------------
+$wingetLinksDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
+if (Test-Path $wingetLinksDir) {
+    if ($env:Path -notlike "*$wingetLinksDir*") {
+        $env:Path = "$wingetLinksDir;$env:Path"
+    }
+}
+
+$wingetPackagesDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+if (Test-Path $wingetPackagesDir) {
+    Get-ChildItem -Path $wingetPackagesDir -Filter "*uutils*" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $binDir = $_.FullName
+        $subDirs = Get-ChildItem -Path $binDir -Directory -ErrorAction SilentlyContinue
+        if ($subDirs.Count -gt 0) {
+            $binDir = $subDirs[0].FullName
+        }
+        if ($env:Path -notlike "*$binDir*") {
+            $env:Path = "$binDir;$env:Path"
+        }
+    }
+}
+
+if ((Get-Command coreutils -ErrorAction SilentlyContinue) -or (Test-Path "$wingetLinksDir\coreutils.exe")) {
+    # Remove legacy PowerShell text cmdlet aliases so high-performance Rust uutils binaries execute directly
+    $uutilsAliases = @('cat', 'sort', 'tee', 'diff', 'echo', 'sleep', 'ls')
+    foreach ($a in $uutilsAliases) {
+        if (Test-Path "Alias:$a") {
+            Remove-Item -Path "Alias:$a" -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
