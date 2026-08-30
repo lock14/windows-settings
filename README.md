@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
 
-Modern Windows developer workstation configuration and setup automation for **PowerShell 7+**, **Starship**, **Neovim**, and **Windows Terminal**.
+Modern Windows developer workstation configuration and setup automation for **PowerShell 7+**, **Oh My Posh**, **Neovim**, and **Windows Terminal**.
 
 ---
 
@@ -11,7 +11,8 @@ Modern Windows developer workstation configuration and setup automation for **Po
 ```text
 windows-settings/
 ├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
-├── starship.toml                  # Blazing fast cross-shell prompt (Solarized Powerlevel10k 1:1)
+├── posh/p10k.omp.json             # Single-line Powerlevel10k Solarized Dark theme
+├── starship.toml                  # Optional cross-shell Starship prompt config
 ├── mise.toml                      # Declarative polyglot toolchains (Go, Python, Terraform, Node)
 ├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
 ├── setup.ps1                      # Master setup engine
@@ -85,7 +86,7 @@ cd windows-settings
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `-Bootstrap` | *disabled* | Full new machine bootstrap (packages, fonts, starship, module, terminal, nvim) |
+| `-Bootstrap` | *disabled* | Full new machine bootstrap (packages, fonts, prompt, module, terminal, nvim) |
 | `-DotfilesOnly` | *disabled* | Configure user dotfiles, fonts, nvim, terminal, and shell module only (no package install) |
 | `-SystemOnly` | *disabled* | Provision winget packages and CLI tools only |
 | `-UseDSC` | *disabled* | Provision workstation packages using declarative WinGet DSC manifest (`configuration.dsc.yaml`) |
@@ -93,7 +94,7 @@ cd windows-settings
 | `-WithGUI` / `-IncludeGUI` | *disabled* | Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget) |
 | `-SkipPackages` | *disabled* | Skip winget package installation |
 | `-SkipFonts` | *disabled* | Skip MesloLGS NF font installation |
-| `-SkipPosh` | *disabled* | Skip Starship & PowerShell module configuration |
+| `-SkipPosh` | *disabled* | Skip Oh My Posh & PowerShell module configuration |
 | `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
 | `-SkipTerminal` | *disabled* | Skip Windows Terminal settings & JSON fragment deployment |
 | `-SkipVim` | *disabled* | Skip Neovim & Vim configuration |
@@ -103,10 +104,12 @@ cd windows-settings
 
 ## What's Included
 
-### 1. Starship Prompt (`starship.toml`)
-- Recreates the single-line Powerlevel10k Solarized Dark prompt with **<1ms render latency**.
+### 1. Single-Line Powerlevel10k Prompt (`posh/p10k.omp.json`)
+- Flawless dynamic Powerline transitions powered by **Oh My Posh**.
+- **Dynamic Git State Shifting**: Turns **Green** when clean, **Yellow** when modified/staged, **Orange** when diverged, **Cyan** when ahead.
 - Left side: OS glyph $\to$ Directory (``) $\to$ Git branch & status.
 - Right side (`rprompt`): Node, Go, Python, .NET, Rust, AWS context, execution duration, and exit status.
+- **High-Speed Disk Caching**: Compiles prompt hook into `$HOME\.cache\powershell\omp_init.ps1` for sub-second startup (<10ms).
 
 ### 2. First-Class PowerShell Module (`WindowsSettings`)
 - Clean autoloaded PowerShell Module (`$HOME\Documents\PowerShell\Modules\WindowsSettings`).

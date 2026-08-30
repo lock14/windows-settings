@@ -18,7 +18,7 @@
     Author = 'Brian Bechtel'
 
     # Description of the functionality provided by this module
-    Description = 'Modern Windows Developer Workstation Shell Module (Starship, Git, eza, zoxide, uutils, completions)'
+    Description = 'Modern Windows Developer Workstation Shell Module (Oh My Posh, Git, eza, zoxide, uutils, completions)'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '7.0'

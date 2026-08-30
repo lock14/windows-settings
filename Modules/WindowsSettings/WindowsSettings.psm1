@@ -66,21 +66,32 @@ if ((Get-Command coreutils -ErrorAction SilentlyContinue) -or (Test-Path "$winge
 }
 
 # -------------------------------------------------------------
-# 3. Prompt Engine (Starship / Oh My Posh Fallback)
+# 3. Prompt Engine (Oh My Posh Single-Line Powerlevel10k)
 # -------------------------------------------------------------
-$starshipConfig = Join-Path (Split-Path -Parent (Split-Path -Parent $ModuleRoot)) "starship.toml"
-if (Get-Command starship -ErrorAction SilentlyContinue) {
+if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+    $themePath = "$HOME\.poshthemes\p10k_single_line.omp.json"
+    $ompCacheDir = "$HOME\.cache\powershell"
+    $ompInit = "$ompCacheDir\omp_init.ps1"
+
+    if (Test-Path $themePath) {
+        if (-not (Test-Path $ompInit) -or ((Get-Item $themePath).LastWriteTime -gt (Get-Item $ompInit).LastWriteTime)) {
+            if (-not (Test-Path $ompCacheDir)) {
+                New-Item -ItemType Directory -Force -Path $ompCacheDir | Out-Null
+            }
+            oh-my-posh init pwsh --config $themePath --print | Out-File -FilePath $ompInit -Encoding utf8 -Force
+        }
+        if (Test-Path $ompInit) {
+            . $ompInit
+        }
+    } else {
+        oh-my-posh init pwsh | Invoke-Expression
+    }
+} elseif (Get-Command starship -ErrorAction SilentlyContinue) {
+    $starshipConfig = Join-Path (Split-Path -Parent (Split-Path -Parent $ModuleRoot)) "starship.toml"
     if (Test-Path $starshipConfig) {
         $env:STARSHIP_CONFIG = $starshipConfig
     }
     Invoke-Expression (& starship init powershell | Out-String)
-} elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-    $themePath = "$HOME\.poshthemes\p10k_single_line.omp.json"
-    if (Test-Path $themePath) {
-        oh-my-posh init pwsh --config $themePath | Invoke-Expression
-    } else {
-        oh-my-posh init pwsh | Invoke-Expression
-    }
 }
 
 # -------------------------------------------------------------

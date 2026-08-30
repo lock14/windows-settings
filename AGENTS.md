@@ -1,6 +1,6 @@
 # Agent Guidelines for windows-settings
 
-This repository contains workstation configuration files, prompt themes, Windows Terminal settings, CLI tab completions, and setup automation for **PowerShell 7+**, **Starship**, **Neovim**, and **Windows Terminal** on Windows.
+This repository contains workstation configuration files, prompt themes, Windows Terminal settings, CLI tab completions, and setup automation for **PowerShell 7+**, **Oh My Posh**, **Neovim**, and **Windows Terminal** on Windows.
 
 Any agent modifying this repository must follow these core principles.
 
@@ -58,7 +58,7 @@ Any agent modifying this repository must follow these core principles.
 - **PSScriptAnalyzer Compliance**:
   - All PowerShell scripts (`.ps1`, `.psm1`, `.psd1`) must pass static analysis configured in `PSScriptAnalyzerSettings.psd1` with zero errors or warnings.
 - **Solarized Dark & Powerline Theme Integrity**:
-  - All visual components—Starship prompt (`starship.toml`), Windows Terminal color schemes & fragments, `PSReadLine` syntax and prediction colors, `colors/LS_COLORS`, and Neovim Lua styling—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
+  - All visual components—Oh My Posh prompt (`posh/p10k.omp.json`), Windows Terminal color schemes & fragments, `PSReadLine` syntax and prediction colors, `colors/LS_COLORS`, and Neovim Lua styling—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
 - **Declarative Provisioning**:
   - Workstation tools are declared in `configuration.dsc.yaml` (Microsoft DSC v3) and `mise.toml` (polyglot runtime toolchains).
 
