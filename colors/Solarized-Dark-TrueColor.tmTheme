@@ -27,6 +27,7 @@
 				<string>#586E75</string>
 			</dict>
 		</dict>
+		<!-- Comments (Solarized Base01 italic) -->
 		<dict>
 			<key>name</key>
 			<string>Comment</string>
@@ -40,6 +41,7 @@
 				<string>#586E75</string>
 			</dict>
 		</dict>
+		<!-- Strings (Solarized Cyan) -->
 		<dict>
 			<key>name</key>
 			<string>String</string>
@@ -51,6 +53,7 @@
 				<string>#2AA198</string>
 			</dict>
 		</dict>
+		<!-- Numbers & Constants (Solarized Magenta) -->
 		<dict>
 			<key>name</key>
 			<string>Number</string>
@@ -64,7 +67,7 @@
 		</dict>
 		<dict>
 			<key>name</key>
-			<string>Built-in constant</string>
+			<string>Built-in Constant</string>
 			<key>scope</key>
 			<string>constant.language, constant.character, constant.other</string>
 			<key>settings</key>
@@ -73,92 +76,64 @@
 				<string>#D33682</string>
 			</dict>
 		</dict>
+		<!-- Keywords & Declarations (Solarized Green) -->
 		<dict>
 			<key>name</key>
 			<string>Keyword</string>
 			<key>scope</key>
-			<string>keyword, keyword.control, keyword.operator.new, keyword.operator.expression</string>
+			<string>keyword, storage.type, storage.modifier</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
 				<string>#859900</string>
 			</dict>
 		</dict>
+		<!-- Operators (Base0, matching Neovim) -->
 		<dict>
 			<key>name</key>
-			<string>Storage</string>
+			<string>Operator</string>
 			<key>scope</key>
-			<string>storage, storage.type, storage.modifier</string>
-			<key>settings</key>
-			<dict>
-				<key>foreground</key>
-				<string>#859900</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>name</key>
-			<string>Type</string>
-			<key>scope</key>
-			<string>entity.name.type, entity.name.class, entity.name.struct, support.type, support.class</string>
-			<key>settings</key>
-			<dict>
-				<key>foreground</key>
-				<string>#B58900</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>name</key>
-			<string>Function name</string>
-			<key>scope</key>
-			<string>entity.name.function, support.function, variable.function</string>
-			<key>settings</key>
-			<dict>
-				<key>foreground</key>
-				<string>#268BD2</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>name</key>
-			<string>Variable</string>
-			<key>scope</key>
-			<string>variable, variable.other, variable.parameter</string>
+			<string>keyword.operator, punctuation</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
 				<string>#839496</string>
 			</dict>
 		</dict>
+		<!-- Built-in Primitive Types (Solarized Yellow) -->
 		<dict>
 			<key>name</key>
-			<string>Operator</string>
+			<string>Built-in Type</string>
 			<key>scope</key>
-			<string>keyword.operator, punctuation.separator</string>
+			<string>support.type.builtin, support.type.primitive, support.type</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
-				<string>#859900</string>
+				<string>#B58900</string>
 			</dict>
 		</dict>
+		<!-- Custom Types & Struct Names (Base0, matching Neovim) -->
 		<dict>
 			<key>name</key>
-			<string>Tag name</string>
+			<string>Custom Type</string>
 			<key>scope</key>
-			<string>entity.name.tag, meta.tag</string>
+			<string>entity.name.type, entity.name.class, entity.name.struct, entity.name.type.parameter, variable.other.type</string>
+			<key>settings</key>
+			<dict>
+				<key>foreground</key>
+				<string>#839496</string>
+			</dict>
+		</dict>
+		<!-- Functions (Solarized Blue) -->
+		<dict>
+			<key>name</key>
+			<string>Function name</string>
+			<key>scope</key>
+			<string>entity.name.function, support.function</string>
 			<key>settings</key>
 			<dict>
 				<key>foreground</key>
 				<string>#268BD2</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>name</key>
-			<string>Header / PreProc</string>
-			<key>scope</key>
-			<string>meta.preprocessor, keyword.control.import</string>
-			<key>settings</key>
-			<dict>
-				<key>foreground</key>
-				<string>#CB4B16</string>
 			</dict>
 		</dict>
 	</array>
