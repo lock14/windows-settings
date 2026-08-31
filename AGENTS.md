@@ -137,7 +137,23 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 
 ---
 
-## 8. Verification Checklist for Agents
+## 8. CLI Execution & Markdown Escaping Safety
+
+- **Avoid Inline Backtick Expansion in PowerShell Commands**:
+  - In PowerShell (`pwsh`), the backtick (`` ` ``) is the native escape character.
+  - When passing markdown strings containing inline code (e.g. `` `eza` ``, `` `node` ``) within double quotes (`"..."`), PowerShell evaluates the backticks as escape sequences:
+    - `` `e `` expands to the ANSI escape character (`^[`)
+    - `` `n `` expands to newline
+    - `` `t `` expands to tab
+    - Resulting in corrupted text, missing backticks, and unwanted escape characters in GitHub PRs, issues, or commit bodies.
+- **Mandatory Safe Markdown Invocation Patterns**:
+  1. **File-Based Arguments (`--body-file`)**: When creating or editing PRs/issues via GitHub CLI (`gh`), always write the markdown body to a temporary file first and pass `--body-file <path>`.
+  2. **Single-Quoted Strings & Here-Strings**: When passing inline markdown, always enclose it in single quotes (`'...'`) or single-quoted here-strings (`@' ... '@`) where PowerShell performs zero escape interpretation.
+  3. **Never Use Double Quotes with Markdown Backticks**: Never execute `gh pr create --body "..."` with embedded backticks.
+
+---
+
+## 9. Verification Checklist for Agents
 
 Before completing any task:
 1. **Run Static Analysis**:
