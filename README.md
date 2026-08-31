@@ -133,6 +133,7 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 | :--- | :--- |
 | `Ctrl+R` | Interactive fuzzy search command history via `fzf` |
 | `z <dir>` | Smart jump to directory via `zoxide` |
+| `cat <file>` | Syntax-highlighted file viewing via `bat` |
 | `gco` | `git checkout` |
 | `gcb` | `git checkout -b` |
 | `gcm` | `git checkout main` (or `master`) |

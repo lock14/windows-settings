@@ -130,7 +130,7 @@ $expectedFunctions = @(
     # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
     'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
     'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
-    'fs', 'Format-PathTree', 'ls', 'll', 'la', 'lt',
+    'cat', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'lt',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',

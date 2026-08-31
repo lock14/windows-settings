@@ -33,7 +33,7 @@
         'fix-abcxyz-branch-name', 'gsync',
         'go-testall', 'go-buildall', 'go-lint', 'yaml-lint',
         'go_testall', 'go_buildall', 'go_lint', 'yaml_lint',
-        'ls', 'll', 'la', 'lt', 'Format-PathTree', 'fs',
+        'cat', 'ls', 'll', 'la', 'lt', 'Format-PathTree', 'fs',
         'gen-passwd', 'repeat-until-success', 'sum'
     )
 

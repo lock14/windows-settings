@@ -83,4 +83,29 @@ foreach ($pkg in $targetPackages) {
     winget install --id $pkg -e --source winget --accept-package-agreements --accept-source-agreements
 }
 
+# Ensure portable WinGet packages are linked to WinGet Links directory
+$linksDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+$pkgDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages"
+if (Test-Path $pkgDir) {
+    if (-not (Test-Path $linksDir)) {
+        if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $linksDir | Out-Null }
+    }
+    $exes = Get-ChildItem -Path $pkgDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+    foreach ($exe in $exes) {
+        $targetLink = Join-Path $linksDir $exe.Name
+        if (-not (Test-Path $targetLink)) {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would link $($exe.Name) into $linksDir" -ForegroundColor DarkCyan
+            } else {
+                try {
+                    New-Item -ItemType HardLink -Path $targetLink -Target $exe.FullName -Force -ErrorAction SilentlyContinue | Out-Null
+                } catch {
+                    Copy-Item -Path $exe.FullName -Destination $targetLink -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+}
+
 Write-Host "`n==> Workstation provisioning complete!" -ForegroundColor Green
+
