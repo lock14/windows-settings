@@ -41,7 +41,7 @@
     CmdletsToExport = @()
 
     # Variables to export from this module
-    VariablesToExport = @('LS_COLORS', 'STARSHIP_CONFIG')
+    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'STARSHIP_CONFIG')
 
     # Aliases to export from this module
     AliasesToExport = @('tf', 'vi')
