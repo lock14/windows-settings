@@ -6,6 +6,28 @@ Modern Windows developer workstation configuration and setup automation for **Po
 
 ---
 
+## Showcase
+
+<p align="center">
+  <img src="assets/prompt.png" alt="Oh My Posh & Modern Directory Trees" width="850">
+  <br>
+  <em>Oh My Posh Powerline prompt, predictive IntelliSense, and <code>eza</code> directory tree</em>
+</p>
+
+<p align="center">
+  <img src="assets/bat.png" alt="24-bit TrueColor Syntax Highlighting via bat" width="850">
+  <br>
+  <em>24-bit TrueColor syntax highlighting and Git gutter integration via <code>bat</code> / <code>cat</code></em>
+</p>
+
+<p align="center">
+  <img src="assets/nvim.png" alt="Modern Lua Neovim in Solarized Dark with Native LSP" width="850">
+  <br>
+  <em>Modern Lua Neovim in Solarized Dark with Native LSP (Go, Terraform, Python) and Treesitter AST highlighting</em>
+</p>
+
+---
+
 ## Architecture Overview
 
 ```text
