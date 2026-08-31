@@ -152,6 +152,16 @@ if (-not $SkipBin) {
             Write-Host "  $binDir is already in User PATH." -ForegroundColor Green
         }
     }
+    # Ensure COLORTERM=truecolor is set in User Environment for 24-bit TrueColor CLI rendering
+    $userColorTerm = [Environment]::GetEnvironmentVariable('COLORTERM', 'User')
+    if ($userColorTerm -ne 'truecolor') {
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would set User environment variable COLORTERM=truecolor" -ForegroundColor DarkCyan
+        } else {
+            [Environment]::SetEnvironmentVariable('COLORTERM', 'truecolor', 'User')
+            $env:COLORTERM = 'truecolor'
+        }
+    }
 } else {
     Write-Host "`n[6/6] Skipping User PATH configuration." -ForegroundColor DarkCyan
 }
