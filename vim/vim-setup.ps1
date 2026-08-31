@@ -1,115 +1,97 @@
 <#
 .SYNOPSIS
-    Installs Vim, deploys _vimrc configuration, and provisions plugins.
-.DESCRIPTION
-    Ported from home-settings/vim-setup.sh for Windows.
+    Configures modern Lua Neovim and legacy Vim runtime environments.
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$DryRun
+)
 
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRootDir = Split-Path -Parent $ScriptDir
 
-Write-Host "==> Checking Vim installation..." -ForegroundColor Cyan
+# -------------------------------------------------------------
+# 1. Modern Lua Neovim Setup
+# -------------------------------------------------------------
+Write-Host "==> Checking Neovim configuration..." -ForegroundColor Cyan
+$nvimSource = Join-Path $RepoRootDir "config\nvim"
+$nvimDest = Join-Path $env:LOCALAPPDATA "nvim"
 
-# Install Vim via winget if missing
-if (-not (Get-Command vim -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:LOCALAPPDATA\Programs\Vim\vim.exe")) {
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-Host "Installing Vim via winget..." -ForegroundColor Yellow
-        winget install --id vim.vim -e --source winget --accept-package-agreements --accept-source-agreements
+if (Test-Path $nvimSource) {
+    if (-not (Test-Path $nvimDest)) {
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would deploy Neovim configuration to $nvimDest" -ForegroundColor DarkCyan
+        } else {
+            Write-Host "Deploying Neovim configuration to $nvimDest..." -ForegroundColor Cyan
+            Copy-Item -Path $nvimSource -Destination $nvimDest -Recurse -Force
+            Write-Host "==> Neovim configuration deployed successfully!" -ForegroundColor Green
+        }
     } else {
-        Write-Warning "winget not found. Please install Vim manually."
+        # Check if init.lua differs
+        $sourceInit = Join-Path $nvimSource "init.lua"
+        $destInit = Join-Path $nvimDest "init.lua"
+        $isDiff = $true
+        if (Test-Path $destInit) {
+            $isDiff = ((Get-Content $sourceInit -Raw).Trim() -ne (Get-Content $destInit -Raw).Trim())
+        }
+
+        if ($isDiff) {
+            $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $backupNvim = "$nvimDest.bak_$timestamp"
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would backup $nvimDest to $backupNvim" -ForegroundColor DarkCyan
+                Write-Host "  [DryRun] Would update Neovim configuration at $nvimDest" -ForegroundColor DarkCyan
+            } else {
+                Write-Host "Backing up existing Neovim config to $backupNvim..." -ForegroundColor Yellow
+                Copy-Item -Path $nvimDest -Destination $backupNvim -Recurse -Force
+                Copy-Item -Path "$nvimSource\*" -Destination $nvimDest -Recurse -Force
+                Write-Host "==> Neovim configuration updated successfully!" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "==> Neovim configuration at $nvimDest is already up to date." -ForegroundColor Green
+        }
     }
 }
 
-# Ensure Vim directory is in User PATH
-$vimDir = "$env:LOCALAPPDATA\Programs\Vim"
-if (Test-Path $vimDir) {
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $pathParts = if ($userPath) { $userPath -split ';' } else { @() }
-    if ($pathParts -notcontains $vimDir) {
-        Write-Host "Adding Vim ($vimDir) to User PATH..." -ForegroundColor Cyan
-        $newPath = ($pathParts + $vimDir) -join ';'
-        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-        $env:Path = "$env:Path;$vimDir"
-    }
-}
-
-# Setup Vim Runtime Directory & Pathogen ($HOME\.vim)
-$vimDir = Join-Path $HOME '.vim'
-$autoload = Join-Path $vimDir 'autoload'
-$bundle = Join-Path $vimDir 'bundle'
-if (-not (Test-Path $autoload)) {
-    New-Item -ItemType Directory -Force -Path $autoload | Out-Null
-}
-if (-not (Test-Path $bundle)) {
-    New-Item -ItemType Directory -Force -Path $bundle | Out-Null
-}
-
-# Clean up legacy redundant vimfiles and standalone UltiSnips directory if present
-$legacyVimfiles = Join-Path $HOME 'vimfiles'
-if (Test-Path $legacyVimfiles) {
-    Remove-Item -Recurse -Force -Path $legacyVimfiles -ErrorAction SilentlyContinue
-}
-$legacyUltiSnips = Join-Path $vimDir 'UltiSnips'
-if (Test-Path $legacyUltiSnips) {
-    Remove-Item -Recurse -Force -Path $legacyUltiSnips -ErrorAction SilentlyContinue
-}
-
-# Install Pathogen
-$pathogenFile = Join-Path $autoload 'pathogen.vim'
-if (-not (Test-Path $pathogenFile)) {
-    Write-Host "Installing Pathogen to $pathogenFile..." -ForegroundColor Cyan
-    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim' -OutFile $pathogenFile -UseBasicParsing
-}
-
-# Install Vim Bundles (auto-pairs for brace matching, solarized, ultisnips, vim-snippets, supertab)
-$plugins = @(
-    @{ Name = 'auto-pairs'; Url = 'https://github.com/jiangmiao/auto-pairs.git' },
-    @{ Name = 'vim-colors-solarized'; Url = 'https://github.com/altercation/vim-colors-solarized.git' },
-    @{ Name = 'ultisnips'; Url = 'https://github.com/SirVer/ultisnips.git' },
-    @{ Name = 'vim-snippets'; Url = 'https://github.com/honza/vim-snippets.git' },
-    @{ Name = 'supertab'; Url = 'https://github.com/ervandew/supertab.git' }
+# -------------------------------------------------------------
+# 2. Legacy Vim Setup (_vimrc & Pathogen Bundles)
+# -------------------------------------------------------------
+Write-Host "==> Checking legacy Vim installation..." -ForegroundColor Cyan
+$vimrcSource = Join-Path $ScriptDir "_vimrc"
+$destinations = @(
+    (Join-Path $HOME "_vimrc"),
+    (Join-Path $HOME ".vimrc")
 )
 
-foreach ($p in $plugins) {
-    $dest = Join-Path $bundle $p.Name
-    if (-not (Test-Path "$dest\.git")) {
-        Write-Host "Cloning $($p.Name) into $dest..." -ForegroundColor Cyan
-        git clone --depth=1 $p.Url $dest
-    }
-}
-
-# Deploy _vimrc configuration
-$vimrcSource = Join-Path $ScriptDir '_vimrc'
 if (Test-Path $vimrcSource) {
     $sourceContent = Get-Content $vimrcSource -Raw
-    $destFiles = @(
-        (Join-Path $HOME '_vimrc'),
-        (Join-Path $HOME '.vimrc')
-    )
-
-    foreach ($dest in $destFiles) {
+    foreach ($dest in $destinations) {
         if (Test-Path $dest) {
             $existingContent = Get-Content $dest -Raw
             if ($existingContent -ne $sourceContent) {
                 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
                 $backupFile = "$dest.bak_$timestamp"
-                Write-Host "Backing up existing Vim config to $backupFile..." -ForegroundColor Yellow
-                Copy-Item -Path $dest -Destination $backupFile -Force
-
-                Write-Host "==> Deploying Vim configuration to $dest..." -ForegroundColor Cyan
-                Copy-Item -Path $vimrcSource -Destination $dest -Force
-                Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+                if ($DryRun) {
+                    Write-Host "  [DryRun] Would backup $dest to $backupFile" -ForegroundColor DarkCyan
+                    Write-Host "  [DryRun] Would deploy Vim configuration from $vimrcSource to $dest" -ForegroundColor DarkCyan
+                } else {
+                    Write-Host "Backing up existing Vim config to $backupFile..." -ForegroundColor Yellow
+                    Copy-Item -Path $dest -Destination $backupFile -Force
+                    Copy-Item -Path $vimrcSource -Destination $dest -Force
+                    Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+                }
             } else {
                 Write-Host "==> Vim configuration at $dest is already up to date." -ForegroundColor Green
             }
         } else {
-            Write-Host "==> Deploying Vim configuration to $dest..." -ForegroundColor Cyan
-            Copy-Item -Path $vimrcSource -Destination $dest -Force
-            Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would deploy Vim configuration to $dest" -ForegroundColor DarkCyan
+            } else {
+                Copy-Item -Path $vimrcSource -Destination $dest -Force
+                Write-Host "Vim configuration deployed successfully to $dest." -ForegroundColor Green
+            }
         }
     }
 }
-
-Write-Host "==> Vim setup complete!" -ForegroundColor Green
+Write-Host "==> Editor setup complete!" -ForegroundColor Green

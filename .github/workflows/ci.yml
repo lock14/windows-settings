@@ -46,3 +46,18 @@ jobs:
         shell: pwsh
         run: |
           ./tests/test_settings.ps1
+
+  ci-gatekeeper:
+    name: ci-gatekeeper
+    runs-on: windows-latest
+    needs: [ test ]
+    if: always()
+    steps:
+      - name: Evaluate Gatekeeper Status
+        shell: pwsh
+        run: |
+          if ('${{ needs.test.result }}' -ne 'success') {
+              Write-Error "CI Gatekeeper: Required test job failed or was cancelled."
+              exit 1
+          }
+          Write-Host "CI Gatekeeper: All required CI checks passed successfully." -ForegroundColor Green

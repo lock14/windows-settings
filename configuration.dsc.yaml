@@ -1,0 +1,149 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+# =============================================================
+# Windows Developer Workstation Desired State Configuration (DSC)
+# Execute: winget configure .\configuration.dsc.yaml
+# =============================================================
+
+properties:
+  configurationVersion: 0.2.0
+  resources:
+    # ---------------------------------------------------------
+    # Core CLI Developer Toolchain
+    # ---------------------------------------------------------
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Rust GNU coreutils
+        allowPrerelease: true
+      settings:
+        id: uutils.coreutils
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Rust diffutils
+        allowPrerelease: true
+      settings:
+        id: uutils.diffutils
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Git for Windows
+      settings:
+        id: Git.Git
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install GitHub CLI
+      settings:
+        id: GitHub.cli
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Starship Prompt (Rust)
+      settings:
+        id: Starship.Starship
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Zoxide (Smart directory navigation)
+      settings:
+        id: ajeetdsouza.zoxide
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Eza (Modern ls replacement)
+      settings:
+        id: eza-community.eza
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Bat (Syntax-highlighted cat)
+      settings:
+        id: sharkdp.bat
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Ripgrep
+      settings:
+        id: BurntSushi.ripgrep.MSVC
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install fd (Fast find)
+      settings:
+        id: sharkdp.fd
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install fzf (Fuzzy finder)
+      settings:
+        id: junegunn.fzf
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install jq (JSON processor)
+      settings:
+        id: jqlang.jq
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Neovim
+      settings:
+        id: Neovim.Neovim
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Mise (Polyglot runtime manager)
+      settings:
+        id: jdx.mise
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Go programming language
+      settings:
+        id: GoLang.Go
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Python 3.12
+      settings:
+        id: Python.Python.3.12
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Terraform CLI
+      settings:
+        id: Hashicorp.Terraform
+        source: winget
+
+    # ---------------------------------------------------------
+    # Fonts
+    # ---------------------------------------------------------
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install MesloLGS Nerd Font
+      settings:
+        id: DEVCOM.MesloLGSNF
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Cascadia Code Nerd Font
+      settings:
+        id: Microsoft.CascadiaCode
+        source: winget

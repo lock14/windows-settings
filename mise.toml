@@ -1,0 +1,15 @@
+# =============================================================
+# mise.toml - Declarative Polyglot Runtime Toolchains
+# Managed via mise (https://mise.jdx.dev)
+# =============================================================
+
+[tools]
+go = "latest"
+python = "3.12"
+terraform = "latest"
+node = "lts"
+rust = "latest"
+
+[settings]
+legacy_version_file = true
+experimental = true

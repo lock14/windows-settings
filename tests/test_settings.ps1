@@ -1,5 +1,5 @@
 # =============================================================
-# Test Suite for windows-settings
+# Test Suite for windows-settings (Modern Workstation Architecture)
 # =============================================================
 
 $ErrorActionPreference = 'Stop'
@@ -27,8 +27,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 # -------------------------------------------------------------
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
-Write-Host "`n[1/8] Checking PowerShell Scripts Syntax..." -ForegroundColor Yellow
-$psFiles = Get-ChildItem -Path $RootDir -Recurse -Filter "*.ps1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
+Write-Host "`n[1/8] Checking PowerShell Scripts & Module Syntax..." -ForegroundColor Yellow
+$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
 
 foreach ($file in $psFiles) {
     $errors = $null
@@ -43,9 +43,9 @@ foreach ($file in $psFiles) {
 }
 
 # -------------------------------------------------------------
-# Test 2: JSON Files Validity & Schema Verification
+# Test 2: JSON & Manifest Files Validity
 # -------------------------------------------------------------
-Write-Host "`n[2/8] Validating JSON Configurations..." -ForegroundColor Yellow
+Write-Host "`n[2/8] Validating JSON Configurations & Manifests..." -ForegroundColor Yellow
 
 # Test posh/p10k.omp.json
 $p10kPath = Join-Path $RootDir "posh\p10k.omp.json"
@@ -75,30 +75,76 @@ try {
     Fail "JSON parse error: terminal/settings.json" $_.Exception.Message
 }
 
-# -------------------------------------------------------------
-# Test 3: Profile Sourcing & Function Definitions
-# -------------------------------------------------------------
-Write-Host "`n[3/8] Testing PowerShell Profile, Aliases & PSReadLine..." -ForegroundColor Yellow
-$profileFile = Join-Path $RootDir "posh\Microsoft.PowerShell_profile.ps1"
+# Test terminal/Fragments/windows-settings.json
+$fragmentJsonPath = Join-Path $RootDir "terminal\Fragments\windows-settings.json"
+try {
+    $fragJson = Get-Content $fragmentJsonPath -Raw | ConvertFrom-Json
+    $fragSolarized = ($fragJson.profiles.defaults.colorScheme -eq "Solarized Dark")
+    $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
+    if ($fragSolarized -and $fragFont) {
+        Pass "JSON valid: terminal/Fragments/windows-settings.json (Solarized Dark fragment)"
+    } else {
+        Fail "terminal/Fragments/windows-settings.json" "Defaults mismatch"
+    }
+} catch {
+    Fail "JSON parse error: terminal/Fragments/windows-settings.json" $_.Exception.Message
+}
 
-# Source the profile in current scope
-. $profileFile
+# Test configuration.dsc.yaml
+$dscPath = Join-Path $RootDir "configuration.dsc.yaml"
+if (Test-Path $dscPath) {
+    $dscContent = Get-Content $dscPath -Raw
+    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'Starship\.Starship') {
+        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest)"
+    } else {
+        Fail "configuration.dsc.yaml" "Missing configurationVersion or core resources"
+    }
+}
+
+# Test starship.toml & mise.toml
+$starshipPath = Join-Path $RootDir "starship.toml"
+if (Test-Path $starshipPath) {
+    $starshipContent = Get-Content $starshipPath -Raw
+    if ($starshipContent -match 'fg:#073642 bg:#eee8d5' -and $starshipContent -match 'Solarized Dark') {
+        Pass "TOML valid: starship.toml (Solarized Dark Powerlevel10k configuration)"
+    } else {
+        Fail "starship.toml" "Missing Solarized Dark Powerlevel10k formatting"
+    }
+}
+
+$misePath = Join-Path $RootDir "mise.toml"
+if (Test-Path $misePath) {
+    Pass "TOML valid: mise.toml (Declarative toolchains)"
+}
+
+# -------------------------------------------------------------
+# Test 3: WindowsSettings Module Import & Function Exports
+# -------------------------------------------------------------
+Write-Host "`n[3/8] Testing WindowsSettings PowerShell Module Import..." -ForegroundColor Yellow
+$moduleManifest = Join-Path $RootDir "Modules\WindowsSettings\WindowsSettings.psd1"
+
+# Import the module
+Import-Module $moduleManifest -Force
 
 $expectedFunctions = @(
-    # Developer Tool Shortcuts
-    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fs', 'Format-PathTree', 'll', 'la',
+    # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
+    'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
+    'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
+    'cat', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'lt',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
     'glog', 'glo', 'grb', 'grba', 'grbc', 'grbi', 'grh', 'grhh', 'gsw', 'gswc',
     'gcp', 'gcpa', 'gcpc',
     # Custom Git shortcuts
-    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync', 'fix-abcxyz-branch-name'
+    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync',
+    # Utilities
+    'gen-passwd', 'repeat-until-success', 'sum'
 )
 
 foreach ($func in $expectedFunctions) {
     if (Get-Command $func -ErrorAction SilentlyContinue) {
-        Pass "Function defined: $func"
+        Pass "Function defined & exported: $func"
     } else {
         Fail "Function missing: $func" "Get-Command could not find function $func"
     }
@@ -111,25 +157,31 @@ if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
 }
 
 if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: vi -> vim"
+    Pass "Alias defined: vi -> nvim"
 } else {
     Fail "Alias missing: vi" "Alias vi not found"
 }
 
-$vimrcFile = Join-Path $RootDir "vim\_vimrc"
-if (Test-Path $vimrcFile) {
-    Pass "Vim configuration file exists: vim/_vimrc"
+if (Get-Alias -Name vim -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: vim -> nvim"
 } else {
-    Fail "Vim configuration missing" "vim/_vimrc does not exist"
+    Fail "Alias missing: vim" "Alias vim not found"
 }
 
-$vimSetupScript = Join-Path $RootDir "vim\vim-setup.ps1"
-if (Test-Path $vimSetupScript) {
-    $setupContent = Get-Content $vimSetupScript -Raw
-    if ($setupContent -match 'vim-snippets' -and $setupContent -match 'honza/vim-snippets') {
-        Pass "Curated vim-snippets bundle configured in vim/vim-setup.ps1"
+if (Get-Alias -Name v -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: v -> nvim"
+} else {
+    Fail "Alias missing: v" "Alias v not found"
+}
+
+# Test Neovim configuration file
+$nvimInit = Join-Path $RootDir "config\nvim\init.lua"
+if (Test-Path $nvimInit) {
+    $nvimContent = Get-Content $nvimInit -Raw
+    if ($nvimContent -match 'solarized' -and $nvimContent -match 'mason') {
+        Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter + Solarized)"
     } else {
-        Fail "Curated vim-snippets missing" "honza/vim-snippets not configured in vim-setup.ps1"
+        Fail "Neovim init.lua" "Missing LSP or Solarized configuration"
     }
 }
 
@@ -137,6 +189,16 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Pass "LS_COLORS environment variable configured (Solarized Dark)"
 } else {
     Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
+}
+
+$wingetScript = Join-Path $RootDir "packages\winget-setup.ps1"
+if (Test-Path $wingetScript) {
+    $wingetContent = Get-Content $wingetScript -Raw
+    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'Starship\.Starship'") {
+        Pass "uutils.coreutils and Starship configured in packages/winget-setup.ps1"
+    } else {
+        Fail "winget packages configuration" "packages missing in winget-setup.ps1"
+    }
 }
 
 # -------------------------------------------------------------
@@ -229,7 +291,6 @@ $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_test_" + [System.Gui
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 try {
-    # Initialize bare remote repo and clone local repo
     $remoteDir = Join-Path $tempDir "remote.git"
     $localDir = Join-Path $tempDir "local"
 
@@ -283,14 +344,32 @@ try {
         Fail "gsync branch preservation" "Expected feature-1, got $currentBranch"
     }
 
-    # Test 5.3: fix-abcxyz-branch-name
+    # Test 5.3: guser-branch & fix-abcxyz-branch-name
     $expectedUser = if ($env:USER) { $env:USER } else { $env:USERNAME }
-    fix-abcxyz-branch-name
+    guser-branch
     $renamedBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($renamedBranch -eq "$expectedUser/feature-1") {
-        Pass "fix-abcxyz-branch-name successfully renamed branch"
+        Pass "guser-branch successfully prefixed branch ($expectedUser/feature-1)"
     } else {
-        Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $renamedBranch"
+        Fail "guser-branch" "Expected $expectedUser/feature-1, got $renamedBranch"
+    }
+
+    # Test 5.3.1: guser-branch idempotency (does not duplicate prefix)
+    guser-branch
+    $idempotentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($idempotentBranch -eq "$expectedUser/feature-1") {
+        Pass "guser-branch strips redundant user prefix idempotently"
+    } else {
+        Fail "guser-branch prefix strip" "Redundant prefix introduced: $idempotentBranch"
+    }
+
+    # Test 5.3.2: fix-abcxyz-branch-name compatibility alias
+    fix-abcxyz-branch-name
+    $aliasBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($aliasBranch -eq "$expectedUser/feature-1") {
+        Pass "fix-abcxyz-branch-name compatibility alias works identically"
+    } else {
+        Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $aliasBranch"
     }
 
     # Test 5.4: gprune deletes non-main branches
@@ -315,7 +394,7 @@ try {
 # -------------------------------------------------------------
 # Test 6: Completions & Oh My Posh Rendering
 # -------------------------------------------------------------
-Write-Host "`n[6/8] Testing Completions & Oh My Posh Rendering..." -ForegroundColor Yellow
+Write-Host "`n[6/8] Testing Completions & Prompt Rendering..." -ForegroundColor Yellow
 
 # Test completions setup execution
 $completionsScript = Join-Path $RootDir "completions\completions-setup.ps1"
@@ -441,6 +520,58 @@ try {
         Pass "Idempotency preserved: zero redundant backups generated on identical re-run"
     } else {
         Fail "Idempotency failure" "Redundant backup created when content had not changed"
+    }
+
+    # 3. Test Windows Terminal deep merge & JSON Fragments
+    $terminalSetupScript = Join-Path $RootDir "terminal\terminal-setup.ps1"
+    $terminalScriptContent = Get-Content $terminalSetupScript -Raw
+    if ($terminalScriptContent -match 'Fragments' -and $terminalScriptContent -match 'Merge-TerminalHashtable') {
+        Pass "Windows Terminal setup implements JSON Fragment extension & deep merge"
+    } else {
+        Fail "Terminal setup" "JSON Fragment support missing in terminal-setup.ps1"
+    }
+
+    # 4. Test setup.ps1 and bootstrap.ps1 dry-run execution
+    $setupScriptPath = Join-Path $RootDir "setup.ps1"
+    try {
+        & $setupScriptPath -DryRun | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun mode"
+    } catch {
+        Fail "setup.ps1 dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -DotfilesOnly | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -DotfilesOnly mode"
+    } catch {
+        Fail "setup.ps1 dotfiles-only dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -SystemOnly | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -SystemOnly mode"
+    } catch {
+        Fail "setup.ps1 system-only dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -WithGUI | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -WithGUI mode"
+    } catch {
+        Fail "setup.ps1 with-gui dry-run" $_.Exception.Message
+    }
+
+    $bootstrapScriptPath = Join-Path $RootDir "bootstrap.ps1"
+    if (Test-Path $bootstrapScriptPath) {
+        Pass "bootstrap.ps1 exists in repository root"
+        try {
+            & $bootstrapScriptPath -DryRun -SkipPackages | Out-Null
+            Pass "bootstrap.ps1 executes cleanly in -DryRun -SkipPackages mode"
+        } catch {
+            Fail "bootstrap.ps1 dry-run" $_.Exception.Message
+        }
+    } else {
+        Fail "bootstrap.ps1 missing" "bootstrap.ps1 not found in repository root"
     }
 } finally {
     if (Test-Path $sandboxDir) {

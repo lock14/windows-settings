@@ -6,21 +6,27 @@
 #>
 [CmdletBinding()]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
-param()
+param(
+    [switch]$DryRun
+)
 
 $cacheDir = Join-Path $HOME '.cache\powershell'
-if (-not (Test-Path $cacheDir)) {
+if (-not $DryRun -and -not (Test-Path $cacheDir)) {
     New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 }
 
 # 1. GitHub CLI (gh) - Cached
 if (Get-Command gh -ErrorAction SilentlyContinue) {
     $ghCache = Join-Path $cacheDir 'gh_completion.ps1'
-    if (-not (Test-Path $ghCache)) {
-        gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
-    }
-    if (Test-Path $ghCache) {
-        . $ghCache
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would cache and register GitHub CLI completions ($ghCache)" -ForegroundColor DarkCyan
+    } else {
+        if (-not (Test-Path $ghCache)) {
+            gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
+        }
+        if (Test-Path $ghCache) {
+            . $ghCache
+        }
     }
 }
 
@@ -55,22 +61,30 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 # 4. Kubernetes CLI (kubectl) - Cached
 if (Get-Command kubectl -ErrorAction SilentlyContinue) {
     $k8sCache = Join-Path $cacheDir 'kubectl_completion.ps1'
-    if (-not (Test-Path $k8sCache)) {
-        kubectl completion powershell | Out-File -FilePath $k8sCache -Encoding utf8 -Force
-    }
-    if (Test-Path $k8sCache) {
-        . $k8sCache
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would cache and register kubectl completions ($k8sCache)" -ForegroundColor DarkCyan
+    } else {
+        if (-not (Test-Path $k8sCache)) {
+            kubectl completion powershell | Out-File -FilePath $k8sCache -Encoding utf8 -Force
+        }
+        if (Test-Path $k8sCache) {
+            . $k8sCache
+        }
     }
 }
 
 # 5. Helm CLI - Cached
 if (Get-Command helm -ErrorAction SilentlyContinue) {
     $helmCache = Join-Path $cacheDir 'helm_completion.ps1'
-    if (-not (Test-Path $helmCache)) {
-        helm completion powershell | Out-File -FilePath $helmCache -Encoding utf8 -Force
-    }
-    if (Test-Path $helmCache) {
-        . $helmCache
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would cache and register helm completions ($helmCache)" -ForegroundColor DarkCyan
+    } else {
+        if (-not (Test-Path $helmCache)) {
+            helm completion powershell | Out-File -FilePath $helmCache -Encoding utf8 -Force
+        }
+        if (Test-Path $helmCache) {
+            . $helmCache
+        }
     }
 }
 
