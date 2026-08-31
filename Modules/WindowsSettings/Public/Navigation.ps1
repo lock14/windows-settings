@@ -55,7 +55,7 @@ function lt {
 # Modern Syntax-Highlighted File Inspection (bat / coreutils cat / Get-Content)
 function cat {
     if (Get-Command bat -ErrorAction SilentlyContinue) {
-        & bat --theme="Solarized (dark)" --paging=auto @args
+        & bat --theme="Solarized-Dark-TrueColor" --paging=auto @args
     } elseif (Get-Command 'C:\Program Files\coreutils\cmd\cat.cmd' -ErrorAction SilentlyContinue) {
         & 'C:\Program Files\coreutils\cmd\cat.cmd' @args
     } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {

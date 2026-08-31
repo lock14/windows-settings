@@ -54,6 +54,27 @@ if (Test-Path $themeSource) {
     }
 }
 
+# Deploy Solarized Dark TrueColor theme for bat
+$batThemeSource = Join-Path $RepoRootDir "colors\Solarized-Dark-TrueColor.tmTheme"
+$batConfigDir = "$env:APPDATA\bat"
+$batThemesDir = Join-Path $batConfigDir "themes"
+if (Test-Path $batThemeSource) {
+    if (-not (Test-Path $batThemesDir)) {
+        if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $batThemesDir | Out-Null }
+    }
+    $batThemeDest = Join-Path $batThemesDir "Solarized-Dark-TrueColor.tmTheme"
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would deploy bat theme to $batThemeDest" -ForegroundColor DarkCyan
+    } else {
+        Copy-Item -Path $batThemeSource -Destination $batThemeDest -Force
+        '--theme="Solarized-Dark-TrueColor"' | Set-Content -Path "$batConfigDir\config" -Encoding utf8
+        if (Get-Command bat -ErrorAction SilentlyContinue) {
+            & bat cache --build | Out-Null
+        }
+        Write-Host "==> Solarized Dark TrueColor theme deployed for bat" -ForegroundColor Green
+    }
+}
+
 # -------------------------------------------------------------
 # 2. Deploy WindowsSettings PowerShell Module
 # -------------------------------------------------------------

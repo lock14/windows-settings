@@ -25,7 +25,7 @@ $env:EZA_COLORS = 'xx=38;5;10:da=38;5;10:sn=38;5;14:sb=38;5;12:hd=38;5;14;4:lp=3
 $env:EXA_COLORS = $env:EZA_COLORS
 
 # Solarized Dark BAT_THEME for bat / cat
-$env:BAT_THEME = 'Solarized (dark)'
+$env:BAT_THEME = 'Solarized-Dark-TrueColor'
 
 # -------------------------------------------------------------
 # 2. Un-Alias Conflicting Legacy Cmdlets
