@@ -44,5 +44,5 @@
     VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'COLORTERM', 'STARSHIP_CONFIG')
 
     # Aliases to export from this module
-    AliasesToExport = @('tf', 'vi')
+    AliasesToExport = @('tf', 'vi', 'vim', 'v')
 }

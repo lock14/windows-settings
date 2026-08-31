@@ -157,9 +157,21 @@ if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
 }
 
 if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: vi"
+    Pass "Alias defined: vi -> nvim"
 } else {
     Fail "Alias missing: vi" "Alias vi not found"
+}
+
+if (Get-Alias -Name vim -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: vim -> nvim"
+} else {
+    Fail "Alias missing: vim" "Alias vim not found"
+}
+
+if (Get-Alias -Name v -ErrorAction SilentlyContinue) {
+    Pass "Alias defined: v -> nvim"
+} else {
+    Fail "Alias missing: v" "Alias v not found"
 }
 
 # Test Neovim configuration file

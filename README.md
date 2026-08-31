@@ -155,6 +155,7 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 | `go-buildall` | `go build ./...` |
 | `go-lint` | `golangci-lint run` (with auto-cached configuration) |
 | `tf` | `terraform` |
+| `vi` / `vim` / `v` | `nvim` (Modern Lua Neovim) |
 | `yaml-lint` | `yamllint -c ~/.yamllint.yml` |
 | `ls` | Modern directory listing (`eza --icons=auto`) |
 | `ll` | Detailed directory listing with Git status (`eza -la --git`) |
@@ -183,7 +184,7 @@ Run the automated test suite locally:
 pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **125 automated tests across all 8 modules**:
+Runs **128 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
 2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `starship.toml`, `settings.json`, fragments)
 3. WindowsSettings Module Import & Function Exports (60 functions)

@@ -22,8 +22,11 @@ function yaml-lint {
 # Editor & CLI Aliases
 Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
 Set-Alias -Name vi -Value nvim -ErrorAction SilentlyContinue
+Set-Alias -Name vim -Value nvim -ErrorAction SilentlyContinue
+Set-Alias -Name v -Value nvim -ErrorAction SilentlyContinue
 if (-not (Get-Command nvim -ErrorAction SilentlyContinue)) {
     Set-Alias -Name vi -Value vim -ErrorAction SilentlyContinue
+    Set-Alias -Name v -Value vim -ErrorAction SilentlyContinue
 }
 
 # Backward Compatibility Wrappers for legacy snake_case aliases
