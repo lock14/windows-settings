@@ -67,19 +67,28 @@ if (Test-Path $ompInit) {
 # 4. PSReadLine & Predictive IntelliSense (Solarized Dark)
 # -------------------------------------------------------------
 try {
+    Import-Module PSReadLine -ErrorAction SilentlyContinue
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
     Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue
     Set-PSReadLineOption -Colors @{
-        Command          = '#859900'  # Solarized Green
-        Parameter        = '#2AA198'  # Solarized Cyan
-        Operator         = '#839496'  # Solarized Base0
-        Variable         = '#B58900'  # Solarized Yellow
-        String           = '#2AA198'  # Solarized Cyan
-        Number           = '#D33682'  # Solarized Magenta
-        Type             = '#B58900'  # Solarized Yellow
-        Comment          = '#586E75'  # Solarized Base01
-        Keyword          = '#859900'  # Solarized Green
-        InlinePrediction = '#586E75'  # Solarized Base01 muted prediction
+        Default                 = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - standard arguments/paths/text)
+        Command                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
+        Parameter               = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
+        Operator                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496)
+        Variable                = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900)
+        String                  = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
+        Number                  = "`e[38;2;211;54;130m"   # Solarized Magenta (#D33682)
+        Type                    = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900)
+        Comment                 = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
+        Keyword                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
+        Member                  = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496)
+        Emphasis                = "`e[38;2;38;139;210m"   # Solarized Blue (#268BD2)
+        Error                   = "`e[38;2;220;50;47m"    # Solarized Red (#DC322F)
+        Selection               = "`e[48;2;7;54;66m"      # Solarized Base02 (#073642 bg)
+        InlinePrediction        = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75 muted prediction)
+        ListPrediction          = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
+        ListPredictionSelected  = "`e[48;2;7;54;66m"      # Solarized Base02 (#073642 bg)
+        ListPredictionTooltip   = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
     } -ErrorAction SilentlyContinue
     Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction SilentlyContinue
     Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction SilentlyContinue
