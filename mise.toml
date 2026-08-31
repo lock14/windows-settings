@@ -4,11 +4,16 @@
 # =============================================================
 
 [tools]
+java = "lts"
+maven = "latest"
 go = "latest"
-python = "3.12"
-terraform = "latest"
+python = "latest"
 node = "lts"
+terraform = "latest"
 rust = "latest"
+neovim = "latest"
+eza = "latest"
+bat = "latest"
 
 [settings]
 legacy_version_file = true

@@ -56,20 +56,6 @@ properties:
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
-        description: Install Eza (Modern ls replacement)
-      settings:
-        id: eza-community.eza
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
-        description: Install Bat (Syntax-highlighted cat)
-      settings:
-        id: sharkdp.bat
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
         description: Install Ripgrep
       settings:
         id: BurntSushi.ripgrep.MSVC
@@ -98,37 +84,9 @@ properties:
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
-        description: Install Neovim
-      settings:
-        id: Neovim.Neovim
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
         description: Install Mise (Polyglot runtime manager)
       settings:
         id: jdx.mise
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
-        description: Install Go programming language
-      settings:
-        id: GoLang.Go
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
-        description: Install Python 3.12
-      settings:
-        id: Python.Python.3.12
-        source: winget
-
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
-        description: Install Terraform CLI
-      settings:
-        id: Hashicorp.Terraform
         source: winget
 
     # ---------------------------------------------------------

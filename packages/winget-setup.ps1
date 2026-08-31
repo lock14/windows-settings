@@ -41,18 +41,12 @@ $cliPackages = @(
     'GitHub.cli',
     'Starship.Starship',
     'ajeetdsouza.zoxide',
-    'eza-community.eza',
-    'sharkdp.bat',
     'JanDeDobbeleer.OhMyPosh',
     'BurntSushi.ripgrep.MSVC',
     'sharkdp.fd',
     'junegunn.fzf',
     'jqlang.jq',
-    'Neovim.Neovim',
     'jdx.mise',
-    'GoLang.Go',
-    'Python.Python.3.12',
-    'Hashicorp.Terraform',
     'vim.vim'
 )
 
