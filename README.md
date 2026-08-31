@@ -35,7 +35,7 @@ windows-settings/
 ├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
 ├── posh/p10k.omp.json             # Single-line Powerlevel10k Solarized Dark theme
 ├── starship.toml                  # Optional cross-shell Starship prompt config
-├── mise.toml                      # Declarative polyglot toolchains (Go, Python, Terraform, Node)
+├── mise.toml                      # Declarative polyglot toolchains & CLI tools (Java, Go, Python, Node, Rust, etc.)
 ├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
 ├── setup.ps1                      # Master setup engine
 │
