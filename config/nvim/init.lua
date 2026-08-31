@@ -115,22 +115,25 @@ if not status_ok then
 end
 
 lazy.setup({
-    -- Solarized Theme
+    -- Authentic Solarized Dark Theme (1:1 with Windows Terminal & Ethan Schoonover palette)
     {
-        "craftzdog/solarized-osaka.nvim",
+        "maxmx03/solarized.nvim",
         lazy = false,
         priority = 1000,
         opts = {
-            transparent = false,
-            terminal_colors = true,
+            variant = "default",
+            transparent = {
+                enabled = false,
+            },
             styles = {
                 comments = { italic = true },
                 keywords = { italic = false },
             },
         },
         config = function(_, opts)
-            require("solarized-osaka").setup(opts)
-            vim.cmd.colorscheme("solarized-osaka")
+            vim.o.background = "dark"
+            require("solarized").setup(opts)
+            vim.cmd.colorscheme("solarized")
         end,
     },
 

@@ -166,7 +166,7 @@ if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
 $nvimInit = Join-Path $RootDir "config\nvim\init.lua"
 if (Test-Path $nvimInit) {
     $nvimContent = Get-Content $nvimInit -Raw
-    if ($nvimContent -match 'solarized-osaka' -and $nvimContent -match 'mason') {
+    if ($nvimContent -match 'solarized' -and $nvimContent -match 'mason') {
         Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter + Solarized)"
     } else {
         Fail "Neovim init.lua" "Missing LSP or Solarized configuration"
