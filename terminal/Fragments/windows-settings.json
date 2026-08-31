@@ -7,7 +7,8 @@
                 "face": "MesloLGS NF",
                 "size": 11.0
             },
-            "cursorShape": "bar",
+            "cursorShape": "filledBox",
+            "cursorColor": "#839496",
             "useAcrylic": false
         }
     },

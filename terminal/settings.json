@@ -31,6 +31,8 @@
         "defaults": 
         {
             "colorScheme": "Solarized Dark",
+            "cursorColor": "#839496",
+            "cursorShape": "filledBox",
             "font": 
             {
                 "face": "MesloLGS NF"
