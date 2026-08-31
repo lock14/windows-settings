@@ -179,7 +179,14 @@ lazy.setup({
                     ["@variable.parameter"] = { fg = colors.base0 },
                     ["@variable.member"] = { fg = colors.base0 },
                     ["@property"] = { fg = colors.base0 },
+                    ["@module"] = { fg = colors.base0 },
+                    ["@module.builtin"] = { fg = colors.base0 },
                     ["@string"] = { fg = colors.cyan },
+                    ["@string.special"] = { fg = colors.cyan },
+                    ["@string.special.path"] = { fg = colors.cyan },
+                    ["@string.special.url"] = { fg = colors.cyan },
+                    ["@string.special.symbol"] = { fg = colors.cyan },
+                    ["@string.escape"] = { fg = colors.cyan },
                     ["@comment"] = { fg = colors.base01, italic = true },
                     ["@constant"] = { fg = colors.base0 },
                     ["@constant.builtin"] = { fg = colors.magenta },
@@ -187,6 +194,7 @@ lazy.setup({
                     ["@boolean"] = { fg = colors.magenta },
                     ["@operator"] = { fg = colors.green },
                     ["@lsp.type.keyword"] = { fg = colors.green },
+                    ["@lsp.type.namespace"] = { fg = colors.base0 },
                     ["@lsp.type.type"] = { fg = colors.base0 },
                     ["@lsp.type.class"] = { fg = colors.base0 },
                     ["@lsp.type.struct"] = { fg = colors.base0 },
@@ -214,14 +222,34 @@ lazy.setup({
     -- Tree-sitter AST Syntax Highlighting
     {
         "nvim-treesitter/nvim-treesitter",
-        lazy = false,
         build = ":TSUpdate",
+        lazy = false,
+        priority = 900,
         config = function()
             local ts_ok, ts = pcall(require, "nvim-treesitter.configs")
             if ts_ok then
                 ts.setup({
-                    ensure_installed = { "go", "python", "terraform", "yaml", "json", "toml", "bash", "lua", "markdown" },
-                    highlight = { enable = true },
+                    ensure_installed = {
+                        "go",
+                        "terraform",
+                        "hcl",
+                        "lua",
+                        "vim",
+                        "vimdoc",
+                        "python",
+                        "json",
+                        "yaml",
+                        "toml",
+                        "markdown",
+                        "markdown_inline",
+                        "powershell",
+                        "bash",
+                    },
+                    auto_install = true,
+                    highlight = {
+                        enable = true,
+                        additional_vim_regex_highlighting = false,
+                    },
                     indent = { enable = true },
                 })
             end
@@ -259,10 +287,16 @@ lazy.setup({
         config = function(_, opts)
             require("mason-lspconfig").setup(opts)
 
-            -- Keybindings on LSP attach
+            -- Keybindings and Semantic Token cleanup on LSP attach
             vim.api.nvim_create_autocmd("LspAttach", {
                 group = vim.api.nvim_create_augroup("UserLspConfig", { clear = true }),
                 callback = function(ev)
+                    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+                    if client then
+                        -- Disable LSP semantic token overrides so Treesitter handles syntax highlighting consistently without coloring parts of import strings
+                        client.server_capabilities.semanticTokensProvider = nil
+                    end
+
                     local bufmap = function(keys, func, desc)
                         vim.keymap.set("n", keys, func, { buffer = ev.buf, desc = "LSP: " .. desc })
                     end
