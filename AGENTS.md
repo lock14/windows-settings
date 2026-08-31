@@ -58,7 +58,10 @@ Any agent modifying this repository must follow these core principles.
 - **PSScriptAnalyzer Compliance**:
   - All PowerShell scripts (`.ps1`, `.psm1`, `.psd1`) must pass static analysis configured in `PSScriptAnalyzerSettings.psd1` with zero errors or warnings.
 - **Solarized Dark & Powerline Theme Integrity**:
-  - All visual components—Oh My Posh prompt (`posh/p10k.omp.json`), Windows Terminal color schemes & fragments, `PSReadLine` syntax and prediction colors, `colors/LS_COLORS`, and Neovim Lua styling—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
+  - All visual components—Oh My Posh prompt (`posh/p10k.omp.json`), Windows Terminal color schemes & fragments, `PSReadLine` syntax and prediction colors, `colors/LS_COLORS`, `bat` TrueColor theme (`colors/Solarized-Dark-TrueColor.tmTheme`), and Neovim Lua styling—must strictly adhere to the Solarized Dark palette and MesloLGS NF font styling.
+  - Enable 24-bit TrueColor globally via `$env:COLORTERM = 'truecolor'` so modern CLI tools (`bat`, `delta`, `eza`) do not quantize TrueColor RGB to 256-color approximations.
+  - In `PSReadLine`, specify 24-bit TrueColor ANSI escape sequences with explicit `Default` token mapping (`#839496` Base0) so file paths and arguments render in standard light grey rather than stark white.
+  - In Neovim, use native 0.11+ `LspAttach` autocmds and `vim.lsp.config` / `vim.lsp.enable()` with canonical `maxmx03/solarized.nvim` (`variant = "spring"`).
 - **Declarative Provisioning**:
   - Workstation tools are declared in `configuration.dsc.yaml` (Microsoft DSC v3) and `mise.toml` (polyglot runtime toolchains).
 
@@ -69,12 +72,13 @@ Any agent modifying this repository must follow these core principles.
 - **Maintain Kebab-Case Naming with Backward Compatibility**:
   - Maintain the full Git plugin suite and workflow helpers (`gco`, `gcb`, `gcm`, `ga`, `gst`, `gcommit`, `gamend`, `gup`, `gprune`, `gsync`, `guser-branch`).
   - Maintain developer shortcuts: `go-testall`, `go-buildall`, `go-lint`, `yaml-lint`, `fs`, `Format-PathTree`, `ll`, `la`, `lt`.
+  - Maintain editor shortcuts: `vi`, `vim`, `v` aliased to `nvim` (with graceful fallback to `vim` if Neovim is not present).
   - Provide backward-compatible wrappers for legacy aliases (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fix-abcxyz-branch-name`).
   - `guser-branch` must cleanly strip redundant user prefixes (`$env:USERNAME/` or `$env:USER/`) before renaming.
 - **Modern CLI Integration**:
-  - Adopt `eza` for `ls`, `ll`, `la`, `lt` with Git status indicators and directory trees.
-  - Adopt `zoxide` for `z` frecency directory navigation.
-  - Adopt `bat` for syntax-highlighted file viewing.
+  - Adopt `eza` for `ls`, `ll`, `la`, `lt` with Git status indicators and directory trees (`EZA_COLORS` configured for Solarized Base01 connectors).
+  - Adopt `zoxide` for `z` frecency directory navigation with compiled disk caching.
+  - Adopt `bat` for syntax-highlighted file viewing (`cat` aliased to `bat` with compiled TrueColor theme).
   - Adopt `uutils.coreutils` and `uutils.diffutils` with automatic un-aliasing of text cmdlet redirects (`cat`, `sort`, `tee`, `diff`, `echo`, `sleep`, `ls`).
 
 ---
@@ -109,7 +113,7 @@ Before completing any task:
    ```powershell
    pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all 125 tests pass across all 8 test modules:
+   Ensure all 128 tests pass across all 8 test modules:
    - `[1/8]` PowerShell Script & Module Syntax
    - `[2/8]` JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `starship.toml`, `settings.json`, fragments)
    - `[3/8]` WindowsSettings Module Import & Function Exports (60 functions)
