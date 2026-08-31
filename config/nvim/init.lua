@@ -180,23 +180,35 @@ lazy.setup({
         },
         config = function(_, opts)
             require("mason-lspconfig").setup(opts)
-            local lspconfig = require("lspconfig")
-            local on_attach = function(_, bufnr)
-                local bufmap = function(keys, func, desc)
-                    vim.keymap.set("n", keys, func, { buffer = bufnr, desc = "LSP: " .. desc })
-                end
-                bufmap("gd", vim.lsp.buf.definition, "Goto Definition")
-                bufmap("gr", vim.lsp.buf.references, "Goto References")
-                bufmap("K", vim.lsp.buf.hover, "Hover Documentation")
-                bufmap("<leader>rn", vim.lsp.buf.rename, "Rename Symbol")
-                bufmap("<leader>ca", vim.lsp.buf.code_action, "Code Action")
-                bufmap("<leader>d", vim.diagnostic.open_float, "Line Diagnostics")
-            end
 
-            -- Configure default servers
+            -- Keybindings on LSP attach
+            vim.api.nvim_create_autocmd("LspAttach", {
+                group = vim.api.nvim_create_augroup("UserLspConfig", { clear = true }),
+                callback = function(ev)
+                    local bufmap = function(keys, func, desc)
+                        vim.keymap.set("n", keys, func, { buffer = ev.buf, desc = "LSP: " .. desc })
+                    end
+                    bufmap("gd", vim.lsp.buf.definition, "Goto Definition")
+                    bufmap("gr", vim.lsp.buf.references, "Goto References")
+                    bufmap("K", vim.lsp.buf.hover, "Hover Documentation")
+                    bufmap("<leader>rn", vim.lsp.buf.rename, "Rename Symbol")
+                    bufmap("<leader>ca", vim.lsp.buf.code_action, "Code Action")
+                    bufmap("<leader>d", vim.diagnostic.open_float, "Line Diagnostics")
+                end,
+            })
+
+            -- Configure servers using modern vim.lsp.config (Neovim 0.11+) with legacy fallback
             local servers = { "gopls", "terraformls", "pyright", "yamlls" }
-            for _, s in ipairs(servers) do
-                lspconfig[s].setup({ on_attach = on_attach })
+            if vim.lsp.config and vim.lsp.enable then
+                for _, s in ipairs(servers) do
+                    vim.lsp.config[s] = {}
+                end
+                vim.lsp.enable(servers)
+            else
+                local lspconfig = require("lspconfig")
+                for _, s in ipairs(servers) do
+                    lspconfig[s].setup({})
+                end
             end
         end,
     },
