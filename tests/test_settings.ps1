@@ -28,7 +28,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
 Write-Host "`n[1/8] Checking PowerShell Scripts & Module Syntax..." -ForegroundColor Yellow
-$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' }
+$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' }
 
 foreach ($file in $psFiles) {
     $errors = $null
@@ -94,21 +94,20 @@ try {
 $dscPath = Join-Path $RootDir "configuration.dsc.yaml"
 if (Test-Path $dscPath) {
     $dscContent = Get-Content $dscPath -Raw
-    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'Starship\.Starship') {
+    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'JanDeDobbeleer\.OhMyPosh') {
         Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest)"
     } else {
         Fail "configuration.dsc.yaml" "Missing configurationVersion or core resources"
     }
 }
 
-# Test starship.toml & mise.toml
-$starshipPath = Join-Path $RootDir "starship.toml"
-if (Test-Path $starshipPath) {
-    $starshipContent = Get-Content $starshipPath -Raw
-    if ($starshipContent -match 'fg:#073642 bg:#eee8d5' -and $starshipContent -match 'Solarized Dark') {
-        Pass "TOML valid: starship.toml (Solarized Dark Powerlevel10k configuration)"
+# Test p10k.omp.json & mise.toml
+if (Test-Path $p10kPath) {
+    $p10kRaw = Get-Content $p10kPath -Raw
+    if ($p10kRaw -match '#002[bB]36' -or $p10kRaw -match '#073642' -or $p10kRaw -match '#586[eE]75') {
+        Pass "Theme valid: p10k.omp.json (Solarized Dark Powerline configuration)"
     } else {
-        Fail "starship.toml" "Missing Solarized Dark Powerlevel10k formatting"
+        Fail "p10k.omp.json" "Missing Solarized Dark palette definitions"
     }
 }
 
@@ -194,8 +193,8 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
 $wingetScript = Join-Path $RootDir "packages\winget-setup.ps1"
 if (Test-Path $wingetScript) {
     $wingetContent = Get-Content $wingetScript -Raw
-    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'Starship\.Starship'") {
-        Pass "uutils.coreutils and Starship configured in packages/winget-setup.ps1"
+    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'JanDeDobbeleer\.OhMyPosh'") {
+        Pass "uutils.coreutils and Oh My Posh configured in packages/winget-setup.ps1"
     } else {
         Fail "winget packages configuration" "packages missing in winget-setup.ps1"
     }
@@ -428,7 +427,7 @@ Write-Host "`n[7/8] Testing Path Invariants & Dual Execution Wrappers..." -Foreg
 
 # 7.1 Path Invariant Check (no hardcoded user paths in repo files)
 $filesToScan = Get-ChildItem -Path $RootDir -Recurse -File |
-    Where-Object { $_.FullName -notmatch '\\(\.git|tests\\temp)\\' -and $_.Name -ne 'AGENTS.md' }
+    Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' -and $_.Name -ne 'AGENTS.md' }
 
 $hardcodedFound = $false
 foreach ($f in $filesToScan) {

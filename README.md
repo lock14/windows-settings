@@ -34,7 +34,6 @@ Modern Windows developer workstation configuration and setup automation for **Po
 windows-settings/
 ├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
 ├── posh/p10k.omp.json             # Single-line Powerlevel10k Solarized Dark theme
-├── starship.toml                  # Optional cross-shell Starship prompt config
 ├── mise.toml                      # Declarative polyglot toolchains & CLI tools (Java, Go, Python, Node, Rust, etc.)
 ├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
 ├── setup.ps1                      # Master setup engine
@@ -56,7 +55,7 @@ windows-settings/
 │
 ├── bin/                           # Native CLI utilities (gen-passwd, repeat-until-success, sum)
 └── tests/
-    └── test_settings.ps1          # 125 automated tests across all 8 test modules
+    └── test_settings.ps1          # 128 automated tests across all 8 test modules
 ```
 
 ---
@@ -208,7 +207,7 @@ pwsh -NoProfile -File ./tests/test_settings.ps1
 
 Runs **128 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
-2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `starship.toml`, `settings.json`, fragments)
+2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
 3. WindowsSettings Module Import & Function Exports (60 functions)
 4. Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
 5. Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)

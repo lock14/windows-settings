@@ -17,6 +17,7 @@ param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Command,
 
+    [Alias('Interval')]
     [Parameter(Position = 1)]
     [double]$IntervalSeconds = 2.0,
 
@@ -28,19 +29,24 @@ $attempt = 1
 
 while ($true) {
     Write-Host "[Attempt $attempt] Executing: $Command" -ForegroundColor Cyan
+    $succeeded = $false
     try {
-        & pwsh -NoProfile -Command $Command
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[Success] Command succeeded on attempt $attempt" -ForegroundColor Green
-            exit 0
+        $sb = [scriptblock]::Create($Command)
+        & $sb
+        if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+            $succeeded = $true
         }
     } catch {
         Write-Warning "Attempt $attempt failed with exception: $_"
     }
 
+    if ($succeeded) {
+        Write-Host "[Success] Command succeeded on attempt $attempt" -ForegroundColor Green
+        return
+    }
+
     if ($MaxAttempts -gt 0 -and $attempt -ge $MaxAttempts) {
-        Write-Error "Failed after $MaxAttempts attempts."
-        exit 1
+        throw "Failed after $MaxAttempts attempts."
     }
 
     $attempt++

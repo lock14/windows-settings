@@ -105,7 +105,7 @@
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
           "foreground": "#fdf6e3",
-          "background": "#d3d7cf",
+          "background": "#586e75",
           "background_templates": [
             "{{if contains \"default\" .Profile}}#cb4b16{{end}}"
           ],

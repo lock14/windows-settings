@@ -23,6 +23,9 @@ if (-not $DryRun -and -not (Test-Path $userFontsDir)) {
 }
 
 $registryKey = "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
+if (-not $DryRun -and -not (Test-Path $registryKey)) {
+    New-Item -Path $registryKey -Force | Out-Null
+}
 
 Write-Host "==> Installing MesloLGS NF fonts into $userFontsDir..." -ForegroundColor Cyan
 

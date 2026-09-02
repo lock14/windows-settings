@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
     Master setup engine for windows-settings.
-    Automates package provisioning, fonts, Starship prompt, WindowsSettings module,
+    Automates package provisioning, fonts, Oh My Posh prompt, WindowsSettings module,
     CLI completions, utility PATH, Neovim, and Windows Terminal.
 
 .DESCRIPTION
     Execution Modes:
-      -Bootstrap             Full new machine bootstrap (winget packages, fonts, starship, module, terminal, nvim)
+      -Bootstrap             Full new machine bootstrap (winget packages, fonts, oh-my-posh, module, terminal, nvim)
       -DotfilesOnly          Configure user dotfiles, fonts, nvim, terminal, and shell module only (no package install)
       -SystemOnly            Provision winget packages and CLI tools only
       -UseDSC                Provision workstation packages using declarative WinGet DSC v3 manifest (configuration.dsc.yaml)
@@ -18,7 +18,7 @@
     Granular Skip Flags:
       -SkipPackages          Skip winget package installation
       -SkipFonts             Skip MesloLGS NF font installation
-      -SkipPosh              Skip Starship / Oh My Posh & PowerShell module configuration
+      -SkipPosh              Skip Oh My Posh & PowerShell module configuration
       -SkipCompletions       Skip CLI argument completions registration
       -SkipTerminal          Skip Windows Terminal settings & JSON fragment deployment
       -SkipVim               Skip Neovim & Vim configuration
@@ -77,6 +77,15 @@ if ($shouldInstallPackages) {
     if ($UseDSC) { $wingetArgs['UseDSC'] = $true }
     if ($DryRun) { $wingetArgs['DryRun'] = $true }
     & (Join-Path $RootDir "packages\winget-setup.ps1") @wingetArgs
+    if (Get-Command mise -ErrorAction SilentlyContinue) {
+        Write-Host "==> Hydrating declarative toolchains via mise..." -ForegroundColor Cyan
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would execute mise trust --yes and mise install --yes" -ForegroundColor DarkCyan
+        } else {
+            mise trust --yes
+            mise install --yes
+        }
+    }
 } else {
     Write-Host "`n[0/6] Skipping Workstation Package Installation." -ForegroundColor DarkCyan
 }
@@ -91,12 +100,23 @@ if (-not $SkipFonts) {
     Write-Host "`n[1/6] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
 
-# 2. Starship Prompt & WindowsSettings Module Setup
+# 2. Oh My Posh Prompt & WindowsSettings Module Setup
 if (-not $SkipPosh) {
-    Write-Host "`n[2/6] Setting up Starship Prompt & WindowsSettings PowerShell Module..." -ForegroundColor Yellow
+    Write-Host "`n[2/6] Setting up Oh My Posh Prompt & WindowsSettings PowerShell Module..." -ForegroundColor Yellow
     $poshArgs = @{}
     if ($DryRun) { $poshArgs['DryRun'] = $true }
     & (Join-Path $RootDir "posh\posh-setup.ps1") @poshArgs
+
+    # Ensure COLORTERM=truecolor is set in User Environment for 24-bit TrueColor CLI rendering
+    $userColorTerm = [Environment]::GetEnvironmentVariable('COLORTERM', 'User')
+    if ($userColorTerm -ne 'truecolor') {
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would set User environment variable COLORTERM=truecolor" -ForegroundColor DarkCyan
+        } else {
+            [Environment]::SetEnvironmentVariable('COLORTERM', 'truecolor', 'User')
+            $env:COLORTERM = 'truecolor'
+        }
+    }
 } else {
     Write-Host "`n[2/6] Skipping Shell & Prompt Setup." -ForegroundColor DarkCyan
 }
@@ -131,7 +151,7 @@ if (-not $SkipVim) {
     Write-Host "`n[5/6] Skipping Editor Setup." -ForegroundColor DarkCyan
 }
 
-# 6. Add bin directory to User PATH
+# 6. Add bin and toolchain shims to User PATH
 if (-not $SkipBin) {
     $binDir = Join-Path $RootDir "bin"
     if (Test-Path $binDir) {
@@ -152,14 +172,19 @@ if (-not $SkipBin) {
             Write-Host "  $binDir is already in User PATH." -ForegroundColor Green
         }
     }
-    # Ensure COLORTERM=truecolor is set in User Environment for 24-bit TrueColor CLI rendering
-    $userColorTerm = [Environment]::GetEnvironmentVariable('COLORTERM', 'User')
-    if ($userColorTerm -ne 'truecolor') {
-        if ($DryRun) {
-            Write-Host "  [DryRun] Would set User environment variable COLORTERM=truecolor" -ForegroundColor DarkCyan
-        } else {
-            [Environment]::SetEnvironmentVariable('COLORTERM', 'truecolor', 'User')
-            $env:COLORTERM = 'truecolor'
+
+    $miseShims = Join-Path $env:LOCALAPPDATA "mise\shims"
+    if (Test-Path $miseShims) {
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $pathParts = if ($userPath) { $userPath -split ';' } else { @() }
+        if ($pathParts -notcontains $miseShims) {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would add $miseShims to User PATH" -ForegroundColor DarkCyan
+            } else {
+                $newPath = ($pathParts + $miseShims) -join ';'
+                [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+                $env:Path = "$miseShims;$env:Path"
+            }
         }
     }
 } else {
