@@ -42,9 +42,9 @@ properties:
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
-        description: Install Starship Prompt (Rust)
+        description: Install Oh My Posh Prompt Engine
       settings:
-        id: Starship.Starship
+        id: JanDeDobbeleer.OhMyPosh
         source: winget
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage

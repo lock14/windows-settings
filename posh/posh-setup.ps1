@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs Starship / Oh My Posh, provisions WindowsSettings module, and configures PowerShell profile.
+    Installs Oh My Posh, provisions WindowsSettings module, and configures PowerShell profile.
 #>
 [CmdletBinding()]
 param(
@@ -12,28 +12,9 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRootDir = Split-Path -Parent $ScriptDir
 
 # -------------------------------------------------------------
-# 1. Starship Prompt & Oh My Posh Setup
+# 1. Oh My Posh Prompt & Theme Setup
 # -------------------------------------------------------------
-Write-Host "==> Checking Prompt Engine (Starship & Oh My Posh)..." -ForegroundColor Cyan
-
-# Deploy starship.toml to $HOME\.config\starship.toml
-$starshipSource = Join-Path $RepoRootDir "starship.toml"
-$configDir = Join-Path $HOME ".config"
-$starshipDest = Join-Path $configDir "starship.toml"
-
-if (Test-Path $starshipSource) {
-    if (-not (Test-Path $configDir)) {
-        if (-not $DryRun) {
-            New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-        }
-    }
-    if ($DryRun) {
-        Write-Host "  [DryRun] Would deploy starship.toml to $starshipDest" -ForegroundColor DarkCyan
-    } else {
-        Copy-Item -Path $starshipSource -Destination $starshipDest -Force
-        Write-Host "==> Starship prompt configuration deployed to $starshipDest" -ForegroundColor Green
-    }
-}
+Write-Host "==> Setting up Oh My Posh prompt theme..." -ForegroundColor Cyan
 
 # Deploy Oh My Posh theme fallback
 $themeSource = Join-Path $ScriptDir "p10k.omp.json"

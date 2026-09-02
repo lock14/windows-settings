@@ -6,17 +6,45 @@ function go-testall  { go test ./... @args }
 function go-buildall { go build ./... @args }
 
 function go-lint {
-    $cacheDir = if ($env:XDG_CACHE_HOME) { "$env:XDG_CACHE_HOME" } else { "$HOME\.cache" }
-    if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
-    $cfg = Join-Path $cacheDir "golangci.yml"
-    if (-not (Test-Path $cfg)) {
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/abcxyz/pkg/main/.golangci.yml" -OutFile $cfg -UseBasicParsing
+    $localConfigs = @('.golangci.yml', '.golangci.yaml', '.golangci.toml')
+    $hasLocalConfig = $false
+    foreach ($conf in $localConfigs) {
+        if (Test-Path $conf) {
+            $hasLocalConfig = $true
+            break
+        }
     }
-    golangci-lint run -c $cfg @args
+    if ($hasLocalConfig) {
+        golangci-lint run @args
+    } else {
+        $cacheDir = if ($env:XDG_CACHE_HOME) { "$env:XDG_CACHE_HOME" } else { "$HOME\.cache" }
+        if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
+        $cfg = Join-Path $cacheDir "golangci.yml"
+        if (-not (Test-Path $cfg)) {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/abcxyz/pkg/main/.golangci.yml" -OutFile $cfg -UseBasicParsing
+        }
+        golangci-lint run -c $cfg @args
+    }
 }
 
 function yaml-lint {
-    yamllint -c "$HOME\.yamllint.yml" @args
+    $localYamlConfigs = @('.yamllint', '.yamllint.yml', '.yamllint.yaml')
+    $hasLocalConfig = $false
+    foreach ($conf in $localYamlConfigs) {
+        if (Test-Path $conf) {
+            $hasLocalConfig = $true
+            break
+        }
+    }
+    if ($hasLocalConfig) {
+        yamllint @args
+    } elseif (Test-Path "$HOME\.yamllint.yml") {
+        yamllint -c "$HOME\.yamllint.yml" @args
+    } elseif (Test-Path "$HOME\.yamllint") {
+        yamllint -c "$HOME\.yamllint" @args
+    } else {
+        yamllint @args
+    }
 }
 
 # Editor & CLI Aliases

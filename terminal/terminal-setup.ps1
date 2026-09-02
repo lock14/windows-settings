@@ -121,9 +121,24 @@ function Merge-TerminalHashtable {
                         $targetList.Add($srcScheme)
                     }
                 }
+            } elseif ($key -in @("actions", "keybindings") -and $Target[$key] -is [System.Collections.IList] -and $Source[$key] -is [System.Collections.IList]) {
+                $targetList = [System.Collections.Generic.List[object]]::new($Target[$key])
+                foreach ($srcItem in $Source[$key]) {
+                    $matched = $false
+                    for ($i = 0; $i -lt $targetList.Count; $i++) {
+                        $tgtItem = $targetList[$i]
+                        if ($srcItem.keys -and $tgtItem.keys -and $srcItem.keys -eq $tgtItem.keys) {
+                            $matched = $true
+                            break
+                        }
+                    }
+                    if (-not $matched) {
+                        $targetList.Add($srcItem)
+                    }
+                }
                 $Target[$key] = $targetList
             } else {
-                $Target[$key] = $Source[$key]
+                # Preserve existing user scalar settings (defaultProfile, theme, copyOnSelect, etc.)
             }
         } else {
             $Target[$key] = $Source[$key]

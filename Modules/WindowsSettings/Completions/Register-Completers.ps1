@@ -5,11 +5,18 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
 param()
 
-# GitHub CLI (gh)
-Register-ArgumentCompleter -Native -CommandName gh -ScriptBlock {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    $null = $commandAst; $null = $cursorPosition
-    gh completion -s powershell | Out-String | Invoke-Expression
+# GitHub CLI (gh) - Cached on disk
+$ghCache = "$HOME\.cache\powershell\gh_completion.ps1"
+if (Test-Path $ghCache) {
+    . $ghCache
+} elseif (Get-Command gh -ErrorAction SilentlyContinue) {
+    if (-not (Test-Path "$HOME\.cache\powershell")) {
+        New-Item -ItemType Directory -Force -Path "$HOME\.cache\powershell" | Out-Null
+    }
+    gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
+    if (Test-Path $ghCache) {
+        . $ghCache
+    }
 }
 
 # WinGet

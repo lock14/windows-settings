@@ -41,7 +41,7 @@
     CmdletsToExport = @()
 
     # Variables to export from this module
-    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'COLORTERM', 'STARSHIP_CONFIG')
+    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'COLORTERM')
 
     # Aliases to export from this module
     AliasesToExport = @('tf', 'vi', 'vim', 'v')

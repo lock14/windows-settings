@@ -13,7 +13,6 @@ Any agent modifying this repository must follow these core principles and constr
 | **PowerShell Module** | `Modules/WindowsSettings/` | `$HOME\Documents\PowerShell\Modules\WindowsSettings\` | Autoloaded shell functions, aliases, Git tools, completions, performance loader |
 | **PowerShell Profile** | `posh/Microsoft.PowerShell_profile.ps1` | `$PROFILE` | Minimal 1-line profile importing `WindowsSettings` |
 | **Oh My Posh Prompt** | `posh/p10k.omp.json` | `$HOME\.poshthemes\p10k_single_line.omp.json` | Primary Powerline prompt theme with compiled disk caching |
-| **Starship Prompt** | `posh/starship.toml` | `$HOME\.config\starship.toml` | Optional fallback prompt engine |
 | **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
 | **Legacy Vim Config** | `vim/.vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Fallback configuration for legacy Vim |
 | **Terminal Fragments** | `terminal/Fragments/` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
@@ -56,7 +55,7 @@ Any agent modifying this repository must follow these core principles and constr
   - When modifying configuration files (e.g., Windows Terminal `settings.json`, PowerShell `$PROFILE`), preserve existing user custom profiles, keybindings, actions, or third-party settings unless explicitly instructed to overwrite them.
 - **Graceful Failure & Error Handling**:
   - Use `$ErrorActionPreference = 'Stop'` in automation scripts.
-  - Validate prerequisites (e.g. `winget`, `starship`, `fzf`, `git`) gracefully, emitting clear instructions or warnings when a tool is not present rather than hard-crashing.
+  - Validate prerequisites (e.g. `winget`, `oh-my-posh`, `fzf`, `git`) gracefully, emitting clear instructions or warnings when a tool is not present rather than hard-crashing.
 
 ---
 
@@ -167,7 +166,7 @@ Before completing any task:
    ```
    Ensure all **128 tests pass across all 8 test modules**:
    - `[1/8]` PowerShell Script & Module Syntax
-   - `[2/8]` JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `starship.toml`, `settings.json`, fragments)
+   - `[2/8]` JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
    - `[3/8]` WindowsSettings Module Import & Function Exports (60 functions)
    - `[4/8]` Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
    - `[5/8]` Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)

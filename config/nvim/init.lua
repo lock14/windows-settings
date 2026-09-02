@@ -231,6 +231,10 @@ lazy.setup({
                 ts.setup({
                     ensure_installed = {
                         "go",
+                        "rust",
+                        "java",
+                        "javascript",
+                        "typescript",
                         "terraform",
                         "hcl",
                         "lua",
@@ -281,7 +285,7 @@ lazy.setup({
         "williamboman/mason-lspconfig.nvim",
         dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
         opts = {
-            ensure_installed = { "gopls", "terraformls", "pyright", "yamlls" },
+            ensure_installed = { "gopls", "terraformls", "pyright", "yamlls", "lua_ls" },
             automatic_installation = true,
         },
         config = function(_, opts)
@@ -310,16 +314,26 @@ lazy.setup({
             })
 
             -- Configure servers using modern vim.lsp.config (Neovim 0.11+) with legacy fallback
-            local servers = { "gopls", "terraformls", "pyright", "yamlls" }
+            local servers = { "gopls", "terraformls", "pyright", "yamlls", "lua_ls" }
+            local server_configs = {
+                lua_ls = {
+                    settings = {
+                        Lua = {
+                            diagnostics = { globals = { "vim" } },
+                            workspace = { library = vim.api.nvim_get_runtime_file("", true) },
+                        },
+                    },
+                },
+            }
             if vim.lsp.config and vim.lsp.enable then
                 for _, s in ipairs(servers) do
-                    vim.lsp.config[s] = {}
+                    vim.lsp.config[s] = server_configs[s] or {}
                 end
                 vim.lsp.enable(servers)
             else
                 local lspconfig = require("lspconfig")
                 for _, s in ipairs(servers) do
-                    lspconfig[s].setup({})
+                    lspconfig[s].setup(server_configs[s] or {})
                 end
             end
         end,

@@ -47,15 +47,24 @@ function gcpa { git cherry-pick --abort @args }
 function gcpc { git cherry-pick --continue @args }
 
 # Repository Custom Workflow Helpers
-function gcommit { git add -A; git commit @args }
-function gamend  { git add -A; git commit --amend --no-edit @args }
+function gcommit { git add -A && git commit @args }
+function gamend  { git add -A && git commit --amend --no-edit @args }
 function gfetch  { git fetch @args }
 function gpush   { git push origin HEAD @args }
-function gpushf  { git push --force-with-lease origin HEAD @args }
+function gpushf  {
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if ($branch -and $branch.Trim() -ne 'HEAD') {
+        git push --force-with-lease -u origin "$($branch.Trim())" @args
+    } else {
+        git push --force-with-lease origin HEAD @args
+    }
+}
 function gpull   { git pull --rebase origin HEAD @args }
-function gup     { git fetch; git pull --rebase origin HEAD @args }
+function gup     { git fetch && git pull --rebase origin HEAD @args }
 
 function gprune {
+    git show-ref --verify --quiet refs/heads/main
+    if ($LASTEXITCODE -eq 0) { git checkout main } else { git checkout master }
     $branches = git branch --format="%(refname:short)" | Where-Object { $_ -and $_ -notmatch '^(main|master)$' }
     if ($branches) {
         $branches | ForEach-Object { git branch -D $_ }
@@ -65,7 +74,7 @@ function gprune {
 function guser-branch {
     $user = if ($env:USER) { $env:USER } else { $env:USERNAME }
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if ($branch) {
+    if ($branch -and $branch.Trim() -ne 'HEAD') {
         $cleanBranch = $branch.Trim() -replace "^($([regex]::Escape($user))/)+", ""
         git branch -m "$user/$cleanBranch"
     }
@@ -98,5 +107,9 @@ function gsync {
         return
     }
 
-    git checkout $targetBranch && git pull --rebase origin $targetBranch && git checkout $currentBranch && git rebase $targetBranch
+    if ($currentBranch -eq $targetBranch) {
+        git pull --rebase origin $targetBranch
+    } else {
+        git checkout $targetBranch && git pull --rebase origin $targetBranch && git checkout $currentBranch && git rebase $targetBranch
+    }
 }

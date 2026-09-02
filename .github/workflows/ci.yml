@@ -21,8 +21,9 @@ jobs:
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           Invoke-RestMethod https://ohmyposh.dev/install.ps1 | Invoke-Expression
-          $env:Path += ";$HOME\AppData\Local\Programs\oh-my-posh\bin"
-          "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ompDir = "$HOME\AppData\Local\Programs\oh-my-posh\bin"
+          $env:Path += ";$ompDir"
+          $ompDir | Out-File -FilePath $env:GITHUB_PATH -Append
           oh-my-posh --version
 
       - name: Install PSScriptAnalyzer

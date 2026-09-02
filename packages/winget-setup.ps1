@@ -39,7 +39,6 @@ $cliPackages = @(
     'uutils.diffutils',
     'Git.Git',
     'GitHub.cli',
-    'Starship.Starship',
     'ajeetdsouza.zoxide',
     'JanDeDobbeleer.OhMyPosh',
     'BurntSushi.ripgrep.MSVC',
