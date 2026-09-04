@@ -395,7 +395,7 @@ try {
     Push-Location $nonGitDir3
     $gcmErrCaught = $false
     try {
-        gcm
+        & (Get-Command gcm -CommandType Function)
     } catch {
         if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
             $gcmErrCaught = $true
