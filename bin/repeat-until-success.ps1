@@ -31,9 +31,10 @@ while ($true) {
     Write-Host "[Attempt $attempt] Executing: $Command" -ForegroundColor Cyan
     $succeeded = $false
     try {
+        $global:LASTEXITCODE = 0
         $sb = [scriptblock]::Create($Command)
         & $sb
-        if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+        if ($? -and ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)) {
             $succeeded = $true
         }
     } catch {

@@ -89,6 +89,13 @@ properties:
         id: jdx.mise
         source: winget
 
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Vim (Command-line editor)
+      settings:
+        id: vim.vim
+        source: winget
+
     # ---------------------------------------------------------
     # Fonts
     # ---------------------------------------------------------

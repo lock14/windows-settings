@@ -54,16 +54,28 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "setup.ps1"))) {
     $targetDir = $PSScriptRoot
     Write-Host "`n[2/3] Using existing repository clone at $targetDir." -ForegroundColor Green
 } elseif (-not (Test-Path $targetDir)) {
-    Write-Host "`n[2/3] Cloning windows-settings to $targetDir..." -ForegroundColor Yellow
-    git clone $repoUrl $targetDir
+    if ($DryRun) {
+        Write-Host "`n[2/3] [DryRun] Would clone $repoUrl to $targetDir..." -ForegroundColor DarkCyan
+    } else {
+        Write-Host "`n[2/3] Cloning windows-settings to $targetDir..." -ForegroundColor Yellow
+        git clone $repoUrl $targetDir
+    }
 } else {
-    Write-Host "`n[2/3] Updating existing windows-settings at $targetDir..." -ForegroundColor Yellow
-    git -C $targetDir pull --rebase origin main
+    if ($DryRun) {
+        Write-Host "`n[2/3] [DryRun] Would update existing windows-settings at $targetDir via git pull..." -ForegroundColor DarkCyan
+    } else {
+        Write-Host "`n[2/3] Updating existing windows-settings at $targetDir..." -ForegroundColor Yellow
+        git -C $targetDir pull --rebase origin main
+    }
 }
 
 # 3. Execute setup orchestrator
 $setupScript = Join-Path $targetDir "setup.ps1"
 if (-not (Test-Path $setupScript)) {
+    if ($DryRun) {
+        Write-Host "`n[3/3] [DryRun] Setup orchestrator preview complete (target repository clone skipped in DryRun)." -ForegroundColor Magenta
+        return
+    }
     Write-Error "Setup script not found at $setupScript"
     exit 1
 }

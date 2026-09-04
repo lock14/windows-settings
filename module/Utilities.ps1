@@ -63,9 +63,9 @@ function repeat-until-success {
         [Parameter(Mandatory = $true, Position = 0)]
         [string]$Command,
 
-        [Alias('Interval', 'IntervalSeconds')]
+        [Alias('Interval')]
         [Parameter(Position = 1)]
-        [double]$Interval = 2.0,
+        [double]$IntervalSeconds = 2.0,
 
         [Parameter(Position = 2)]
         [int]$MaxAttempts = 0
@@ -76,9 +76,10 @@ function repeat-until-success {
         Write-Host "[Attempt $attempt] Executing: $Command" -ForegroundColor Cyan
         $succeeded = $false
         try {
+            $global:LASTEXITCODE = 0
             $sb = [scriptblock]::Create($Command)
             & $sb
-            if ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE) {
+            if ($? -and ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)) {
                 $succeeded = $true
             }
         } catch {
@@ -95,7 +96,7 @@ function repeat-until-success {
         }
 
         $attempt++
-        Start-Sleep -Seconds $Interval
+        Start-Sleep -Seconds $IntervalSeconds
     }
 }
 
@@ -121,11 +122,14 @@ function sum {
         $hasFloat = $false
         foreach ($item in $items) {
             if ($null -ne $item) {
-                $str = $item.ToString().Trim()
-                if ($str -match '^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$') {
-                    if ($str -contains '.') { $hasFloat = $true }
-                    $val = [decimal]$str
-                    $total += $val
+                $lines = "$item" -split "`r?`n"
+                foreach ($line in $lines) {
+                    $str = $line.Trim()
+                    if ($str -match '^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$') {
+                        if ($str.Contains('.')) { $hasFloat = $true }
+                        $val = [decimal]$str
+                        $total += $val
+                    }
                 }
             }
         }

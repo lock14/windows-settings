@@ -58,14 +58,26 @@ function lt {
 
 # Modern Syntax-Highlighted File Inspection (bat / coreutils cat / Get-Content)
 function cat {
-    if (Get-Command bat -ErrorAction SilentlyContinue) {
-        & bat --theme="Solarized-Dark-TrueColor" --paging=auto @args
-    } elseif (Test-Path $coreutilsCat) {
-        & $coreutilsCat @args
-    } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {
-        & cat.exe @args
+    if ($MyInvocation.ExpectingInput) {
+        if (Get-Command bat -ErrorAction SilentlyContinue) {
+            $input | & bat --theme="Solarized-Dark-TrueColor" --paging=never @args
+        } elseif (Test-Path $coreutilsCat) {
+            $input | & $coreutilsCat @args
+        } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {
+            $input | & cat.exe @args
+        } else {
+            $input | Out-String -Stream
+        }
     } else {
-        Get-Content @args
+        if (Get-Command bat -ErrorAction SilentlyContinue) {
+            & bat --theme="Solarized-Dark-TrueColor" --paging=auto @args
+        } elseif (Test-Path $coreutilsCat) {
+            & $coreutilsCat @args
+        } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {
+            & cat.exe @args
+        } else {
+            Get-Content @args
+        }
     }
 }
 
@@ -148,7 +160,7 @@ function fs {
 
 # Initialize Zoxide (Smart directory jumping with compiled cache)
 $zoxideCache = "$HOME\.cache\powershell\zoxide_init.ps1"
-if (Test-Path $zoxideCache) {
+if ((Test-Path $zoxideCache) -and (Get-Item $zoxideCache).Length -gt 0) {
     . $zoxideCache
 } elseif (Get-Command zoxide -ErrorAction SilentlyContinue) {
     $cacheDir = "$HOME\.cache\powershell"
@@ -156,5 +168,7 @@ if (Test-Path $zoxideCache) {
         New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     }
     zoxide init powershell | Out-File -FilePath $zoxideCache -Encoding utf8 -Force
-    . $zoxideCache
+    if ((Test-Path $zoxideCache) -and (Get-Item $zoxideCache).Length -gt 0) {
+        . $zoxideCache
+    }
 }

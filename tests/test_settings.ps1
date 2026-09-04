@@ -47,47 +47,47 @@ foreach ($file in $psFiles) {
 # -------------------------------------------------------------
 Write-Host "`n[2/8] Validating JSON Configurations & Manifests..." -ForegroundColor Yellow
 
-# Test posh/p10k.omp.json
-$p10kPath = Join-Path $RootDir "posh\p10k.omp.json"
+# Test config/powershell/p10k_single_line.omp.json
+$p10kPath = Join-Path $RootDir "config\powershell\p10k_single_line.omp.json"
 try {
     $p10kJson = Get-Content $p10kPath -Raw | ConvertFrom-Json
     if ($p10kJson.blocks.Count -gt 0) {
-        Pass "JSON valid: posh/p10k.omp.json (blocks: $($p10kJson.blocks.Count))"
+        Pass "JSON valid: config/powershell/p10k_single_line.omp.json (blocks: $($p10kJson.blocks.Count))"
     } else {
-        Fail "JSON validation: posh/p10k.omp.json" "Missing blocks definition"
+        Fail "JSON validation: config/powershell/p10k_single_line.omp.json" "Missing blocks definition"
     }
 } catch {
-    Fail "JSON parse error: posh/p10k.omp.json" $_.Exception.Message
+    Fail "JSON parse error: config/powershell/p10k_single_line.omp.json" $_.Exception.Message
 }
 
-# Test terminal/settings.json
-$terminalJsonPath = Join-Path $RootDir "terminal\settings.json"
+# Test config/terminal/settings.json
+$terminalJsonPath = Join-Path $RootDir "config\terminal\settings.json"
 try {
     $termJson = Get-Content $terminalJsonPath -Raw | ConvertFrom-Json
     $hasSolarized = ($termJson.profiles.defaults.colorScheme -eq "Solarized Dark")
     $hasFont = ($termJson.profiles.defaults.font.face -eq "MesloLGS NF")
     if ($hasSolarized -and $hasFont) {
-        Pass "JSON valid: terminal/settings.json (Solarized Dark + MesloLGS NF)"
+        Pass "JSON valid: config/terminal/settings.json (Solarized Dark + MesloLGS NF)"
     } else {
-        Fail "terminal/settings.json validation" "Defaults mismatch (Solarized: $hasSolarized, Font: $hasFont)"
+        Fail "config/terminal/settings.json validation" "Defaults mismatch (Solarized: $hasSolarized, Font: $hasFont)"
     }
 } catch {
-    Fail "JSON parse error: terminal/settings.json" $_.Exception.Message
+    Fail "JSON parse error: config/terminal/settings.json" $_.Exception.Message
 }
 
-# Test terminal/Fragments/windows-settings.json
-$fragmentJsonPath = Join-Path $RootDir "terminal\Fragments\windows-settings.json"
+# Test config/terminal/windows-settings.json
+$fragmentJsonPath = Join-Path $RootDir "config\terminal\windows-settings.json"
 try {
     $fragJson = Get-Content $fragmentJsonPath -Raw | ConvertFrom-Json
     $fragSolarized = ($fragJson.profiles.defaults.colorScheme -eq "Solarized Dark")
     $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
     if ($fragSolarized -and $fragFont) {
-        Pass "JSON valid: terminal/Fragments/windows-settings.json (Solarized Dark fragment)"
+        Pass "JSON valid: config/terminal/windows-settings.json (Solarized Dark fragment)"
     } else {
-        Fail "terminal/Fragments/windows-settings.json" "Defaults mismatch"
+        Fail "config/terminal/windows-settings.json" "Defaults mismatch"
     }
 } catch {
-    Fail "JSON parse error: terminal/Fragments/windows-settings.json" $_.Exception.Message
+    Fail "JSON parse error: config/terminal/windows-settings.json" $_.Exception.Message
 }
 
 # Test configuration.dsc.yaml
@@ -120,7 +120,7 @@ if (Test-Path $misePath) {
 # Test 3: WindowsSettings Module Import & Function Exports
 # -------------------------------------------------------------
 Write-Host "`n[3/8] Testing WindowsSettings PowerShell Module Import..." -ForegroundColor Yellow
-$moduleManifest = Join-Path $RootDir "Modules\WindowsSettings\WindowsSettings.psd1"
+$moduleManifest = Join-Path $RootDir "module\WindowsSettings.psd1"
 
 # Import the module
 Import-Module $moduleManifest -Force
@@ -147,6 +147,14 @@ foreach ($func in $expectedFunctions) {
     } else {
         Fail "Function missing: $func" "Get-Command could not find function $func"
     }
+}
+
+# Test cat pipeline handling
+$catPipeTest = ('cat pipeline test' | & (Get-Command cat -CommandType Function)).Trim()
+if ($catPipeTest -eq 'cat pipeline test') {
+    Pass "cat function correctly handles pipeline input without hanging"
+} else {
+    Fail "cat function pipeline" "Expected 'cat pipeline test', got '$catPipeTest'"
 }
 
 if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
@@ -190,13 +198,13 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
 }
 
-$wingetScript = Join-Path $RootDir "packages\winget-setup.ps1"
-if (Test-Path $wingetScript) {
-    $wingetContent = Get-Content $wingetScript -Raw
-    if ($wingetContent -match "'uutils\.coreutils'" -and $wingetContent -match "'JanDeDobbeleer\.OhMyPosh'") {
-        Pass "uutils.coreutils and Oh My Posh configured in packages/winget-setup.ps1"
+$setupPackagesScript = Join-Path $RootDir "setup.ps1"
+if (Test-Path $setupPackagesScript) {
+    $setupPackagesContent = Get-Content $setupPackagesScript -Raw
+    if ($setupPackagesContent -match "'uutils\.coreutils'" -and $setupPackagesContent -match "'JanDeDobbeleer\.OhMyPosh'") {
+        Pass "uutils.coreutils and Oh My Posh configured in setup.ps1"
     } else {
-        Fail "winget packages configuration" "packages missing in winget-setup.ps1"
+        Fail "winget packages configuration" "packages missing in setup.ps1"
     }
 }
 
@@ -258,6 +266,13 @@ if ($sumResult -eq 55) {
     Fail "sum.ps1 result" "Expected 55, got $sumResult"
 }
 
+$sumScriptFloat = 1.5, 2.5 | & $sumScript
+if ($sumScriptFloat -eq 4.0 -and $sumScriptFloat.GetType().Name -eq 'Decimal') {
+    Pass "sum.ps1 preserves decimal precision on floating point input (1.5, 2.5 | sum.ps1 = 4.0)"
+} else {
+    Fail "sum.ps1 float precision" "Expected 4.0 decimal, got $sumScriptFloat ($($sumScriptFloat.GetType().Name))"
+}
+
 $sumDirect1 = sum 1 2
 if ($sumDirect1 -eq 3) {
     Pass "sum cmdlet correctly sums positional arguments (sum 1 2 = 3)"
@@ -272,6 +287,20 @@ if ($sumDirect2 -eq 55) {
     Fail "sum cmdlet pipeline" "Expected 55, got $sumDirect2"
 }
 
+$sumFloat = 1.5, 2.5 | sum
+if ($sumFloat -eq 4.0 -and $sumFloat.GetType().Name -eq 'Decimal') {
+    Pass "sum cmdlet preserves decimal precision on floating point input (1.5, 2.5 | sum = 4.0)"
+} else {
+    Fail "sum cmdlet float precision" "Expected 4.0 decimal, got $sumFloat ($($sumFloat.GetType().Name))"
+}
+
+$sumMulti = "10`n20" | sum
+if ($sumMulti -eq 30) {
+    Pass "sum cmdlet correctly handles multiline string input (10\n20 = 30)"
+} else {
+    Fail "sum cmdlet multiline" "Expected 30, got $sumMulti"
+}
+
 # Test repeat-until-success.ps1
 $repeatScript = Join-Path $RootDir "bin\repeat-until-success.ps1"
 try {
@@ -279,6 +308,14 @@ try {
     Pass "repeat-until-success.ps1 succeeds on valid command"
 } catch {
     Fail "repeat-until-success.ps1" $_.Exception.Message
+}
+
+try {
+    $global:LASTEXITCODE = 1
+    & $repeatScript -Command "Write-Output 'prior exitcode test'" -MaxAttempts 1 | Out-Null
+    Pass "repeat-until-success.ps1 succeeds when prior LASTEXITCODE was non-zero"
+} catch {
+    Fail "repeat-until-success.ps1 prior exitcode" $_.Exception.Message
 }
 
 # -------------------------------------------------------------
@@ -328,6 +365,72 @@ try {
         Pass "gsync fails gracefully when not in a git repository"
     } else {
         Fail "gsync outside repo" "Expected error when executing gsync outside git repository"
+    }
+
+    # Test 5.1.1: gprune outside git repo
+    $nonGitDir2 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gprune_" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $nonGitDir2 | Out-Null
+    Push-Location $nonGitDir2
+    $gpruneErrCaught = $false
+    try {
+        gprune
+    } catch {
+        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
+            $gpruneErrCaught = $true
+        }
+    } finally {
+        Pop-Location
+        Remove-Item -Recurse -Force -Path $nonGitDir2 -ErrorAction SilentlyContinue
+    }
+
+    if ($gpruneErrCaught) {
+        Pass "gprune fails gracefully when not in a git repository"
+    } else {
+        Fail "gprune outside repo" "Expected error when executing gprune outside git repository"
+    }
+
+    # Test 5.1.2: gcm outside git repo
+    $nonGitDir3 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gcm_" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $nonGitDir3 | Out-Null
+    Push-Location $nonGitDir3
+    $gcmErrCaught = $false
+    try {
+        gcm
+    } catch {
+        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
+            $gcmErrCaught = $true
+        }
+    } finally {
+        Pop-Location
+        Remove-Item -Recurse -Force -Path $nonGitDir3 -ErrorAction SilentlyContinue
+    }
+
+    if ($gcmErrCaught) {
+        Pass "gcm fails gracefully when not in a git repository"
+    } else {
+        Fail "gcm outside repo" "Expected error when executing gcm outside git repository"
+    }
+
+    # Test 5.1.3: guser-branch outside git repo
+    $nonGitDir4 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gub_" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $nonGitDir4 | Out-Null
+    Push-Location $nonGitDir4
+    $gubErrCaught = $false
+    try {
+        guser-branch
+    } catch {
+        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
+            $gubErrCaught = $true
+        }
+    } finally {
+        Pop-Location
+        Remove-Item -Recurse -Force -Path $nonGitDir4 -ErrorAction SilentlyContinue
+    }
+
+    if ($gubErrCaught) {
+        Pass "guser-branch fails gracefully when not in a git repository"
+    } else {
+        Fail "guser-branch outside repo" "Expected error when executing guser-branch outside git repository"
     }
 
     # Test 5.2: gsync on feature branch
@@ -395,13 +498,13 @@ try {
 # -------------------------------------------------------------
 Write-Host "`n[6/8] Testing Completions & Prompt Rendering..." -ForegroundColor Yellow
 
-# Test completions setup execution
-$completionsScript = Join-Path $RootDir "completions\completions-setup.ps1"
+# Test completions registration execution
+$completionsScript = Join-Path $RootDir "module\Completions.ps1"
 try {
-    & $completionsScript | Out-Null
-    Pass "completions-setup.ps1 executed successfully"
+    . $completionsScript
+    Pass "module/Completions.ps1 executed and registered completers successfully"
 } catch {
-    Fail "completions-setup.ps1" $_.Exception.Message
+    Fail "module/Completions.ps1" $_.Exception.Message
 }
 
 # Test Oh My Posh rendering
@@ -462,6 +565,13 @@ if (Test-Path $sumCmd) {
     } else {
         Fail "sum.cmd execution" "Expected 60, got: $cmdSumOut"
     }
+
+    $cmdPipeOut = (& cmd.exe /c "echo 25 | `"$sumCmd`"").Trim()
+    if ($cmdPipeOut -eq "25") {
+        Pass "sum.cmd batch wrapper executed successfully with piped stdin (echo 25 | sum.cmd = 25)"
+    } else {
+        Fail "sum.cmd piped execution" "Expected 25, got: $cmdPipeOut"
+    }
 }
 
 $genPasswdCmd = Join-Path $RootDir "bin\gen-passwd.cmd"
@@ -471,6 +581,16 @@ if (Test-Path $genPasswdCmd) {
         Pass "gen-passwd.cmd batch wrapper executed successfully (Length 12)"
     } else {
         Fail "gen-passwd.cmd execution" "Expected length 12, got: $($cmdPassOut.Length)"
+    }
+}
+
+$repeatCmd = Join-Path $RootDir "bin\repeat-until-success.cmd"
+if (Test-Path $repeatCmd) {
+    $cmdRepeatOut = (& cmd.exe /c "$repeatCmd" "Write-Output cmd_repeat_ok" -MaxAttempts 1) | Out-String
+    if ($cmdRepeatOut -match "cmd_repeat_ok") {
+        Pass "repeat-until-success.cmd batch wrapper executed successfully"
+    } else {
+        Fail "repeat-until-success.cmd execution" "Expected 'cmd_repeat_ok' in output, got: $cmdRepeatOut"
     }
 }
 
@@ -487,7 +607,7 @@ try {
     $mockTarget = Join-Path $sandboxDir "settings.json"
     Set-Content -Path $mockTarget -Value "initial configuration"
 
-    $sourceSettings = Join-Path $RootDir "terminal\settings.json"
+    $sourceSettings = Join-Path $RootDir "config\terminal\settings.json"
     $sourceContent = Get-Content $sourceSettings -Raw
 
     # 1. Overwrite with differing content should create a backup
@@ -521,13 +641,12 @@ try {
         Fail "Idempotency failure" "Redundant backup created when content had not changed"
     }
 
-    # 3. Test Windows Terminal deep merge & JSON Fragments
-    $terminalSetupScript = Join-Path $RootDir "terminal\terminal-setup.ps1"
-    $terminalScriptContent = Get-Content $terminalSetupScript -Raw
-    if ($terminalScriptContent -match 'Fragments' -and $terminalScriptContent -match 'Merge-TerminalHashtable') {
-        Pass "Windows Terminal setup implements JSON Fragment extension & deep merge"
+    # 3. Test Windows Terminal declarative JSON Fragment deployment
+    $setupScriptContent = Get-Content (Join-Path $RootDir "setup.ps1") -Raw
+    if ($setupScriptContent -match 'Fragments' -and $setupScriptContent -match 'Deploy-ConfigFile') {
+        Pass "setup.ps1 implements declarative JSON Fragment extension deployment"
     } else {
-        Fail "Terminal setup" "JSON Fragment support missing in terminal-setup.ps1"
+        Fail "Terminal setup" "Declarative JSON Fragment support missing in setup.ps1"
     }
 
     # 4. Test setup.ps1 and bootstrap.ps1 dry-run execution
@@ -558,6 +677,13 @@ try {
         Pass "setup.ps1 executes cleanly in -DryRun -WithGUI mode"
     } catch {
         Fail "setup.ps1 with-gui dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -UseDSC | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -UseDSC mode"
+    } catch {
+        Fail "setup.ps1 use-dsc dry-run" $_.Exception.Message
     }
 
     $bootstrapScriptPath = Join-Path $RootDir "bootstrap.ps1"

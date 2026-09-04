@@ -7,14 +7,14 @@ param()
 
 # GitHub CLI (gh) - Cached on disk
 $ghCache = "$HOME\.cache\powershell\gh_completion.ps1"
-if (Test-Path $ghCache) {
+if ((Test-Path $ghCache) -and (Get-Item $ghCache).Length -gt 0) {
     . $ghCache
 } elseif (Get-Command gh -ErrorAction SilentlyContinue) {
     if (-not (Test-Path "$HOME\.cache\powershell")) {
         New-Item -ItemType Directory -Force -Path "$HOME\.cache\powershell" | Out-Null
     }
     gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
-    if (Test-Path $ghCache) {
+    if ((Test-Path $ghCache) -and (Get-Item $ghCache).Length -gt 0) {
         . $ghCache
     }
 }

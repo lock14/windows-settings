@@ -62,7 +62,7 @@ $ompCacheDir = "$HOME\.cache\powershell"
 $ompInit = "$ompCacheDir\omp_init.ps1"
 $themePath = "$HOME\.poshthemes\p10k_single_line.omp.json"
 
-if (Test-Path $ompInit) {
+if ((Test-Path $ompInit) -and (Get-Item $ompInit).Length -gt 0) {
     . $ompInit
 } elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     if (Test-Path $themePath) {
@@ -70,7 +70,9 @@ if (Test-Path $ompInit) {
             New-Item -ItemType Directory -Force -Path $ompCacheDir | Out-Null
         }
         oh-my-posh init pwsh --config $themePath --print | Out-File -FilePath $ompInit -Encoding utf8 -Force
-        . $ompInit
+        if ((Test-Path $ompInit) -and (Get-Item $ompInit).Length -gt 0) {
+            . $ompInit
+        }
     } else {
         oh-my-posh init pwsh | Invoke-Expression
     }
@@ -131,15 +133,9 @@ try {
 # -------------------------------------------------------------
 # 5. Static Inlined Public Functions & Completers (Zero Disk Scan)
 # -------------------------------------------------------------
-$publicDir = Join-Path $PSScriptRoot "Public"
-if (Test-Path $publicDir) {
-    . "$publicDir\GitShortcuts.ps1"
-    . "$publicDir\DeveloperTools.ps1"
-    . "$publicDir\Navigation.ps1"
-    . "$publicDir\Utilities.ps1"
-}
+. "$PSScriptRoot\Git.ps1"
+. "$PSScriptRoot\Developer.ps1"
+. "$PSScriptRoot\Navigation.ps1"
+. "$PSScriptRoot\Utilities.ps1"
+. "$PSScriptRoot\Completions.ps1"
 
-$completionsDir = Join-Path $PSScriptRoot "Completions"
-if (Test-Path $completionsDir) {
-    . "$completionsDir\Register-Completers.ps1"
-}
