@@ -10,17 +10,17 @@ Any agent modifying this repository must follow these core principles and constr
 
 | Component | Repository Path | Target Location on System | Purpose |
 | :--- | :--- | :--- | :--- |
-| **PowerShell Module** | `Modules/WindowsSettings/` | `$HOME\Documents\PowerShell\Modules\WindowsSettings\` | Autoloaded shell functions, aliases, Git tools, completions, performance loader |
-| **PowerShell Profile** | `posh/Microsoft.PowerShell_profile.ps1` | `$PROFILE` | Minimal 1-line profile importing `WindowsSettings` |
-| **Oh My Posh Prompt** | `posh/p10k.omp.json` | `$HOME\.poshthemes\p10k_single_line.omp.json` | Primary Powerline prompt theme with compiled disk caching |
+| **PowerShell Module** | `module/` | `$HOME\Documents\PowerShell\Modules\WindowsSettings\` | Autoloaded shell functions, aliases, Git tools, completions, performance loader |
+| **PowerShell Profile** | `config/powershell/Microsoft.PowerShell_profile.ps1` | `$PROFILE` | Minimal 1-line profile importing `WindowsSettings` |
+| **Oh My Posh Prompt** | `config/powershell/p10k_single_line.omp.json` | `$HOME\.poshthemes\p10k_single_line.omp.json` | Primary Powerline prompt theme with compiled disk caching |
 | **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
-| **Legacy Vim Config** | `vim/.vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Fallback configuration for legacy Vim |
-| **Terminal Fragments** | `terminal/Fragments/` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
-| **TrueColor Themes** | `colors/` | `%APPDATA%\bat\themes\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes for `bat`, `eza`, and `dircolors` |
+| **Legacy Vim Config** | `config/vim/_vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Fallback configuration for legacy Vim |
+| **Terminal Fragments** | `config/terminal/windows-settings.json` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
+| **TrueColor Themes** | `config/bat/` & `config/colors/` | `%APPDATA%\bat\themes\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes for `bat`, `eza`, and `dircolors` |
 | **Native User Binaries** | `bin/` | Registered in User `$env:Path` | Dual-execution CLI scripts (`<name>.ps1` + `<name>.cmd`) |
 | **Package Declarations** | `configuration.dsc.yaml` & `mise.toml` | System Provisioning | Microsoft DSC v3 and Mise declarative package specifications |
-| **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Provisioning and configuration runners supporting `-DryRun` |
-| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 128 automated validation tests across 8 modules |
+| **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Declarative provisioning and configuration runners supporting `-DryRun` |
+| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 133 automated validation tests across 8 modules |
 
 ---
 
@@ -44,7 +44,7 @@ Any agent modifying this repository must follow these core principles and constr
 ## 3. Destructive Safety & Idempotent Backup Policy
 
 - **Mandatory Non-Destructive Backups**:
-  - Any installation or setup script (`setup.ps1`, `terminal-setup.ps1`, `posh-setup.ps1`, `vim-setup.ps1`) must create a timestamped backup (`.bak_<timestamp>`) before overwriting or modifying an existing user configuration file (e.g. Windows Terminal `settings.json`, PowerShell `$PROFILE`, Neovim `init.lua`).
+  - Any installation or setup script (`setup.ps1`, `bootstrap.ps1`) must create a timestamped backup (`.bak_<timestamp>`) before overwriting or modifying an existing user configuration file (e.g. Windows Terminal `settings.json`, PowerShell `$PROFILE`, Neovim `init.lua`).
 - **Strict Idempotency Requirement**:
   - Running setup scripts repeatedly must not corrupt configuration files, create duplicate profile blocks, or generate redundant backups when file content has not changed.
   - Sourcing profiles or re-running installers must be safe to execute multiple times in the same session.
@@ -102,7 +102,7 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 2. **PSReadLine 24-Bit Escape Sequences**:
    - In `PSReadLine`, pass 24-bit TrueColor escape sequences (``"`e[38;2;R;G;Bm"``) with explicit `Default = "`e[38;2;131;148;150m"` mapping so unquoted file paths and arguments render in comfortable `#839496` Base0 light grey rather than stark white.
 3. **`bat` TrueColor Theme**:
-   - `bat` syntax highlighting uses `colors/Solarized-Dark-TrueColor.tmTheme` compiled into `%APPDATA%\bat\` via `bat cache --build`.
+   - `bat` syntax highlighting uses `config/bat/Solarized-Dark-TrueColor.tmTheme` compiled into `%APPDATA%\bat\` via `bat cache --build`.
    - `cat` is aliased to `bat --theme="Solarized-Dark-TrueColor" --paging=auto`.
 4. **`eza` Tree Connector Colors**:
    - `EZA_COLORS` and `EXA_COLORS` are configured with `xx=38;5;10` (Solarized Base01) so `lt` / `eza --tree` renders crisp `├──` tree punctuation.
@@ -164,10 +164,10 @@ Before completing any task:
    ```powershell
    pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all **128 tests pass across all 8 test modules**:
+   Ensure all **133 tests pass across all 8 test modules**:
    - `[1/8]` PowerShell Script & Module Syntax
    - `[2/8]` JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
-   - `[3/8]` WindowsSettings Module Import & Function Exports (60 functions)
+   - `[3/8]` WindowsSettings Module Import & Function Exports (61 functions)
    - `[4/8]` Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
    - `[5/8]` Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)
    - `[6/8]` Completions & Prompt Rendering

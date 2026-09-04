@@ -14,19 +14,24 @@ param(
 )
 
 begin {
-    [double]$total = 0.0
+    $total = [decimal]0
+    $hasInputObject = $false
+    $hasFloat = $false
 }
 
 process {
     if ($null -ne $InputObject) {
+        $hasInputObject = $true
         foreach ($item in $InputObject) {
             if ($null -ne $item) {
                 # Handle multiline string blocks
                 $lines = "$item" -split "`r?`n"
                 foreach ($line in $lines) {
-                    $trimmed = $line.Trim()
-                    if ($trimmed -match '^-?\d+(\.\d+)?$') {
-                        $total += [double]$trimmed
+                    $str = $line.Trim()
+                    if ($str -match '^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$') {
+                        if ($str.Contains('.')) { $hasFloat = $true }
+                        $val = [decimal]$str
+                        $total += $val
                     }
                 }
             }
@@ -35,10 +40,23 @@ process {
 }
 
 end {
+    # If InputObject was not provided through pipeline/arguments and standard input is redirected (e.g. via cmd.exe pipe)
+    if (-not $hasInputObject -and [Console]::IsInputRedirected) {
+        while ($null -ne ($line = [Console]::In.ReadLine())) {
+            $str = $line.Trim()
+            if ($str -match '^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$') {
+                if ($str.Contains('.')) { $hasFloat = $true }
+                $val = [decimal]$str
+                $total += $val
+            }
+        }
+    }
+
     # If the number is a whole integer, output as integer
-    if ($total -eq [math]::Floor($total)) {
-        [long]$total
-    } else {
+    if ($hasFloat -or ($total % 1 -ne 0)) {
         $total
+    } else {
+        [long]$total
     }
 }
+

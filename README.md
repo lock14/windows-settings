@@ -33,29 +33,33 @@ Modern Windows developer workstation configuration and setup automation for **Po
 ```text
 windows-settings/
 ├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
-├── posh/p10k.omp.json             # Single-line Powerlevel10k Solarized Dark theme
 ├── mise.toml                      # Declarative polyglot toolchains & CLI tools (Java, Go, Python, Node, Rust, etc.)
 ├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
-├── setup.ps1                      # Master setup engine
+├── setup.ps1                      # Declarative master setup engine (diff detection, backup, -DryRun)
 │
-├── Modules/
-│   └── WindowsSettings/           # Native PowerShell module (autoloaded, zero profile hacks)
-│       ├── WindowsSettings.psd1
-│       ├── WindowsSettings.psm1
-│       ├── Public/                # Git shortcuts, developer tools, navigation, utilities
-│       └── Completions/           # Dynamic CLI argument completions
-│
-├── config/
-│   └── nvim/                      # Modern Lua Neovim (Mason LSP, Treesitter, Telescope)
-│       └── init.lua
-│
-├── terminal/
-│   └── Fragments/                 # Windows Terminal JSON fragment extension (zero-touch)
-│       └── windows-settings.json
+├── assets/                        # Showcase media and documentation diagrams
 │
 ├── bin/                           # Native CLI utilities (gen-passwd, repeat-until-success, sum)
+│
+├── config/                        # Unified declarative tool & editor configurations
+│   ├── bat/                       # Solarized Dark bat theme (Solarized-Dark-TrueColor.tmTheme)
+│   ├── colors/                    # Directory colors (LS_COLORS)
+│   ├── nvim/                      # Modern Lua Neovim (init.lua: Mason LSP, Treesitter, Telescope)
+│   ├── powershell/                # PowerShell profile & Oh My Posh theme (p10k_single_line.omp.json)
+│   ├── terminal/                  # Windows Terminal JSON fragment & settings
+│   └── vim/                       # Legacy Vim configuration (_vimrc)
+│
+├── module/                        # Flat WindowsSettings PowerShell Module
+│   ├── WindowsSettings.psd1       # Module manifest (61 exported functions)
+│   ├── WindowsSettings.psm1       # Module root loader
+│   ├── Completions.ps1            # Native dynamic CLI completions
+│   ├── Developer.ps1              # Developer tools & shortcuts
+│   ├── Git.ps1                    # Git shortcuts & workflows
+│   ├── Navigation.ps1             # Modern navigation & directory tools
+│   └── Utilities.ps1              # Core utilities & cmdlets
+│
 └── tests/
-    └── test_settings.ps1          # 128 automated tests across all 8 test modules
+    └── test_settings.ps1          # 133 automated tests across all 8 test modules
 ```
 
 ---
@@ -125,7 +129,7 @@ cd windows-settings
 
 ## What's Included
 
-### 1. Single-Line Powerlevel10k Prompt (`posh/p10k.omp.json`)
+### 1. Single-Line Powerlevel10k Prompt (`config/powershell/p10k_single_line.omp.json`)
 - Flawless dynamic Powerline transitions powered by **Oh My Posh**.
 - **Dynamic Git State Shifting**: Turns **Green** when clean, **Yellow** when modified/staged, **Orange** when diverged, **Cyan** when ahead.
 - Left side: OS glyph $\to$ Directory (``) $\to$ Git branch & status.
@@ -191,8 +195,8 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 - **Telescope**: Fast in-editor fuzzy file finding (`<leader>ff`, `<leader>fg`).
 - **Solarized Dark**: Seamless `#002B36` terminal background matching.
 
-### 6. Zero-Touch Windows Terminal (`terminal/Fragments/`)
-- Native Windows Terminal JSON Fragment extension (`terminal/Fragments/windows-settings.json`).
+### 6. Zero-Touch Windows Terminal (`config/terminal/`)
+- Native Windows Terminal JSON Fragment extension (`config/terminal/windows-settings.json`).
 - Automatically loads Solarized Dark, MesloLGS NF font, and keybindings without ever modifying `settings.json` or conflicting with WSL profiles.
 
 ---
@@ -205,10 +209,10 @@ Run the automated test suite locally:
 pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **128 automated tests across all 8 modules**:
+Runs **133 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
 2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
-3. WindowsSettings Module Import & Function Exports (60 functions)
+3. WindowsSettings Module Import & Function Exports (61 functions)
 4. Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
 5. Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)
 6. Completions & Prompt Rendering

@@ -12,9 +12,23 @@ foreach ($a in $gitConflictAliases) {
 
 function gco  { git checkout @args }
 function gcb  { git checkout -b @args }
-function gcm  {
+function gcm {
+    $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if (-not $currentBranch) {
+        Write-Error "Error: not in a git repository"
+        return
+    }
     git show-ref --verify --quiet refs/heads/main
-    if ($LASTEXITCODE -eq 0) { git checkout main @args } else { git checkout master @args }
+    if ($LASTEXITCODE -eq 0) {
+        git checkout main @args
+    } else {
+        git show-ref --verify --quiet refs/heads/master
+        if ($LASTEXITCODE -eq 0) {
+            git checkout master @args
+        } else {
+            Write-Error "Error: neither 'main' nor 'master' branch found locally."
+        }
+    }
 }
 function gcd  { git checkout develop @args }
 function ga   { git add @args }
@@ -63,8 +77,33 @@ function gpull   { git pull --rebase origin HEAD @args }
 function gup     { git fetch && git pull --rebase origin HEAD @args }
 
 function gprune {
+    $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if (-not $currentBranch) {
+        Write-Error "Error: not in a git repository"
+        return
+    }
+
     git show-ref --verify --quiet refs/heads/main
-    if ($LASTEXITCODE -eq 0) { git checkout main } else { git checkout master }
+    $hasMain = ($LASTEXITCODE -eq 0)
+
+    git show-ref --verify --quiet refs/heads/master
+    $hasMaster = ($LASTEXITCODE -eq 0)
+
+    $targetBranch = if ($hasMain) {
+        "main"
+    } elseif ($hasMaster) {
+        "master"
+    } else {
+        Write-Error "Error: neither 'main' nor 'master' branch found locally."
+        return
+    }
+
+    git checkout $targetBranch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Error: failed to checkout $targetBranch"
+        return
+    }
+
     $branches = git branch --format="%(refname:short)" | Where-Object { $_ -and $_ -notmatch '^(main|master)$' }
     if ($branches) {
         $branches | ForEach-Object { git branch -D $_ }
@@ -74,7 +113,11 @@ function gprune {
 function guser-branch {
     $user = if ($env:USER) { $env:USER } else { $env:USERNAME }
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if ($branch -and $branch.Trim() -ne 'HEAD') {
+    if (-not $branch) {
+        Write-Error "Error: not in a git repository"
+        return
+    }
+    if ($branch.Trim() -ne 'HEAD') {
         $cleanBranch = $branch.Trim() -replace "^($([regex]::Escape($user))/)+", ""
         git branch -m "$user/$cleanBranch"
     }
