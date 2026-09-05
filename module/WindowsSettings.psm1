@@ -88,8 +88,8 @@ try {
     Set-PSReadLineOption -Colors @{
         Default                 = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - standard arguments/paths/text)
         Command                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
-        Parameter               = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
-        Operator                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496)
+        Parameter               = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900 - options/parameters)
+        Operator                = "`e[38;2;108;113;196m"  # Solarized Violet (#6C71C4 - operators/pipes)
         Variable                = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900)
         String                  = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
         Number                  = "`e[38;2;211;54;130m"   # Solarized Magenta (#D33682)

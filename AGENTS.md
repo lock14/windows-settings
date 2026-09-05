@@ -89,10 +89,11 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 | **Emphasis Text** | `base1` | `#93A1A1` | Bright text, highlighted labels |
 | **Light Tone (Paper)** | `base2` / `base3` | `#EEE8D5` / `#FDF6E3` | Light background references (never default text) |
 | **Keywords & Control** | `green` | `#859900` | `package`, `import`, `func`, `return`, `if`, `for`, `var`, `type`, `struct`, PSReadLine commands |
-| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine variables |
+| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine variables, options & parameters |
 | **Functions & Methods** | `blue` | `#268BD2` | Function declarations, method calls, directory names |
-| **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine parameters |
+| **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine strings |
 | **Numbers & Constants** | `magenta` | `#D33682` | Numeric literals, `nil`, `true`, `false`, `iota`, PSReadLine numbers |
+| **Operators & Mechanics**| `violet` | `#6C71C4` | Operators, pipes, redirections, PSReadLine operators |
 | **Preprocessors & Headers**| `orange` | `#CB4B16` | Preprocessor macros, compiler directives |
 | **Errors & Diagnostics** | `red` | `#DC322F` | Syntax errors, diagnostic warnings |
 
