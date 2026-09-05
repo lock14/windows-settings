@@ -92,7 +92,7 @@ try {
         Operator                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained operators/pipes)
         Variable                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained variables)
         String                  = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
-        Number                  = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained arguments)
+        Number                  = "`e[38;2;211;54;130m"   # Solarized Magenta (#D33682)
         Type                    = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900)
         Comment                 = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
         Keyword                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
