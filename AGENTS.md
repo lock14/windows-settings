@@ -89,10 +89,11 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 | **Emphasis Text** | `base1` | `#93A1A1` | Bright text, highlighted labels |
 | **Light Tone (Paper)** | `base2` / `base3` | `#EEE8D5` / `#FDF6E3` | Light background references (never default text) |
 | **Keywords & Control** | `green` | `#859900` | `package`, `import`, `func`, `return`, `if`, `for`, `var`, `type`, `struct`, PSReadLine commands |
-| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine variables |
+| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine type literals (`[string]`, `[int]`) |
 | **Functions & Methods** | `blue` | `#268BD2` | Function declarations, method calls, directory names |
-| **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine parameters |
+| **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine strings |
 | **Numbers & Constants** | `magenta` | `#D33682` | Numeric literals, `nil`, `true`, `false`, `iota`, PSReadLine numbers |
+| **Operators & Mechanics**| `violet` | `#6C71C4` | Preprocessor symbols, compiler directives |
 | **Preprocessors & Headers**| `orange` | `#CB4B16` | Preprocessor macros, compiler directives |
 | **Errors & Diagnostics** | `red` | `#DC322F` | Syntax errors, diagnostic warnings |
 
@@ -100,7 +101,7 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 1. **Global 24-Bit TrueColor (`COLORTERM=truecolor`)**:
    - Modern Rust CLI tools (`bat`, `eza`, `delta`) check `$env:COLORTERM`. Ensure `$env:COLORTERM = 'truecolor'` is exported in `WindowsSettings.psm1` and registered in the user's permanent environment variables to prevent 256-color quantization.
 2. **PSReadLine 24-Bit Escape Sequences**:
-   - In `PSReadLine`, pass 24-bit TrueColor escape sequences (``"`e[38;2;R;G;Bm"``) with explicit `Default = "`e[38;2;131;148;150m"` mapping so unquoted file paths and arguments render in comfortable `#839496` Base0 light grey rather than stark white.
+   - In `PSReadLine`, pass 24-bit TrueColor escape sequences (``"`e[38;2;R;G;Bm"``) with restrained syntax highlighting: commands in Green `#859900`, strings in Cyan `#2AA198`, numbers in Magenta `#D33682`, comments/predictions in Base01 `#586E75`, errors in Red `#DC322F`, with parameters, variables, and operators kept calm in neutral foreground Base0 `#839496` (`"`e[38;2;131;148;150m"`).
 3. **`bat` TrueColor Theme**:
    - `bat` syntax highlighting uses `config/bat/Solarized-Dark-TrueColor.tmTheme` compiled into `%APPDATA%\bat\` via `bat cache --build`.
    - `cat` is aliased to `bat --theme="Solarized-Dark-TrueColor" --paging=auto`.
