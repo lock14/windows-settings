@@ -56,16 +56,24 @@ function l {
 function e {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --icons=auto --group-directories-first @args
+    } elseif (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto @args
     } else {
-        ls @args
+        Get-ChildItem @args
     }
 }
 
 function el {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso @args
+    } elseif (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto -alF @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -alF @args
     } else {
-        ll @args
+        Get-ChildItem -Force @args
     }
 }
 
