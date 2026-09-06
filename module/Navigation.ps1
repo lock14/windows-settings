@@ -11,8 +11,49 @@ $programFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { Join-Path ($
 $coreutilsLs = Join-Path $programFiles 'coreutils\cmd\ls.cmd'
 $coreutilsCat = Join-Path $programFiles 'coreutils\cmd\cat.cmd'
 
-# Modern Directory Listing
+# Standard Directory Listing (GNU coreutils ls defaults matching home-settings)
 function ls {
+    if (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto @args
+    } else {
+        Get-ChildItem @args
+    }
+}
+
+function ll {
+    if (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto -alF @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -alF @args
+    } else {
+        Get-ChildItem -Force @args
+    }
+}
+
+function la {
+    if (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto -A @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -A @args
+    } else {
+        Get-ChildItem -Force @args
+    }
+}
+
+function l {
+    if (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto -CF @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -CF @args
+    } else {
+        Get-ChildItem @args
+    }
+}
+
+# Optional Modern Directory Listing (eza shortcuts matching home-settings)
+function e {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --icons=auto --group-directories-first @args
     } elseif (Test-Path $coreutilsLs) {
@@ -24,35 +65,58 @@ function ls {
     }
 }
 
-function ll {
+function el {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
-        & eza -la --icons=auto --git --header --group-directories-first @args
+        & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso @args
     } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto -alFh @args
+        & $coreutilsLs --color=auto -alF @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto -alFh @args
+        & ls.exe --color=auto -alF @args
     } else {
         Get-ChildItem -Force @args
     }
 }
 
-function la {
+function elm {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
-        & eza -a --icons=auto --group-directories-first @args
+        & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso --sort=modified @args
     } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto -AFhl @args
+        & $coreutilsLs --color=auto -alFt @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto -AFhl @args
+        & ls.exe --color=auto -alFt @args
     } else {
-        Get-ChildItem -Force @args
+        Get-ChildItem -Force @args | Sort-Object LastWriteTime -Descending
     }
 }
 
-function lt {
+function et {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --tree --level=2 --icons=auto @args
     } else {
         Format-PathTree @args
+    }
+}
+
+# Backward compatibility alias
+function lt { et @args }
+
+function elt {
+    if (Get-Command eza -ErrorAction SilentlyContinue) {
+        & eza -la --tree --level=2 --icons=auto --git --group --time-style=long-iso @args
+    } else {
+        Format-PathTree @args
+    }
+}
+
+function elx {
+    if (Get-Command eza -ErrorAction SilentlyContinue) {
+        & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso -H -i -S --extended @args
+    } elseif (Test-Path $coreutilsLs) {
+        & $coreutilsLs --color=auto -alF -i -s @args
+    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
+        & ls.exe --color=auto -alF -i -s @args
+    } else {
+        Get-ChildItem -Force @args
     }
 }
 

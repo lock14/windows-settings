@@ -113,7 +113,12 @@ if (Test-Path $p10kPath) {
 
 $misePath = Join-Path $RootDir "mise.toml"
 if (Test-Path $misePath) {
-    Pass "TOML valid: mise.toml (Declarative toolchains)"
+    $miseContent = Get-Content $misePath -Raw
+    if ($miseContent -match 'glow\s*=\s*"latest"' -and $miseContent -match 'go\.set_gobin\s*=\s*false' -and $miseContent -match 'go\.set_gopath\s*=\s*false') {
+        Pass "TOML valid: mise.toml (Declarative toolchains with glow & Go isolation)"
+    } else {
+        Fail "mise.toml validation" "Missing glow, go.set_gobin, or go.set_gopath in mise.toml"
+    }
 }
 
 # -------------------------------------------------------------
@@ -129,7 +134,8 @@ $expectedFunctions = @(
     # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
     'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
     'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
-    'cat', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'lt',
+    'cat', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'l', 'lt',
+    'e', 'el', 'et', 'elm', 'elt', 'elx',
     # Oh My Zsh Git plugin aliases
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
@@ -196,6 +202,18 @@ if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
     Pass "LS_COLORS environment variable configured (Solarized Dark)"
 } else {
     Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
+}
+
+if ($env:EZA_COLORS -and $env:EZA_COLORS -match 'di=38;2;38;139;210' -and $env:EZA_COLORS -match 'xx=38;2;88;110;117' -and $env:EZA_COLORS -match 'ff=38;2;131;148;150') {
+    Pass "EZA_COLORS environment variable configured (24-bit TrueColor Solarized Dark)"
+} else {
+    Fail "EZA_COLORS environment variable" "EZA_COLORS not set to full TrueColor Solarized Dark palette"
+}
+
+if ($env:EXA_COLORS -eq $env:EZA_COLORS) {
+    Pass "EXA_COLORS matches EZA_COLORS"
+} else {
+    Fail "EXA_COLORS environment variable" "EXA_COLORS does not match EZA_COLORS"
 }
 
 $setupPackagesScript = Join-Path $RootDir "setup.ps1"

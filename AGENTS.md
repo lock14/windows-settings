@@ -105,11 +105,17 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 3. **`bat` TrueColor Theme**:
    - `bat` syntax highlighting uses `config/bat/Solarized-Dark-TrueColor.tmTheme` compiled into `%APPDATA%\bat\` via `bat cache --build`.
    - `cat` is aliased to `bat --theme="Solarized-Dark-TrueColor" --paging=auto`.
-4. **`eza` Tree Connector Colors**:
-   - `EZA_COLORS` and `EXA_COLORS` are configured with `xx=38;5;10` (Solarized Base01) so `lt` / `eza --tree` renders crisp `├──` tree punctuation.
+4. **`eza` Palette & Directory Listing Architecture**:
+   - `EZA_COLORS` and `EXA_COLORS` are configured with the complete 83-code authentic 24-bit TrueColor Solarized Dark palette matching Ethan Schoonover's specification (e.g. `xx=38;2;88;110;117` Base01 tree lines, `da=38;2;131;148;150` Base0 timestamps, `ff=38;2;131;148;150`, security contexts `Su`, `Sr`, `St`, `Sl`, size units `sn`, `sb`).
+   - Dynamic luminance scaling (`--color-scale`) is omitted across all aliases to preserve crisp TrueColor contrast.
+   - Standard directory listings (`ls`, `ll`, `la`, `l`) strictly invoke GNU coreutils `ls` with Solarized `LS_COLORS` (matching `home-settings` 1:1).
+   - Modern `eza` listings are provided exclusively via `e`, `el`, `elm`, `et`, `elt`, and `elx` (with `lt` retained as a compatibility alias for `et`).
 5. **Neovim Lua Configuration**:
    - Uses `maxmx03/solarized.nvim` with `variant = "spring"` for vibrant high-contrast syntax highlighting matching the terminal.
    - Configures native Neovim 0.11+ / 0.12+ LSP architecture (`LspAttach` autocommands, `vim.lsp.config`, `vim.lsp.enable`).
+6. **Mise Toolchains & Go Isolation**:
+   - Declarative developer toolchains (`glow = "latest"`, `go = "latest"`, `node = "lts"`, `python = "latest"`, `rust = "latest"`, `neovim = "latest"`, `eza = "latest"`, `bat = "latest"`).
+   - Explicit Go environment isolation in `mise.toml`: `go.set_gobin = false` and `go.set_gopath = false` to prevent version-specific `GOBIN` overrides, preserve custom `GOBIN`/`GOPATH`, and avoid tooling loss across Go version switches.
 
 ---
 
@@ -117,7 +123,8 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 
 - **Maintain Kebab-Case Naming with Backward Compatibility**:
   - Maintain the full Git plugin suite: `gco`, `gcb`, `gcm`, `ga`, `gaa`, `gst`, `gss`, `gd`, `gds`, `gl`, `gp`, `gb`, `gba`, `gbd`, `gsta`, `gstp`, `gstl`, `glog`, `glo`, `grb`, `gcommit`, `gamend`, `gup`, `gprune`, `gsync`, `guser-branch`.
-  - Maintain developer shortcuts: `go-testall`, `go-buildall`, `go-lint`, `yaml-lint`, `fs`, `Format-PathTree`, `ll`, `la`, `lt`.
+  - Maintain developer shortcuts: `go-testall`, `go-buildall`, `go-lint`, `yaml-lint`, `fs`, `Format-PathTree`, `ls`, `ll`, `la`, `l`, `lt`, `e`, `el`, `elm`, `et`, `elt`, `elx`.
+  - Modern `eza` listing aliases (`el`, `elm`, `elt`, `elx`) format timestamps with `--time-style=long-iso` and show file group ownership (`--group`).
   - Maintain editor shortcuts: `vi`, `vim`, `v` aliased to `nvim` (with automatic fallback to `vim` if Neovim is not installed).
   - Provide backward-compatible wrappers for legacy aliases (`go_testall`, `go_buildall`, `go_lint`, `yaml_lint`, `fix-abcxyz-branch-name`).
   - `guser-branch` must cleanly strip redundant user prefixes (`$env:USERNAME/` or `$env:USER/`) before renaming.
@@ -165,10 +172,10 @@ Before completing any task:
    ```powershell
    pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all **133 tests pass across all 8 test modules**:
+   Ensure all **tests pass across all 8 test modules**:
    - `[1/8]` PowerShell Script & Module Syntax
    - `[2/8]` JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
-   - `[3/8]` WindowsSettings Module Import & Function Exports (61 functions)
+   - `[3/8]` WindowsSettings Module Import & Function Exports
    - `[4/8]` Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`)
    - `[5/8]` Git Workflow Behavior (`gsync`, `gprune`, `guser-branch`, `fix-abcxyz-branch-name`)
    - `[6/8]` Completions & Prompt Rendering

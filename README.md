@@ -145,10 +145,11 @@ cd windows-settings
 - Instant updates via `git pull` without modifying or corrupting profile files.
 
 ### 3. Modern Rust CLI Developer Toolchain
-- **`eza`**: Modern `ls` with Git status, icons, and tree views (`ls`, `ll`, `la`, `lt`).
+- **`eza`**: Modern directory listing with Git status, icons, and tree views (`e`, `el`, `elm`, `et`, `elt`, `elx`).
 - **`zoxide` (`z`)**: Frecency-based smart directory jumping.
 - **`bat`**: Syntax-highlighted paging with Git modification markers.
-- **`uutils-coreutils`**: Fast, memory-safe compiled Rust GNU coreutils.
+- **`glow`**: Terminal Markdown renderer with Solarized Dark styling.
+- **`uutils-coreutils`**: Fast, memory-safe compiled Rust GNU coreutils (`ls`, `ll`, `la`, `l`).
 - **`PSReadLine`**: Predictive IntelliSense and interactive fuzzy history search (`Ctrl+R`) via `fzf`.
 
 ### 4. Git & Developer Shortcuts
@@ -182,10 +183,16 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 | `tf` | `terraform` |
 | `vi` / `vim` / `v` | `nvim` (Modern Lua Neovim) |
 | `yaml-lint` | `yamllint -c ~/.yamllint.yml` |
-| `ls` | Modern directory listing (`eza --icons=auto`) |
-| `ll` | Detailed directory listing with Git status (`eza -la --git`) |
-| `la` | List all files including hidden (`eza -a`) |
-| `lt` | Tree view listing (`eza --tree --level=2`) |
+| `ls` | Standard directory listing (`ls --color=auto`) |
+| `ll` | Detailed directory listing (`ls -alF`) |
+| `la` | List all files including hidden (`ls -A`) |
+| `l` | Compact column directory listing (`ls -CF`) |
+| `e` | Modern directory listing (`eza --icons=auto`) |
+| `el` | Detailed directory listing with Git status (`eza -la --git --header --group --time-style=long-iso`) |
+| `et` / `lt` | Tree view listing (`eza --tree --level=2`) |
+| `elt` | Detailed tree view (`eza -la --tree --level=2 --git --group --time-style=long-iso`) |
+| `elm` | Detailed listing sorted by modification date (`--sort=modified`) |
+| `elx` | Detailed forensic listing with inode, file sizes, and extended attributes (`-H -i -S --extended`) |
 | `fs` | Fast recursive directory tree search (`fd` + `Format-PathTree`) |
 
 ### 5. Modern Lua Neovim (`config/nvim/init.lua`)
