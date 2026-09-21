@@ -276,13 +276,25 @@ if (-not $SkipPosh) {
         }
     }
 
-    # Deploy bat TrueColor syntax theme
+    # Deploy bat TrueColor syntax theme and custom syntaxes
     $batThemeSource = Join-Path $RootDir "config\bat\Solarized-Dark-TrueColor.tmTheme"
+    $batSyntaxesSource = Join-Path $RootDir "config\bat\syntaxes"
     $batConfigDir = "$env:APPDATA\bat"
     $batConfigFile = Join-Path $batConfigDir "config"
     $targetBatTheme = '--theme="Solarized-Dark-TrueColor"'
 
     Deploy-ConfigFile -Name "bat theme" -SourcePath $batThemeSource -DestinationPath "$batConfigDir\themes\Solarized-Dark-TrueColor.tmTheme" -DryRun:$DryRun
+
+    if (Test-Path $batSyntaxesSource) {
+        $batSyntaxesDest = Join-Path $batConfigDir "syntaxes"
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would deploy bat syntaxes to $batSyntaxesDest" -ForegroundColor DarkCyan
+        } else {
+            if (-not (Test-Path $batSyntaxesDest)) { New-Item -ItemType Directory -Force -Path $batSyntaxesDest | Out-Null }
+            Copy-Item -Path "$batSyntaxesSource\*" -Destination $batSyntaxesDest -Force
+            Write-Host "==> bat syntaxes deployed to $batSyntaxesDest" -ForegroundColor Green
+        }
+    }
 
     if ($DryRun) {
         Write-Host "  [DryRun] Would ensure $targetBatTheme is configured in $batConfigFile" -ForegroundColor DarkCyan
@@ -449,10 +461,31 @@ if (-not $SkipTerminal) {
 if (-not $SkipVim) {
     Write-Host "`n[5/6] Setting up Neovim & Vim configuration..." -ForegroundColor Yellow
 
-    # Modern Neovim (init.lua)
-    $nvimSource = Join-Path $RootDir "config\nvim\init.lua"
-    $nvimDest = Join-Path $env:LOCALAPPDATA "nvim\init.lua"
+    # Modern Neovim (init.lua, queries, after/queries, ftplugin, lazy-lock.json)
+    $nvimSourceDir = Join-Path $RootDir "config\nvim"
+    $nvimDestDir = Join-Path $env:LOCALAPPDATA "nvim"
+    $nvimSource = Join-Path $nvimSourceDir "init.lua"
+    $nvimDest = Join-Path $nvimDestDir "init.lua"
     Deploy-ConfigFile -Name "Neovim configuration" -SourcePath $nvimSource -DestinationPath $nvimDest -DryRun:$DryRun
+
+    $nvimSubDirs = @('queries', 'after', 'ftplugin')
+    foreach ($sd in $nvimSubDirs) {
+        $srcPath = Join-Path $nvimSourceDir $sd
+        $dstPath = Join-Path $nvimDestDir $sd
+        if (Test-Path $srcPath) {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would deploy Neovim $sd to $dstPath" -ForegroundColor DarkCyan
+            } else {
+                if (-not (Test-Path $dstPath)) { New-Item -ItemType Directory -Force -Path $dstPath | Out-Null }
+                Copy-Item -Path "$srcPath\*" -Destination $dstPath -Recurse -Force
+                Write-Host "==> Neovim $sd deployed to $dstPath" -ForegroundColor Green
+            }
+        }
+    }
+    $lockSrc = Join-Path $nvimSourceDir "lazy-lock.json"
+    if (Test-Path $lockSrc) {
+        Deploy-ConfigFile -Name "Neovim lazy-lock" -SourcePath $lockSrc -DestinationPath (Join-Path $nvimDestDir "lazy-lock.json") -DryRun:$DryRun
+    }
 
     # Legacy Vim (_vimrc)
     $vimrcSource = Join-Path $RootDir "config\vim\_vimrc"

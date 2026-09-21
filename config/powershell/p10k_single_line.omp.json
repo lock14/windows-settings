@@ -12,8 +12,8 @@
           "style": "diamond",
           "leading_diamond": "",
           "trailing_diamond": "\uE0B0",
-          "foreground": "#073642",
-          "background": "#eee8d5",
+          "foreground": "#839496",
+          "background": "#073642",
           "template": " {{ if .WSL }}WSL at {{ end }}{{ .Icon }} "
         },
         {
@@ -54,8 +54,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#073642",
-          "background": "#859900",
+          "foreground": "#859900",
+          "background": "#073642",
           "template": " {{ if .PackageManagerIcon }}{{ .PackageManagerIcon }} {{ end }}{{ .Full }} \uE718 "
         },
         {
@@ -64,8 +64,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#073642",
-          "background": "#2aa198",
+          "foreground": "#2aa198",
+          "background": "#073642",
           "template": " {{ if .Error }}{{ .Error }}{{ else }}{{ .Full }}{{ end }} \uE627 "
         },
         {
@@ -74,8 +74,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#073642",
-          "background": "#b58900",
+          "foreground": "#b58900",
+          "background": "#073642",
           "template": " {{ if .Error }}{{ .Error }}{{ else }}{{ .Full }}{{ end }} \uE235 "
         },
         {
@@ -84,8 +84,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#fdf6e3",
-          "background": "#6c71c4",
+          "foreground": "#6c71c4",
+          "background": "#073642",
           "template": " {{ if .Unsupported }}\uF071{{ else }}{{ .Full }}{{ end }} \uE70C "
         },
         {
@@ -94,8 +94,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#fdf6e3",
-          "background": "#cb4b16",
+          "foreground": "#cb4b16",
+          "background": "#073642",
           "template": " {{ if .Error }}{{ .Error }}{{ else }}{{ .Full }}{{ end }} \uE7A8 "
         },
         {
@@ -104,9 +104,9 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#fdf6e3",
-          "background": "#586e75",
-          "background_templates": [
+          "foreground": "#93a1a1",
+          "background": "#073642",
+          "foreground_templates": [
             "{{if contains \"default\" .Profile}}#cb4b16{{end}}"
           ],
           "template": " {{ .Profile }}{{ if .Region }}@{{ .Region }}{{ end }} \uE7AD "
@@ -117,8 +117,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#073642",
-          "background": "#b58900",
+          "foreground": "#dc322f",
+          "background": "#073642",
           "template": " \uF0AD "
         },
         {
@@ -127,8 +127,8 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#073642",
-          "background": "#b58900",
+          "foreground": "#b58900",
+          "background": "#073642",
           "template": " {{ .FormattedMs }} \uF252 "
         },
         {
@@ -137,11 +137,11 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#eee8d5",
-          "background": "#073642",
-          "background_templates": [
+          "foreground": "#93a1a1",
+          "foreground_templates": [
             "{{ if gt .Code 0 }}#dc322f{{ end }}"
           ],
+          "background": "#073642",
           "template": " {{ if gt .Code 0 }}{{ reason .Code }}{{ else }}\uF42E{{ end }} "
         }
       ]

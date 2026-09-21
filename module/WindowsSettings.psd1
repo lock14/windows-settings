@@ -42,7 +42,7 @@
     CmdletsToExport = @()
 
     # Variables to export from this module
-    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'COLORTERM')
+    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'BAT_OPTS', 'COLORTERM', 'FZF_DEFAULT_OPTS', 'FZF_DEFAULT_COMMAND', 'FZF_CTRL_T_COMMAND')
 
     # Aliases to export from this module
     AliasesToExport = @('tf', 'vi', 'vim', 'v')

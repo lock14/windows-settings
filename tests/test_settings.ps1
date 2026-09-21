@@ -104,8 +104,8 @@ if (Test-Path $dscPath) {
 # Test p10k.omp.json & mise.toml
 if (Test-Path $p10kPath) {
     $p10kRaw = Get-Content $p10kPath -Raw
-    if ($p10kRaw -match '#002[bB]36' -or $p10kRaw -match '#073642' -or $p10kRaw -match '#586[eE]75') {
-        Pass "Theme valid: p10k.omp.json (Solarized Dark Powerline configuration)"
+    if ($p10kRaw -match '#073642' -and $p10kRaw -match '#839496') {
+        Pass "Theme valid: p10k.omp.json (Solarized Dark Base02 shelf & Base0 OS icon)"
     } else {
         Fail "p10k.omp.json" "Missing Solarized Dark palette definitions"
     }
@@ -114,10 +114,67 @@ if (Test-Path $p10kPath) {
 $misePath = Join-Path $RootDir "mise.toml"
 if (Test-Path $misePath) {
     $miseContent = Get-Content $misePath -Raw
-    if ($miseContent -match 'glow\s*=\s*"latest"' -and $miseContent -match 'go\.set_gobin\s*=\s*false' -and $miseContent -match 'go\.set_gopath\s*=\s*false') {
-        Pass "TOML valid: mise.toml (Declarative toolchains with glow & Go isolation)"
+    if ($miseContent -match 'glow\s*=\s*"latest"' -and $miseContent -match 'tree-sitter\s*=\s*"latest"' -and $miseContent -match 'go\.set_gobin\s*=\s*false' -and $miseContent -match 'go\.set_gopath\s*=\s*false') {
+        Pass "TOML valid: mise.toml (Declarative toolchains with tree-sitter & Go isolation)"
     } else {
-        Fail "mise.toml validation" "Missing glow, go.set_gobin, or go.set_gopath in mise.toml"
+        Fail "mise.toml validation" "Missing glow, tree-sitter, go.set_gobin, or go.set_gopath in mise.toml"
+    }
+}
+
+# Test Bat Syntaxes & TrueColor Theme
+$batSyntaxesDir = Join-Path $RootDir "config\bat\syntaxes"
+if (Test-Path $batSyntaxesDir) {
+    $syntaxFiles = Get-ChildItem -Path $batSyntaxesDir -Filter "*.sublime-syntax"
+    if ($syntaxFiles.Count -ge 18) {
+        Pass "Bat syntax grammars present: $($syntaxFiles.Count) custom Sublime syntaxes in config/bat/syntaxes"
+    } else {
+        Fail "Bat syntaxes" "Expected >= 18 syntax grammars, found $($syntaxFiles.Count)"
+    }
+} else {
+    Fail "Bat syntaxes directory" "config/bat/syntaxes not found"
+}
+
+$batThemePath = Join-Path $RootDir "config\bat\Solarized-Dark-TrueColor.tmTheme"
+if (Test-Path $batThemePath) {
+    $themeContent = Get-Content $batThemePath -Raw
+    if ($themeContent -match 'Universal Semantic Color Contract' -or $themeContent -match '#859900') {
+        Pass "Bat TrueColor theme valid: config/bat/Solarized-Dark-TrueColor.tmTheme"
+    } else {
+        Fail "Bat theme" "Solarized-Dark-TrueColor.tmTheme missing color definitions"
+    }
+}
+
+# Test Fallback Vim configuration (_vimrc)
+$vimrcPath = Join-Path $RootDir "config\vim\_vimrc"
+if (Test-Path $vimrcPath) {
+    $vimrcContent = Get-Content $vimrcPath -Raw
+    if ($vimrcContent -match 'ApplySolarizedDark' -and $vimrcContent -notmatch 'pathogen#infect' -and $vimrcContent -notmatch 'UltiSnips') {
+        Pass "Vim fallback valid: config/vim/_vimrc (Zero-dependency standalone Solarized Dark)"
+    } else {
+        Fail "Vim fallback validation" "Expected standalone _vimrc with ApplySolarizedDark and no pathogen/UltiSnips"
+    }
+}
+
+# Test Neovim Tree-sitter Queries & ftplugin
+$nvimQueriesDir = Join-Path $RootDir "config\nvim\queries"
+$nvimAfterDir = Join-Path $RootDir "config\nvim\after\queries"
+if ((Test-Path $nvimQueriesDir) -and (Test-Path $nvimAfterDir)) {
+    $scmFiles = Get-ChildItem -Path (Join-Path $RootDir "config\nvim") -Recurse -Filter "*.scm"
+    if ($scmFiles.Count -ge 20) {
+        Pass "Neovim Tree-sitter query suite valid: $($scmFiles.Count) queries in config/nvim"
+    } else {
+        Fail "Neovim queries" "Expected >= 20 .scm query files, found $($scmFiles.Count)"
+    }
+}
+
+# Test Sample Code polyglot suite
+$sampleCodeDir = Join-Path $RootDir "sample-code"
+if (Test-Path $sampleCodeDir) {
+    $sampleFiles = Get-ChildItem -Path $sampleCodeDir -File
+    if ($sampleFiles.Count -ge 20) {
+        Pass "Sample code polyglot suite present: $($sampleFiles.Count) files in sample-code/"
+    } else {
+        Fail "Sample code" "Expected >= 20 sample files, found $($sampleFiles.Count)"
     }
 }
 
@@ -198,13 +255,13 @@ if (Test-Path $nvimInit) {
     }
 }
 
-if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34') {
-    Pass "LS_COLORS environment variable configured (Solarized Dark)"
+if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34' -and $env:LS_COLORS -match 'ex=32' -and $env:LS_COLORS -match '\*\.tar=91' -and $env:LS_COLORS -match '\*\.png=95' -and $env:LS_COLORS -match '\*\.key=35' -and $env:LS_COLORS -match '\*\.txt=00') {
+    Pass "LS_COLORS environment variable configured (Calibrated Solarized Dark)"
 } else {
     Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
 }
 
-if ($env:EZA_COLORS -and $env:EZA_COLORS -match 'di=38;2;38;139;210' -and $env:EZA_COLORS -match 'xx=38;2;88;110;117' -and $env:EZA_COLORS -match 'ff=38;2;131;148;150') {
+if ($env:EZA_COLORS -and $env:EZA_COLORS -match 'di=38;2;38;139;210' -and $env:EZA_COLORS -match 'xx=38;2;88;110;117' -and $env:EZA_COLORS -match 'ff=38;2;131;148;150' -and $env:EZA_COLORS -match 'co=38;2;203;75;22' -and $env:EZA_COLORS -match 'cr=38;2;211;54;130' -and $env:EZA_COLORS -match 'do=38;2;131;148;150' -and $env:EZA_COLORS -match 'sc=38;2;131;148;150' -and $env:EZA_COLORS -match 'hd=4;38;2;147;161;161') {
     Pass "EZA_COLORS environment variable configured (24-bit TrueColor Solarized Dark)"
 } else {
     Fail "EZA_COLORS environment variable" "EZA_COLORS not set to full TrueColor Solarized Dark palette"
@@ -214,6 +271,18 @@ if ($env:EXA_COLORS -eq $env:EZA_COLORS) {
     Pass "EXA_COLORS matches EZA_COLORS"
 } else {
     Fail "EXA_COLORS environment variable" "EXA_COLORS does not match EZA_COLORS"
+}
+
+if ($env:BAT_OPTS -eq '--italic-text=always') {
+    Pass "BAT_OPTS environment variable configured (--italic-text=always)"
+} else {
+    Fail "BAT_OPTS environment variable" "BAT_OPTS not set properly"
+}
+
+if ($env:FZF_DEFAULT_OPTS -and $env:FZF_DEFAULT_OPTS -match 'bg\+:#073642' -and $env:FZF_DEFAULT_OPTS -match 'bg:#002B36') {
+    Pass "FZF_DEFAULT_OPTS environment variable configured (Solarized Dark)"
+} else {
+    Fail "FZF_DEFAULT_OPTS environment variable" "FZF_DEFAULT_OPTS not set properly"
 }
 
 $setupPackagesScript = Join-Path $RootDir "setup.ps1"

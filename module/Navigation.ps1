@@ -156,14 +156,16 @@ function Render-TreeNode($node, $prefix) {
         $isDir = ($node[$key].Keys.Count -gt 0)
         $color = if ($isDir) {
             'Blue'
-        } elseif ($key -match '\.(go|py|rs|c|cpp|h|java|md|txt|json|yml|yaml|toml|xml)$') {
-            'Green'
         } elseif ($key -match '\.(exe|cmd|bat|ps1|sh)$') {
-            'Red'
-        } elseif ($key -match '\.(zip|tar|gz|7z|rar|iso|png|jpg|svg|mp4)$') {
+            'Green'
+        } elseif ($key -match '\.(zip|tar|gz|bz2|xz|7z|rar|iso|zst)$') {
             'Yellow'
+        } elseif ($key -match '\.(key|pem|crt|cer|gpg|asc|aes|enc)$') {
+            'Magenta'
+        } elseif ($key -match '\.(png|jpg|jpeg|gif|svg|webp|mp4|webm|wav|mp3|flac)$') {
+            'DarkMagenta'
         } else {
-            'White'
+            'Gray'
         }
 
         Write-Host -NoNewline "$prefix$connector" -ForegroundColor Gray
