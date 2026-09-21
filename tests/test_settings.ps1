@@ -65,9 +65,9 @@ $terminalJsonPath = Join-Path $RootDir "config\terminal\settings.json"
 try {
     $termJson = Get-Content $terminalJsonPath -Raw | ConvertFrom-Json
     $hasSolarized = ($termJson.profiles.defaults.colorScheme -eq "Solarized Dark")
-    $hasFont = ($termJson.profiles.defaults.font.face -eq "MesloLGS NF")
+    $hasFont = ($termJson.profiles.defaults.font.face -eq "MesloLGS Nerd Font Mono" -or $termJson.profiles.defaults.font.face -eq "MesloLGS NF")
     if ($hasSolarized -and $hasFont) {
-        Pass "JSON valid: config/terminal/settings.json (Solarized Dark + MesloLGS NF)"
+        Pass "JSON valid: config/terminal/settings.json (Solarized Dark + $($termJson.profiles.defaults.font.face))"
     } else {
         Fail "config/terminal/settings.json validation" "Defaults mismatch (Solarized: $hasSolarized, Font: $hasFont)"
     }
@@ -80,7 +80,7 @@ $fragmentJsonPath = Join-Path $RootDir "config\terminal\windows-settings.json"
 try {
     $fragJson = Get-Content $fragmentJsonPath -Raw | ConvertFrom-Json
     $fragSolarized = ($fragJson.profiles.defaults.colorScheme -eq "Solarized Dark")
-    $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
+    $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS Nerd Font Mono" -or $fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
     if ($fragSolarized -and $fragFont) {
         Pass "JSON valid: config/terminal/windows-settings.json (Solarized Dark fragment)"
     } else {
