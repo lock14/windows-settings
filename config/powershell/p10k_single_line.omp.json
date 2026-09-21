@@ -35,7 +35,15 @@
             "{{ if gt .Behind 0 }}#859900{{ end }}"
           ],
           "background": "#073642",
-          "template": "<#657b83>\uE0B1</> {{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \uEB4B {{ .StashCount }}{{ end }} "
+          "properties": {
+            "branch_icon": "\uF126 ",
+            "branch_ahead_icon": "⇡",
+            "branch_behind_icon": "⇣",
+            "branch_identical_icon": "",
+            "branch_gone_icon": "≢",
+            "fetch_status": true
+          },
+          "template": "<#657b83>\uE0B1</> {{ if .UpstreamIcon }}{{ .UpstreamIcon }} {{ end }}{{ .HEAD }}{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \uEB4B {{ .StashCount }}{{ end }} "
         },
         {
           "type": "text",
