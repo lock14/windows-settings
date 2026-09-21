@@ -212,12 +212,16 @@ if ($shouldInstallPackages) {
 # 1. Fonts Setup (MesloLGS Nerd Font Mono - Nerd Fonts v3)
 if (-not $SkipFonts) {
     Write-Host "`n[1/6] Setting up Fonts (MesloLGS Nerd Font Mono)..." -ForegroundColor Yellow
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $userFontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+    $systemFontsDir = Join-Path $env:SystemRoot "Fonts"
+    $targetFontsDir = if ($isAdmin) { $systemFontsDir } else { $userFontsDir }
+    $registryKey = if ($isAdmin) { "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" } else { "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" }
+
     if (-not $DryRun -and -not (Test-Path $userFontsDir)) {
         New-Item -ItemType Directory -Force -Path $userFontsDir | Out-Null
     }
 
-    $registryKey = "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
     if (-not $DryRun -and -not (Test-Path $registryKey)) {
         New-Item -Path $registryKey -Force | Out-Null
     }
@@ -233,8 +237,10 @@ if (-not $SkipFonts) {
 
     $missingFonts = @()
     foreach ($mf in $monoFonts) {
-        $destPath = Join-Path $userFontsDir $mf.File
-        if (-not (Test-Path $destPath) -or ((Get-Item $destPath).Length -lt 2500000)) {
+        $destPath = Join-Path $targetFontsDir $mf.File
+        $userPath = Join-Path $userFontsDir $mf.File
+        if ((-not (Test-Path $destPath) -or ((Get-Item $destPath).Length -lt 2500000)) -and
+            (-not (Test-Path $userPath) -or ((Get-Item $userPath).Length -lt 2500000))) {
             $missingFonts += $mf
         }
     }
@@ -244,20 +250,20 @@ if (-not $SkipFonts) {
         $cachedZip = Join-Path $cacheDir "Meslo-$fontVersion.zip"
 
         if ($DryRun) {
-            Write-Host "  [DryRun] Would download and extract MesloLGS Nerd Font Mono ($fontVersion) to $userFontsDir" -ForegroundColor DarkCyan
+            Write-Host "  [DryRun] Would download and extract MesloLGS Nerd Font Mono ($fontVersion) to $targetFontsDir" -ForegroundColor DarkCyan
         } else {
             if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
             if (-not (Test-Path $cachedZip) -or ((Get-Item $cachedZip).Length -lt 10000000)) {
                 Write-Host "Downloading MesloLGS Nerd Font ($fontVersion)..." -ForegroundColor Yellow
                 Invoke-WebRequest -Uri $fontZipUrl -OutFile $cachedZip -UseBasicParsing
             }
-            Write-Host "Extracting MesloLGS Nerd Font Mono fonts into $userFontsDir..." -ForegroundColor Cyan
+            Write-Host "Extracting MesloLGS Nerd Font Mono fonts into $targetFontsDir..." -ForegroundColor Cyan
             $tempExtract = Join-Path $cacheDir "extract"
             if (-not (Test-Path $tempExtract)) { New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null }
             Expand-Archive -Path $cachedZip -DestinationPath $tempExtract -Force
             foreach ($mf in $monoFonts) {
                 $src = Join-Path $tempExtract $mf.File
-                $dst = Join-Path $userFontsDir $mf.File
+                $dst = Join-Path $targetFontsDir $mf.File
                 if (Test-Path $src) {
                     Copy-Item -Path $src -Destination $dst -Force
                 }
@@ -265,31 +271,42 @@ if (-not $SkipFonts) {
             Remove-Item -Recurse -Force -Path $tempExtract -ErrorAction SilentlyContinue
         }
     } else {
+        if ($isAdmin -and -not $DryRun) {
+            foreach ($mf in $monoFonts) {
+                $src = Join-Path $userFontsDir $mf.File
+                $dst = Join-Path $systemFontsDir $mf.File
+                if ((Test-Path $src) -and (-not (Test-Path $dst))) {
+                    Copy-Item -Path $src -Destination $dst -Force
+                }
+            }
+        }
         if (-not $DryRun) {
             Write-Host "MesloLGS Nerd Font Mono fonts already downloaded." -ForegroundColor Green
         }
     }
 
     foreach ($mf in $monoFonts) {
-        $destPath = Join-Path $userFontsDir $mf.File
+        $destPath = Join-Path $targetFontsDir $mf.File
+        $regVal = if ($isAdmin) { $mf.File } else { $destPath }
         if ($DryRun) {
             Write-Host "  [DryRun] Would register font $($mf.RegName) in $registryKey" -ForegroundColor DarkCyan
         } else {
             if (Test-Path $destPath) {
-                Set-ItemProperty -Path $registryKey -Name $mf.RegName -Value $destPath -ErrorAction SilentlyContinue
+                Set-ItemProperty -Path $registryKey -Name $mf.RegName -Value $regVal -ErrorAction SilentlyContinue
             }
         }
     }
 
     # Ensure ALL APPLICATION PACKAGES has read access for Windows Terminal AppContainer sandbox
-    if (-not $DryRun) {
+    if (-not $DryRun -and -not $isAdmin) {
         Write-Host "Granting AppContainer permissions on user fonts folder..." -ForegroundColor Cyan
         & icacls "$userFontsDir" /grant "*S-1-15-2-1:(OI)(CI)(RX)" "*S-1-15-2-2:(OI)(CI)(RX)" "BUILTIN\Users:(OI)(CI)(RX)" /T /C /Q | Out-Null
-    } else {
+    } elseif ($DryRun -and -not $isAdmin) {
         Write-Host "  [DryRun] Would grant AppContainer permissions (ALL APPLICATION PACKAGES) on $userFontsDir" -ForegroundColor DarkCyan
     }
 
-    Write-Host "==> MesloLGS Nerd Font Mono fonts installed and configured successfully." -ForegroundColor Green
+    $scopeLabel = if ($isAdmin) { "system-wide in $systemFontsDir" } else { "user scope in $userFontsDir" }
+    Write-Host "==> MesloLGS Nerd Font Mono fonts installed ($scopeLabel)." -ForegroundColor Green
 } else {
     Write-Host "`n[1/6] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
