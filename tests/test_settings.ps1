@@ -54,11 +54,18 @@ try {
     if ($p10kJson.blocks.Count -gt 0) {
         Pass "JSON valid: config/powershell/p10k_single_line.omp.json (blocks: $($p10kJson.blocks.Count))"
         $rpromptBlock = $p10kJson.blocks | Where-Object { $_.type -eq "rprompt" }
-        $statusSegment = $rpromptBlock.segments | Where-Object { $_.type -eq "status" }
-        if ($statusSegment -and $statusSegment.properties.always_enabled -eq $true -and $statusSegment.foreground -eq "#859900") {
-            Pass "p10k_single_line.omp.json rprompt status segment is always_enabled with Solarized Green"
+        $leftPromptBlock = $p10kJson.blocks | Where-Object { $_.type -eq "prompt" }
+        $leftCap = $leftPromptBlock.segments | Where-Object { $_.type -eq "text" -and ($_.template -eq [char]0xE0B0 -or $_.template -eq "\uE0B0") }
+        $statusSegment = $rpromptBlock.segments[0]
+        if ($statusSegment -and $statusSegment.type -eq "status" -and $statusSegment.properties.always_enabled -eq $true -and $statusSegment.foreground -eq "#859900") {
+            Pass "p10k_single_line.omp.json rprompt status segment is leftmost and always_enabled with Solarized Green"
         } else {
-            Fail "p10k_single_line.omp.json rprompt validation" "Status segment missing or not always_enabled in Solarized Green"
+            Fail "p10k_single_line.omp.json rprompt validation" "Status segment is not the leftmost segment or not always_enabled in Solarized Green"
+        }
+        if ($leftCap -and $leftCap.foreground -eq "#073642" -and -not $leftCap.foreground_templates) {
+            Pass "p10k_single_line.omp.json left endpoint cap is static Base02 (no status mutation)"
+        } else {
+            Fail "p10k_single_line.omp.json left cap validation" "Left endpoint cap must be static Base02 without foreground_templates"
         }
     } else {
         Fail "JSON validation: config/powershell/p10k_single_line.omp.json" "Missing blocks definition"
