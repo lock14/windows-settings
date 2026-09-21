@@ -4,7 +4,7 @@
         "defaults": {
             "colorScheme": "Solarized Dark",
             "font": {
-                "face": "MesloLGS Nerd Font Mono",
+                "face": "MesloLGS NF",
                 "size": 11.0
             },
             "cursorShape": "filledBox",

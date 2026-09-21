@@ -127,7 +127,7 @@ cd windows-settings
 | `-DryRun` | *disabled* | Preview actions without modifying the system |
 | `-WithGUI` / `-IncludeGUI` | *disabled* | Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget) |
 | `-SkipPackages` | *disabled* | Skip winget package installation |
-| `-SkipFonts` | *disabled* | Skip MesloLGS Nerd Font Mono installation |
+| `-SkipFonts` | *disabled* | Skip MesloLGS NF font installation |
 | `-SkipPosh` | *disabled* | Skip Oh My Posh & PowerShell module configuration |
 | `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
 | `-SkipTerminal` | *disabled* | Skip Windows Terminal settings & JSON fragment deployment |
@@ -223,7 +223,7 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 
 ### 7. Zero-Touch Windows Terminal (`config/terminal/`)
 - Native Windows Terminal JSON Fragment extension (`config/terminal/windows-settings.json`).
-- Automatically loads Solarized Dark, MesloLGS Nerd Font Mono, and keybindings without ever modifying `settings.json` or conflicting with WSL profiles.
+- Automatically loads Solarized Dark, MesloLGS NF, and keybindings without ever modifying `settings.json` or conflicting with WSL profiles.
 
 ---
 

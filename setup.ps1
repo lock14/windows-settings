@@ -17,7 +17,7 @@
 
     Granular Skip Flags:
       -SkipPackages          Skip winget package installation
-      -SkipFonts             Skip MesloLGS Nerd Font Mono installation
+      -SkipFonts             Skip MesloLGS NF font installation
       -SkipPosh              Skip Oh My Posh & PowerShell module configuration
       -SkipCompletions       Skip CLI argument completions registration
       -SkipTerminal          Skip Windows Terminal settings & JSON fragment deployment
@@ -209,10 +209,11 @@ if ($shouldInstallPackages) {
     Write-Host "`n[0/6] Skipping Workstation Package Installation." -ForegroundColor DarkCyan
 }
 
-# 1. Fonts Setup (MesloLGS Nerd Font Mono - Nerd Fonts v3)
+# 1. Fonts Setup (MesloLGS NF)
 if (-not $SkipFonts) {
-    Write-Host "`n[1/6] Setting up Fonts (MesloLGS Nerd Font Mono)..." -ForegroundColor Yellow
+    Write-Host "`n[1/6] Setting up Fonts (MesloLGS NF)..." -ForegroundColor Yellow
     $userFontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+    $systemFontsDir = Join-Path $env:SystemRoot "Fonts"
     if (-not $DryRun -and -not (Test-Path $userFontsDir)) {
         New-Item -ItemType Directory -Force -Path $userFontsDir | Out-Null
     }
@@ -222,65 +223,46 @@ if (-not $SkipFonts) {
         New-Item -Path $registryKey -Force | Out-Null
     }
 
-    $fontVersion = "v3.5.1"
-    $fontZipUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/$fontVersion/Meslo.zip"
-    $monoFonts = @(
-        @{ File = "MesloLGSNerdFontMono-Regular.ttf"; RegName = "MesloLGS Nerd Font Mono Regular (TrueType)" },
-        @{ File = "MesloLGSNerdFontMono-Bold.ttf"; RegName = "MesloLGS Nerd Font Mono Bold (TrueType)" },
-        @{ File = "MesloLGSNerdFontMono-Italic.ttf"; RegName = "MesloLGS Nerd Font Mono Italic (TrueType)" },
-        @{ File = "MesloLGSNerdFontMono-BoldItalic.ttf"; RegName = "MesloLGS Nerd Font Mono Bold Italic (TrueType)" }
-    )
+    $fontBaseUrl = "https://github.com/romkatv/powerlevel10k-media/raw/master"
+    $fonts = @("MesloLGS NF Regular.ttf", "MesloLGS NF Bold.ttf", "MesloLGS NF Italic.ttf", "MesloLGS NF Bold Italic.ttf")
 
-    $missingFonts = @()
-    foreach ($mf in $monoFonts) {
-        $destPath = Join-Path $userFontsDir $mf.File
-        if (-not (Test-Path $destPath) -or ((Get-Item $destPath).Length -lt 2500000)) {
-            $missingFonts += $mf
+    $isSystemInstalled = $true
+    foreach ($font in $fonts) {
+        if (-not (Test-Path (Join-Path $systemFontsDir $font))) {
+            $isSystemInstalled = $false
+            break
         }
     }
 
-    if ($missingFonts.Count -gt 0) {
-        $cacheDir = Join-Path $HOME ".cache\windows-settings\fonts"
-        $cachedZip = Join-Path $cacheDir "Meslo-$fontVersion.zip"
-
-        if ($DryRun) {
-            Write-Host "  [DryRun] Would download and extract MesloLGS Nerd Font Mono ($fontVersion) to $userFontsDir" -ForegroundColor DarkCyan
-        } else {
-            if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null }
-            if (-not (Test-Path $cachedZip) -or ((Get-Item $cachedZip).Length -lt 10000000)) {
-                Write-Host "Downloading MesloLGS Nerd Font ($fontVersion)..." -ForegroundColor Yellow
-                Invoke-WebRequest -Uri $fontZipUrl -OutFile $cachedZip -UseBasicParsing
-            }
-            Write-Host "Extracting MesloLGS Nerd Font Mono fonts into $userFontsDir..." -ForegroundColor Cyan
-            $tempExtract = Join-Path $cacheDir "extract"
-            if (-not (Test-Path $tempExtract)) { New-Item -ItemType Directory -Force -Path $tempExtract | Out-Null }
-            Expand-Archive -Path $cachedZip -DestinationPath $tempExtract -Force
-            foreach ($mf in $monoFonts) {
-                $src = Join-Path $tempExtract $mf.File
-                $dst = Join-Path $userFontsDir $mf.File
-                if (Test-Path $src) {
-                    Copy-Item -Path $src -Destination $dst -Force
-                }
-            }
-            Remove-Item -Recurse -Force -Path $tempExtract -ErrorAction SilentlyContinue
-        }
+    if ($isSystemInstalled) {
+        Write-Host "==> MesloLGS NF fonts already installed system-wide in $systemFontsDir." -ForegroundColor Green
     } else {
-        if (-not $DryRun) {
-            Write-Host "MesloLGS Nerd Font Mono fonts already installed." -ForegroundColor Green
-        }
-    }
+        Write-Host "==> Installing MesloLGS NF fonts into $userFontsDir..." -ForegroundColor Cyan
+        foreach ($font in $fonts) {
+            $destPath = Join-Path $userFontsDir $font
+            $fontName = [System.IO.Path]::GetFileNameWithoutExtension($font) + " (TrueType)"
 
-    foreach ($mf in $monoFonts) {
-        $destPath = Join-Path $userFontsDir $mf.File
-        if ($DryRun) {
-            Write-Host "  [DryRun] Would register font $($mf.RegName) in $registryKey" -ForegroundColor DarkCyan
-        } else {
-            if (Test-Path $destPath) {
-                Set-ItemProperty -Path $registryKey -Name $mf.RegName -Value $destPath -ErrorAction SilentlyContinue
+            if ($DryRun) {
+                if (-not (Test-Path $destPath)) {
+                    Write-Host "  [DryRun] Would download $font to $destPath" -ForegroundColor DarkCyan
+                } else {
+                    Write-Host "  [DryRun] $font already downloaded." -ForegroundColor DarkCyan
+                }
+                Write-Host "  [DryRun] Would register font $fontName in $registryKey" -ForegroundColor DarkCyan
+                continue
             }
+
+            if (-not (Test-Path $destPath)) {
+                Write-Host "Downloading $font..." -ForegroundColor Yellow
+                $encoded = [System.Uri]::EscapeDataString($font)
+                Invoke-WebRequest -Uri "$fontBaseUrl/$encoded" -OutFile $destPath -UseBasicParsing
+            } else {
+                Write-Host "$font already downloaded." -ForegroundColor Green
+            }
+            Set-ItemProperty -Path $registryKey -Name $fontName -Value $destPath -ErrorAction SilentlyContinue
         }
+        Write-Host "==> MesloLGS NF fonts installed successfully." -ForegroundColor Green
     }
-    Write-Host "==> MesloLGS Nerd Font Mono fonts installed successfully." -ForegroundColor Green
 } else {
     Write-Host "`n[1/6] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
