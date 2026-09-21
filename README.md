@@ -144,7 +144,7 @@ cd windows-settings
 - **Calm OS Glyph**: Displayed in calm **Base0 (`#839496`)** on Base02, eliminating glaring high-luminance white.
 - **Dynamic Git State Shifting**: Turns **Green** when clean, **Yellow** when modified/staged, **Orange** when diverged, **Cyan** when ahead.
 - Left side: OS glyph $\to$ Directory (``) $\to$ Git branch & status.
-- Right side (`rprompt`): Node, Go, Python, .NET, Rust, AWS context, execution duration, and exit status unified on Base02 shelf with domain-semantic foreground accents and solid wedge cap (`\uE0B2`).
+- Right side (`rprompt`): Persistent status anchor (`` in Solarized Green `#859900` on success, `` in Solarized Red `#DC322F` on error) matching `home-settings` Powerlevel10k, with contextual command execution time (`` in Yellow `#B58900`), toolchains (Node, Go, Python, .NET, Rust), and AWS context unified on the Base02 shelf with solid wedge cap (`\uE0B2`).
 - **High-Speed Disk Caching**: Compiles prompt hook into `$HOME\.cache\powershell\omp_init.ps1` for sub-second startup (<10ms).
 
 ### 2. First-Class PowerShell Module (`WindowsSettings`)

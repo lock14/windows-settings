@@ -149,12 +149,15 @@
           "invert_powerline": true,
           "leading_diamond": "\uE0B2",
           "trailing_diamond": "",
-          "foreground": "#93a1a1",
+          "foreground": "#859900",
           "foreground_templates": [
             "{{ if gt .Code 0 }}#dc322f{{ end }}"
           ],
           "background": "#073642",
-          "template": " {{ if gt .Code 0 }}{{ reason .Code }}{{ else }}\uF42E{{ end }} "
+          "properties": {
+            "always_enabled": true
+          },
+          "template": " {{ if gt .Code 0 }}\uF00D {{ reason .Code }}{{ else }}\uF00C{{ end }} "
         }
       ]
     }

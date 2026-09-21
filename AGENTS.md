@@ -190,7 +190,7 @@ Colors across the developer workstation fulfill invariant domain roles across al
 6. **Oh My Posh Solarized Dark Prompt (`p10k_single_line.omp.json`)**:
    - Single-line Powerline prompt with compiled disk caching (`$HOME\.cache\powershell\omp_init.ps1`).
    - Both left and right prompts unified on authentic Base02 (`#073642`) dark teal shelf.
-   - OS icon in calm Base0 (`#839496`), directories in Blue (`#268BD2`), Git VCS status in Green/Yellow/Orange reflecting repository state, and right prompt toolchains (Node, Go, Python, Dotnet, Rust) rendering in domain-semantic accents on Base02.
+   - OS icon in calm Base0 (`#839496`), directories in Blue (`#268BD2`), Git VCS status in Green/Yellow/Orange reflecting repository state, persistent right status anchor (`` in Solarized Green `#859900` on success, `` in Solarized Red `#DC322F` on error) mirroring `home-settings`, and right prompt toolchains (Node, Go, Python, Dotnet, Rust) rendering in domain-semantic accents on Base02.
 
 7. **PSReadLine & FZF**:
    - PSReadLine TrueColor syntax highlighting matching Solarized Dark palette.

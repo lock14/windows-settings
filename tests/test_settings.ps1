@@ -53,6 +53,13 @@ try {
     $p10kJson = Get-Content $p10kPath -Raw | ConvertFrom-Json
     if ($p10kJson.blocks.Count -gt 0) {
         Pass "JSON valid: config/powershell/p10k_single_line.omp.json (blocks: $($p10kJson.blocks.Count))"
+        $rpromptBlock = $p10kJson.blocks | Where-Object { $_.type -eq "rprompt" }
+        $statusSegment = $rpromptBlock.segments | Where-Object { $_.type -eq "status" }
+        if ($statusSegment -and $statusSegment.properties.always_enabled -eq $true -and $statusSegment.foreground -eq "#859900") {
+            Pass "p10k_single_line.omp.json rprompt status segment is always_enabled with Solarized Green"
+        } else {
+            Fail "p10k_single_line.omp.json rprompt validation" "Status segment missing or not always_enabled in Solarized Green"
+        }
     } else {
         Fail "JSON validation: config/powershell/p10k_single_line.omp.json" "Missing blocks definition"
     }
@@ -599,9 +606,23 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     try {
         $renderOutput = oh-my-posh print primary --config $p10kPath
         if ($renderOutput) {
-            Pass "Oh My Posh theme renders cleanly"
+            Pass "Oh My Posh primary prompt renders cleanly"
         } else {
-            Fail "Oh My Posh rendering" "Render output was empty"
+            Fail "Oh My Posh primary rendering" "Render output was empty"
+        }
+
+        $rightOutput = oh-my-posh print right --config $p10kPath
+        if ($rightOutput -and $rightOutput.Length -gt 0) {
+            Pass "Oh My Posh right prompt renders cleanly (status anchor active)"
+        } else {
+            Fail "Oh My Posh right rendering" "Right prompt output was empty"
+        }
+
+        $errorRightOutput = oh-my-posh print right --config $p10kPath --status 1
+        if ($errorRightOutput -and $errorRightOutput.Length -gt 0) {
+            Pass "Oh My Posh right prompt renders error status cleanly"
+        } else {
+            Fail "Oh My Posh right error rendering" "Right prompt output on error was empty"
         }
     } catch {
         Fail "Oh My Posh rendering error" $_.Exception.Message
