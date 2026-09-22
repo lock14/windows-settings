@@ -597,7 +597,7 @@ try {
 
     # Test 5.5: gcm switches to main from feature branch
     git checkout -b gcm-test-feature 2>$null | Out-Null
-    gcm 2>$null | Out-Null
+    & (Get-Command gcm -CommandType Function) 2>$null | Out-Null
     $gcmBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($gcmBranch -eq "main") {
         Pass "gcm successfully switches to main from feature branch"
@@ -608,7 +608,7 @@ try {
     # Test 5.6: gcm falls back to master when main does not exist
     git branch -m main master 2>$null | Out-Null
     git checkout -b gcm-test-master-feature 2>$null | Out-Null
-    gcm 2>$null | Out-Null
+    & (Get-Command gcm -CommandType Function) 2>$null | Out-Null
     $gcmMasterBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($gcmMasterBranch -eq "master") {
         Pass "gcm successfully falls back to master when main does not exist"
@@ -620,7 +620,7 @@ try {
     git branch -m master custom-default 2>$null | Out-Null
     $noPrimaryErrCaught = $false
     try {
-        gcm
+        & (Get-Command gcm -CommandType Function)
     } catch {
         if ($_.ToString() -match "neither 'main' nor 'master'" -or $_.Exception.Message -match "neither 'main' nor 'master'") {
             $noPrimaryErrCaught = $true
