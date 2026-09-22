@@ -11,8 +11,8 @@ $programFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { Join-Path ($
 $coreutilsLs = Join-Path $programFiles 'coreutils\cmd\ls.cmd'
 $coreutilsCat = Join-Path $programFiles 'coreutils\cmd\cat.cmd'
 
-# Standard Directory Listing (GNU coreutils ls defaults matching home-settings)
-function ls {
+# Helpers for standard directory listing fallback
+function Invoke-LsStandard {
     if (Test-Path $coreutilsLs) {
         & $coreutilsLs --color=auto @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
@@ -22,7 +22,7 @@ function ls {
     }
 }
 
-function ll {
+function Invoke-LlStandard {
     if (Test-Path $coreutilsLs) {
         & $coreutilsLs --color=auto -alF @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
@@ -31,6 +31,10 @@ function ll {
         Get-ChildItem -Force @args
     }
 }
+
+# Standard Directory Listing (GNU coreutils ls defaults matching home-settings)
+function ls { Invoke-LsStandard @args }
+function ll { Invoke-LlStandard @args }
 
 function la {
     if (Test-Path $coreutilsLs) {
@@ -56,24 +60,16 @@ function l {
 function e {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --icons=auto --group-directories-first @args
-    } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto @args
-    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto @args
     } else {
-        Get-ChildItem @args
+        Invoke-LsStandard @args
     }
 }
 
 function el {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso @args
-    } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto -alF @args
-    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto -alF @args
     } else {
-        Get-ChildItem -Force @args
+        Invoke-LlStandard @args
     }
 }
 

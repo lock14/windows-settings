@@ -68,7 +68,7 @@ windows-settings/
 ├── sample-code/                   # 20-language polyglot sample suite for syntax highlighting verification
 │
 └── tests/
-    └── test_settings.ps1          # 149 automated tests across all 8 test modules
+    └── test_settings.ps1          # 159 automated tests across all 8 test modules
 ```
 
 ---
@@ -235,7 +235,7 @@ Run the automated test suite locally:
 pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **149 automated tests across all 8 modules**:
+Runs **159 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
 2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
 3. WindowsSettings Module Import & Function Exports (61 functions)

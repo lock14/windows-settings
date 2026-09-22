@@ -595,6 +595,43 @@ try {
         Fail "gprune" "Branch 'branch-to-delete' was not pruned"
     }
 
+    # Test 5.5: gcm switches to main from feature branch
+    git checkout -b gcm-test-feature 2>$null | Out-Null
+    gcm 2>$null | Out-Null
+    $gcmBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($gcmBranch -eq "main") {
+        Pass "gcm successfully switches to main from feature branch"
+    } else {
+        Fail "gcm switch to main" "Expected main, got $gcmBranch"
+    }
+
+    # Test 5.6: gcm falls back to master when main does not exist
+    git branch -m main master 2>$null | Out-Null
+    git checkout -b gcm-test-master-feature 2>$null | Out-Null
+    gcm 2>$null | Out-Null
+    $gcmMasterBranch = (git rev-parse --abbrev-ref HEAD).Trim()
+    if ($gcmMasterBranch -eq "master") {
+        Pass "gcm successfully falls back to master when main does not exist"
+    } else {
+        Fail "gcm fallback to master" "Expected master, got $gcmMasterBranch"
+    }
+
+    # Test 5.7: gcm errors when neither main nor master exists
+    git branch -m master custom-default 2>$null | Out-Null
+    $noPrimaryErrCaught = $false
+    try {
+        gcm
+    } catch {
+        if ($_.ToString() -match "neither 'main' nor 'master'" -or $_.Exception.Message -match "neither 'main' nor 'master'") {
+            $noPrimaryErrCaught = $true
+        }
+    }
+    if ($noPrimaryErrCaught) {
+        Pass "gcm fails gracefully with descriptive error when neither main nor master exists"
+    } else {
+        Fail "gcm missing primary branch" "Expected error indicating neither main nor master found"
+    }
+
     Pop-Location
 } finally {
     Set-Location $RootDir
