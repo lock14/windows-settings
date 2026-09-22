@@ -11,8 +11,8 @@ $programFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { Join-Path ($
 $coreutilsLs = Join-Path $programFiles 'coreutils\cmd\ls.cmd'
 $coreutilsCat = Join-Path $programFiles 'coreutils\cmd\cat.cmd'
 
-# Standard Directory Listing (GNU coreutils ls defaults matching home-settings)
-function ls {
+# Helpers for standard directory listing fallback
+function Invoke-LsStandard {
     if (Test-Path $coreutilsLs) {
         & $coreutilsLs --color=auto @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
@@ -22,7 +22,7 @@ function ls {
     }
 }
 
-function ll {
+function Invoke-LlStandard {
     if (Test-Path $coreutilsLs) {
         & $coreutilsLs --color=auto -alF @args
     } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
@@ -31,6 +31,10 @@ function ll {
         Get-ChildItem -Force @args
     }
 }
+
+# Standard Directory Listing (GNU coreutils ls defaults matching home-settings)
+function ls { Invoke-LsStandard @args }
+function ll { Invoke-LlStandard @args }
 
 function la {
     if (Test-Path $coreutilsLs) {
@@ -56,24 +60,16 @@ function l {
 function e {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --icons=auto --group-directories-first @args
-    } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto @args
-    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto @args
     } else {
-        Get-ChildItem @args
+        Invoke-LsStandard @args
     }
 }
 
 function el {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso @args
-    } elseif (Test-Path $coreutilsLs) {
-        & $coreutilsLs --color=auto -alF @args
-    } elseif (Get-Command ls.exe -ErrorAction SilentlyContinue) {
-        & ls.exe --color=auto -alF @args
     } else {
-        Get-ChildItem -Force @args
+        Invoke-LlStandard @args
     }
 }
 
@@ -156,14 +152,16 @@ function Render-TreeNode($node, $prefix) {
         $isDir = ($node[$key].Keys.Count -gt 0)
         $color = if ($isDir) {
             'Blue'
-        } elseif ($key -match '\.(go|py|rs|c|cpp|h|java|md|txt|json|yml|yaml|toml|xml)$') {
-            'Green'
         } elseif ($key -match '\.(exe|cmd|bat|ps1|sh)$') {
-            'Red'
-        } elseif ($key -match '\.(zip|tar|gz|7z|rar|iso|png|jpg|svg|mp4)$') {
+            'Green'
+        } elseif ($key -match '\.(zip|tar|gz|bz2|xz|7z|rar|iso|zst)$') {
             'Yellow'
+        } elseif ($key -match '\.(key|pem|crt|cer|gpg|asc|aes|enc)$') {
+            'Magenta'
+        } elseif ($key -match '\.(png|jpg|jpeg|gif|svg|webp|mp4|webm|wav|mp3|flac)$') {
+            'DarkMagenta'
         } else {
-            'White'
+            'Gray'
         }
 
         Write-Host -NoNewline "$prefix$connector" -ForegroundColor Gray

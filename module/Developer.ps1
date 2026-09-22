@@ -6,14 +6,7 @@ function go-testall  { go test ./... @args }
 function go-buildall { go build ./... @args }
 
 function go-lint {
-    $localConfigs = @('.golangci.yml', '.golangci.yaml', '.golangci.toml')
-    $hasLocalConfig = $false
-    foreach ($conf in $localConfigs) {
-        if (Test-Path $conf) {
-            $hasLocalConfig = $true
-            break
-        }
-    }
+    $hasLocalConfig = [bool](@('.golangci.yml', '.golangci.yaml', '.golangci.toml') | Where-Object { Test-Path $_ } | Select-Object -First 1)
     if ($hasLocalConfig) {
         golangci-lint run @args
     } else {
@@ -39,20 +32,13 @@ function go-lint {
 }
 
 function yaml-lint {
-    $localYamlConfigs = @('.yamllint', '.yamllint.yml', '.yamllint.yaml')
-    $hasLocalConfig = $false
-    foreach ($conf in $localYamlConfigs) {
-        if (Test-Path $conf) {
-            $hasLocalConfig = $true
-            break
-        }
-    }
+    $hasLocalConfig = [bool](@('.yamllint', '.yamllint.yml', '.yamllint.yaml') | Where-Object { Test-Path $_ } | Select-Object -First 1)
+    $homeConfig = @("$HOME\.yamllint.yml", "$HOME\.yamllint") | Where-Object { Test-Path $_ } | Select-Object -First 1
+
     if ($hasLocalConfig) {
         yamllint @args
-    } elseif (Test-Path "$HOME\.yamllint.yml") {
-        yamllint -c "$HOME\.yamllint.yml" @args
-    } elseif (Test-Path "$HOME\.yamllint") {
-        yamllint -c "$HOME\.yamllint" @args
+    } elseif ($homeConfig) {
+        yamllint -c $homeConfig @args
     } else {
         yamllint @args
     }
@@ -65,15 +51,9 @@ if (Get-Command nvim -ErrorAction SilentlyContinue) {
     Set-Alias -Name vim -Value nvim -ErrorAction SilentlyContinue
     Set-Alias -Name v -Value nvim -ErrorAction SilentlyContinue
 } else {
-    $vimApp = Get-Command vim.exe -CommandType Application -ErrorAction SilentlyContinue
-    if (-not $vimApp) {
-        $vimApp = Get-Command vim -CommandType Application -ErrorAction SilentlyContinue
-    }
-    if ($vimApp) {
-        Set-Alias -Name vim -Value $vimApp.Source -ErrorAction SilentlyContinue
-    } else {
-        Set-Alias -Name vim -Value nvim -ErrorAction SilentlyContinue
-    }
+    $vimApp = Get-Command vim.exe, vim -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $vimTarget = if ($vimApp) { $vimApp.Source } else { 'nvim' }
+    Set-Alias -Name vim -Value $vimTarget -ErrorAction SilentlyContinue
     Set-Alias -Name vi -Value vim -ErrorAction SilentlyContinue
     Set-Alias -Name v -Value vim -ErrorAction SilentlyContinue
 }

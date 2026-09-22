@@ -12,15 +12,17 @@ Any agent modifying this repository must follow these core principles and constr
 | :--- | :--- | :--- | :--- |
 | **PowerShell Module** | `module/` | `$HOME\Documents\PowerShell\Modules\WindowsSettings\` | Autoloaded shell functions, aliases, Git tools, completions, performance loader |
 | **PowerShell Profile** | `config/powershell/Microsoft.PowerShell_profile.ps1` | `$PROFILE` | Minimal 1-line profile importing `WindowsSettings` |
-| **Oh My Posh Prompt** | `config/powershell/p10k_single_line.omp.json` | `$HOME\.poshthemes\p10k_single_line.omp.json` | Primary Powerline prompt theme with compiled disk caching |
-| **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
-| **Legacy Vim Config** | `config/vim/_vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Fallback configuration for legacy Vim |
+| **Oh My Posh Prompt** | `config/powershell/p10k_single_line.omp.json` | `$HOME\.poshthemes\p10k_single_line.omp.json` | Base02 shelf prompt theme with compiled disk caching & directional chevrons |
+| **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ / 0.12+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
+| **Neovim Queries & Tree-sitter** | `config/nvim/queries/`, `after/`, `ftplugin/` | `$env:LOCALAPPDATA\nvim\` | Dedicated AST highlight queries & Java filetype plugin matching Universal Color Contract |
+| **Legacy Vim Config** | `config/vim/_vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Zero-dependency standalone fallback configuration with inline Solarized Dark palette |
 | **Terminal Fragments** | `config/terminal/windows-settings.json` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
-| **TrueColor Themes** | `config/bat/` & `config/colors/` | `%APPDATA%\bat\themes\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes for `bat`, `eza`, and `dircolors` |
+| **TrueColor Themes & Syntaxes** | `config/bat/` & `config/colors/` | `%APPDATA%\bat\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes & standalone Sublime syntaxes for `bat`, `eza`, and `dircolors` |
 | **Native User Binaries** | `bin/` | Registered in User `$env:Path` | Dual-execution CLI scripts (`<name>.ps1` + `<name>.cmd`) |
+| **Polyglot Sample Code** | `sample-code/` | Repository validation suite | 20 real-world sample files across languages for syntax & query evaluation |
 | **Package Declarations** | `configuration.dsc.yaml` & `mise.toml` | System Provisioning | Microsoft DSC v3 and Mise declarative package specifications |
 | **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Declarative provisioning and configuration runners supporting `-DryRun` |
-| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 133 automated validation tests across 8 modules |
+| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 159+ automated validation tests across 8 modules |
 
 ---
 
@@ -88,8 +90,8 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 | **Standard Foreground** | `base0` | `#839496` | Standard typed text, CLI arguments, paths, struct fields, identifiers |
 | **Emphasis Text** | `base1` | `#93A1A1` | Bright text, highlighted labels |
 | **Light Tone (Paper)** | `base2` / `base3` | `#EEE8D5` / `#FDF6E3` | Light background references (never default text) |
-| **Keywords & Control** | `green` | `#859900` | `package`, `import`, `func`, `return`, `if`, `for`, `var`, `type`, `struct`, PSReadLine commands |
-| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine type literals (`[string]`, `[int]`) |
+| **Control Flow & Jumps**| `yellow` | `#B58900` | `if`, `return`, `for`, `while`, `switch`, `case`, `select`, `defer`, `match`, `try`, `throw`, `yield`, `await`, PSReadLine control flow keywords |
+| **Structural & Declarations**| `green` | `#859900` | `package`, `import`, `func`, `var`, `type`, `struct`, primitive types (`int`, `string`, `bool`), PSReadLine commands & types |
 | **Functions & Methods** | `blue` | `#268BD2` | Function declarations, method calls, directory names |
 | **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine strings |
 | **Numbers & Constants** | `magenta` | `#D33682` | Numeric literals, `nil`, `true`, `false`, `iota`, PSReadLine numbers |
@@ -97,25 +99,106 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 | **Preprocessors & Headers**| `orange` | `#CB4B16` | Preprocessor macros, compiler directives |
 | **Errors & Diagnostics** | `red` | `#DC322F` | Syntax errors, diagnostic warnings |
 
-### Integration Rules
-1. **Global 24-Bit TrueColor (`COLORTERM=truecolor`)**:
-   - Modern Rust CLI tools (`bat`, `eza`, `delta`) check `$env:COLORTERM`. Ensure `$env:COLORTERM = 'truecolor'` is exported in `WindowsSettings.psm1` and registered in the user's permanent environment variables to prevent 256-color quantization.
-2. **PSReadLine 24-Bit Escape Sequences**:
-   - In `PSReadLine`, pass 24-bit TrueColor escape sequences (``"`e[38;2;R;G;Bm"``) with restrained syntax highlighting: commands in Green `#859900`, strings in Cyan `#2AA198`, numbers in Magenta `#D33682`, comments/predictions in Base01 `#586E75`, errors in Red `#DC322F`, with parameters, variables, and operators kept calm in neutral foreground Base0 `#839496` (`"`e[38;2;131;148;150m"`).
-3. **`bat` TrueColor Theme**:
-   - `bat` syntax highlighting uses `config/bat/Solarized-Dark-TrueColor.tmTheme` compiled into `%APPDATA%\bat\` via `bat cache --build`.
-   - `cat` is aliased to `bat --theme="Solarized-Dark-TrueColor" --paging=auto`.
-4. **`eza` Palette & Directory Listing Architecture**:
-   - `EZA_COLORS` and `EXA_COLORS` are configured with the complete 83-code authentic 24-bit TrueColor Solarized Dark palette matching Ethan Schoonover's specification (e.g. `xx=38;2;88;110;117` Base01 tree lines, `da=38;2;131;148;150` Base0 timestamps, `ff=38;2;131;148;150`, security contexts `Su`, `Sr`, `St`, `Sl`, size units `sn`, `sb`).
-   - Dynamic luminance scaling (`--color-scale`) is omitted across all aliases to preserve crisp TrueColor contrast.
-   - Standard directory listings (`ls`, `ll`, `la`, `l`) strictly invoke GNU coreutils `ls` with Solarized `LS_COLORS` (matching `home-settings` 1:1).
-   - Modern `eza` listings are provided exclusively via `e`, `el`, `elm`, `et`, `elt`, and `elx` (with `lt` retained as a compatibility alias for `et`).
-5. **Neovim Lua Configuration**:
-   - Uses `maxmx03/solarized.nvim` with `variant = "spring"` for vibrant high-contrast syntax highlighting matching the terminal.
-   - Configures native Neovim 0.11+ / 0.12+ LSP architecture (`LspAttach` autocommands, `vim.lsp.config`, `vim.lsp.enable`).
-6. **Mise Toolchains & Go Isolation**:
-   - Declarative developer toolchains (`glow = "latest"`, `go = "latest"`, `node = "lts"`, `python = "latest"`, `rust = "latest"`, `neovim = "latest"`, `eza = "latest"`, `bat = "latest"`).
-   - Explicit Go environment isolation in `mise.toml`: `go.set_gobin = false` and `go.set_gopath = false` to prevent version-specific `GOBIN` overrides, preserve custom `GOBIN`/`GOPATH`, and avoid tooling loss across Go version switches.
+### Universal Semantic Color Contract
+Colors across the developer workstation fulfill invariant domain roles across all languages, tools, and filetypes:
+
+| Palette Color | Hex Code | Universal Semantic Role | Manifestations Across Languages & Tools |
+| :--- | :--- | :--- | :--- |
+| **Solarized Yellow**| `#B58900` | Uncontested control flow & jumps | `if`, `return`, `for`, `while`, `switch`, `case`, `select`, `defer`, `match`, `try`, `throw`, `yield`, `await`, `CASE/WHEN` (exclusive to control flow, never in Markdown headings, declarative data/config documents, CSS stylesheets, or Java Properties) |
+| **Solarized Green** | `#859900` | Structural scaffolding, declarations, static primitive types & core built-ins, diff additions | `int`, `double`, `u64`, `usize`, `bool`, `void`, Python built-in types (`int`, `str`, `float`, `bool`, `list`, `dict`, `set`, `tuple`), `package`, `func`, `fn`, `def`, `class`, `struct`, `interface`, `var`, `let`, `const`, `typedef`, `CREATE TABLE`, `DEFAULT`, `ASC`, `DESC`, SQL data types (`VARCHAR`, `BIGINT`), JSON/YAML property keys, TOML mapping & dotted keys (`name`, `port`, `pool.min_size`), Java Properties keys (`spring.application.name`, `server.port`), XML/HTML attribute names (`xmlns`, `version`, `id`, `replicas`, `lang`, `class`, `charset`, `data-status`), CSS property names (`font-family`, `display`, `color`, `margin`), `+` added lines, PSReadLine commands |
+| **Base0 Grey**      | `#839496` | Neutral ground, custom domain types, schemas, invocations, operators | Custom domain types (`OrderRecord`, `Context`, `HashMap`, `Instant`), schema relations (tables/views/CTEs), dynamic types/classes (Python `Callable`, `Union`), function/method calls (`printf()`, `.stream()`), CSS custom properties & variables (`--color-base03`), CSS functions (`var()`, `clamp()`), CSS attribute selectors (`[data-status="healthy"]`), XML/HTML tag delimiters (`<`, `>`, `</`, `/>`), TOML brackets and delimiters (`[`, `]`, `[[`, `]]`, `=`, `.`), Java Properties delimiters (`=`, `:`) and interpolation references (`${...}`), parameters, operators, PSReadLine arguments |
+| **Solarized Blue**  | `#268BD2` | Routine declarations & structural headers | `func New...`, `fn find...`, `def __init__`, XML element tags (`<deployment>`, `<script>`), TOML table section headers (`[package]`, `[[rate_limits]]`), CSS tag and class selectors (`body`, `.card`), diff hunk headers (`@@ ... @@`), Markdown H2 |
+| **Solarized Violet**| `#6C71C4` | Aspects, annotations, attributes, modules & imports | `@Service`, `@dataclass`, `#[derive]`, `[[nodiscard]]`, CSS pseudo-classes/elements (`:root`, `:hover`, `::before`), `import`, `from`, `use`, `package main`, Markdown H3 |
+| **Solarized Magenta**| `#D33682`| Constants, literals, hashes, sentinels, receivers | `1024`, `nil`, `null`, `None`, `true`, `false`, TOML date-times (`2025-09-14T08:30:00Z`), Java Properties numbers and booleans, CSS hex colors (`#002b36`), XML entity references (`&amp;`), `ALL_CAPS` constants, `this`, `self`, PSReadLine numbers |
+| **Solarized Cyan**  | `#2AA198` | Strings, filesystem paths, struct tags, format placeholders | `"Hello %s\n"`, paths, markdown link URLs, XML attribute strings, Java Properties strings, format specifiers (`%s`, `%d`), PSReadLine strings |
+| **Solarized Orange**| `#CB4B16` | Directives, preprocessor macros, shebang | `#define`, `#include`, `#!/bin/bash`, CSS at-rules (`@layer`, `@keyframes`, `@media`, `@container`), XML processing instructions (`<?xml ... ?>`), Markdown H1 |
+| **Base01 Dim**      | `#586E75` | Comments, subtle metadata, structural delimiters | `// comments`, Java Properties comments (`#`), bat frames, tree connectors, Markdown markers, inactive line numbers, PSReadLine comments & predictions |
+
+---
+
+### The Higher-Order Architectural Pillars (Windows Developer Workstation)
+
+1. **Pillar I: The 3-Tier Semantic Color Contract & Canvas Tranquility**
+   - **Tier 1: Monotone Ground (70–80% screen area)** — Base0 (`#839496`) & Base01 (`#586E75`): Standard typed text, CLI arguments, paths, struct fields, custom domain types (`OrderRecord`, `Context`), schema relations, routine invocations (`printf()`, `.stream()`), operators (`+`, `==`), parameters, delimiters, and comments.
+   - **Tier 2: Structural Anchors (15–20% screen area)** — Green scaffolding and declarations, Yellow exclusive to control flow (`if`, `return`, `for`, `switch`), Blue function declarations and TOML section headers, Violet annotations and imports (`@Service`, `#[derive]`).
+   - **Tier 3: Values & Directives (5–10% screen area)** — Cyan strings and paths, Magenta constants, numeric literals, and booleans, Orange preprocessor macros and Markdown H1.
+   - **Monochromatic UI Chrome**: Gutter coordinates strictly employ pure luminance contrast (active `CursorLineNr` in Base1 Bold `#93A1A1` on `base02` `#073642`, inactive `LineNr` in Base01 `#586E75`), split dividers (`WinSeparator`, `VertSplit`) and floating popup borders (`FloatBorder`) strictly in Base01, delimiter matching (`MatchParen`) in Base1 on Base02 without syntax mutation, and non-mutating `sp` underlines for diagnostics.
+
+2. **Pillar II: Operational Role Invariance (Runtime Semantics over Static Syntax)**
+   - Function declarations are structural landmarks in Blue (`#268BD2`); function/method invocations rest calmly on the Base0 Grey (`#839496`) canvas.
+   - Factory functions (like Go `NewClusterNode`) remain invocations in calm Base0 Grey, never flipping to Yellow.
+   - Sentinels (`null`, `nil`, `None`, `_`) strictly classify as constants in Solarized Magenta (`#D33682`).
+
+3. **Pillar III: Gestalt Semantic Continuity & Atomic Compound Enclosure**
+   - String payloads, interpolation wrappers, and format specifiers (`%s`, `\n`) form a single continuous entity in Solarized Cyan (`#2AA198`).
+   - Compound enclosures (attributes `#[derive]`, `[[nodiscard]]`, `@Override`, Go struct tags) remain unified in their primary accent without token fracturing.
+   - Diff lines form a single semantic mutation in continuous Green (`+`) or Red (`-`).
+
+4. **Pillar IV: Navigational Neutrality (Qualifiers, Sigils, and Scope Boundaries)**
+   - Scope qualifiers (`std::`, `boost::`, `context.`, `fmt.`) serve navigational routing and remain in calm Base0 Grey (`#839496`), while formal definition sites receive Violet (`#6C71C4`).
+   - Shell parameter expansions and PowerShell variable prefixes strictly remain calm Base0.
+
+5. **Pillar V: Pushdown Automata State Machine Engineering (`bat` / Sublime Syntaxes)**
+   - Standalone, 100% self-contained grammar specifications in `config/bat/syntaxes/` (`Bash`, `C`, `C++`, `CSS`, `Diff`, `Go`, `HTML`, `Java`, `Java Properties`, `JSON`, `Markdown`, `Python`, `Rust`, `SQL`, `Terraform`, `TOML`, `TypeScript`, `XML`).
+   - Pushdown transitions consume opening delimiters and avoid lookahead traps; contextual keywords are guarded by syntax lookarounds to prevent false control flow matching.
+
+6. **Pillar VI: Tree-sitter AST Query Hierarchy & Cascade Engineering (Neovim)**
+   - Root fallback captures strictly mirror the universal color contract (`@function.call = Base0`, `@keyword.import = Violet`, `@variable.builtin = Magenta`).
+   - Single source of truth query architecture: base query supersedure in `config/nvim/queries/` without `;; extends` (eliminates rogue `url` metadata and broad selector swallowing), and runtime extensions in `config/nvim/after/queries/` with `;; extends`.
+   - Document-order rule precedence ensures generic catch-all patterns precede specialized predicate captures.
+   - Diagnostic squiggles isolate severity through underline color (`sp`), with `fg = "NONE"` preventing syntax color corruption.
+
+7. **Pillar VII: Standalone Subsystem Independence & LTS Currency**
+   - Decoupled from packaging lag through version-controlled grammars in `config/bat/syntaxes/` and query overrides in `config/nvim/`.
+   - Polyglot runtimes declaratively pinned in `mise.toml` (`java = "lts"`, `node = "lts"`, `go = "latest"`, `tree-sitter = "latest"`).
+
+8. **Pillar VIII: Workstation Visual Hierarchy & Spatial Typography**
+   - 4-layer terminal canvas: Layer 0 (Canvas Ground `#002B36`), Layer 1 (Structural Chrome & Enclosures `#073642` / `#586E75`), Layer 2 (Monotone Ground `#839496`), Layer 3 (Semantic Accents).
+   - Interactive shell prompts (Oh My Posh) sit on an authentic Base02 (`#073642`) dark teal shelf with thin directional chevrons (`\uE0B1` on left, `\uE0B3` on right in `#657B83`) maintaining horizontal momentum toward solid wedge caps (`\uE0B0` / `\uE0B2`).
+   - Enforces 3-Tier Prompt Luminance Hierarchy: Frame Base01 < Separator Base00 < OS Icon Base0 (`#839496`), eliminating high-contrast pearl white icons that outshine directory navigation.
+
+9. **Pillar IX: Multi-Tool Precedence & Filesystem Color Parity**
+   - Multi-tool cascade: explicit glob in `LS_COLORS` $\gg$ explicit glob in `EZA_COLORS` $\gg$ 2-letter family code $\gg$ default.
+   - Hardware-level ANSI slot discipline: archives in bright slot 9 (ANSI `91` Orange), media in bright slot 13 (ANSI `95` Violet), crypto keys/certificates in slot 5 (ANSI `35` Magenta).
+   - Spatial domain isolation: crypto keys (`.key`, `.pem`, `.crt`, `cr`) strictly share Magenta (`#D33682`), isolated from Blue directories and Orange archives.
+
+---
+
+### Concrete Tooling Implementations
+
+1. **`bat` (Syntect CLI File Viewer)**:
+   - Compiled theme cache via `bat cache --build` using `config/bat/Solarized-Dark-TrueColor.tmTheme`.
+   - Standalone modern Sublime grammars deployed from `config/bat/syntaxes/` to `%APPDATA%\bat\syntaxes\`.
+   - Available via `bat` or `cat` alias with `--theme="Solarized-Dark-TrueColor"`. `$env:BAT_OPTS = '--italic-text=always'`.
+
+2. **Neovim (Native LSP & Tree-sitter Editor)**:
+   - Uses `maxmx03/solarized.nvim` with `variant = "spring"` matching `bat` 1:1.
+   - Deploys full query tree to `%LOCALAPPDATA%\nvim\`: base supersedures in `queries/` (`css`, `html`, `html_tags`, `properties`, `xml`) and additive extensions in `after/queries/` (`bash`, `c`, `cpp`, `diff`, `go`, `java`, `javascript`, `markdown`, `markdown_inline`, `printf`, `python`, `rust`, `sql`, `terraform`, `toml`, `typescript`, `xml`).
+   - Non-language UI chrome: Gutter line numbers in monochromatic luminance (`CursorLineNr` in Base1 Bold on Base02), split and float borders in Base01, `MatchParen` in Base1 on Base02, `Search` in `mix_yellow` distinct from `Visual` in `mix_base1`, 4-tier diagnostic ladder, and subtle dark diff background tints.
+   - Dedicated `ftplugin/java.lua` for on-demand `nvim-jdtls` with cross-platform cache resolution.
+
+3. **Fallback Legacy Vim (`_vimrc`)**:
+   - Zero-dependency, self-contained configuration in `config/vim/_vimrc` deployed to `$HOME\_vimrc` and `$HOME\.vimrc`.
+   - Built-in portable Solarized Dark fallback function `s:ApplySolarizedDark()` configuring complete TrueColor GUI and 16/256-color cterm attributes without external plugins.
+
+4. **`eza` (Modern Directory Listing)**:
+   - Configured via aliases `e`, `el`, `elm`, `et`, `elt`, `elx` with unbolded 83-code TrueColor Solarized Dark palette in `$env:EZA_COLORS` and `$env:EXA_COLORS`: tree connectors Base01 (`xx=38;2;88;110;117`), directories Blue (`di=38;2;38;139;210`), executables Green (`ex=38;2;133;153;0`), documents/code Base0 (`fi`, `sc`, `do` in `38;2;131;148;150`), media Violet (`im`, `vi`, `mu`, `lo` in `38;2;108;113;196`), archives Orange (`co=38;2;203;75;22`), crypto Magenta (`cr=38;2;211;54;130`), table header underline Base1 (`hd=4;38;2;147;161;161`), block/char devices unbolded Magenta (`bd=38;2;211;54;130:cd=38;2;211;54;130`).
+
+5. **GNU coreutils `ls` & `dircolors` (`$env:LS_COLORS`)**:
+   - Configured via `config/colors/LS_COLORS` matching GNU dircolors: directories in Blue (`DIR 34`), executables in Green (`EXEC 32`), symlinks in Cyan (`LINK 36`), regular text/code in calm Base0 (`FILE 00`, `.c 00`, `.py 00`, `.md 00`, `.txt 00`), media in Violet (`95`), archives in Orange (`91`), crypto in Magenta (`35`), backups in dim Base01 (`90`).
+
+6. **Oh My Posh Solarized Dark Prompt (`p10k_single_line.omp.json`)**:
+   - Single-line Powerline prompt with compiled disk caching (`$HOME\.cache\powershell\omp_init.ps1`).
+   - Both left and right prompts unified on authentic Base02 (`#073642`) dark teal shelf.
+   - OS icon in calm Base0 (`#839496`), directories in Blue (`#268BD2`), Git VCS status in Green/Yellow/Orange reflecting repository state, persistent right status anchor (`` in Solarized Green `#859900` on success, `` in Solarized Red `#DC322F` on error) mirroring `home-settings`, and right prompt toolchains (Node, Go, Python, Dotnet, Rust) rendering in domain-semantic accents on Base02.
+
+7. **PSReadLine & FZF**:
+   - PSReadLine TrueColor syntax highlighting matching Solarized Dark palette.
+   - Interactive history search (`Ctrl+R`) integrated with `fzf` using authentic Solarized Dark theme (`$env:FZF_DEFAULT_OPTS`) and ripgrep/fd file finding (`$env:FZF_DEFAULT_COMMAND`).
+
+8. **Mise Toolchains & Go Isolation**:
+   - Declarative developer toolchains in `mise.toml` (`glow = "latest"`, `tree-sitter = "latest"`, `go = "latest"`, `node = "lts"`, `python = "latest"`, `rust = "latest"`, `neovim = "latest"`, `eza = "latest"`, `bat = "latest"`).
+   - Explicit Go environment isolation (`go.set_gobin = false`, `go.set_gopath = false`).
 
 ---
 

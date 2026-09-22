@@ -10,24 +10,41 @@ foreach ($a in $gitConflictAliases) {
     }
 }
 
+# -------------------------------------------------------------
+# Internal Git Helpers
+# -------------------------------------------------------------
+function Get-GitCurrentBranch {
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+    if (-not $branch) {
+        Write-Error "Error: not in a git repository"
+        return $null
+    }
+    return $branch.Trim()
+}
+
+function Resolve-GitPrimaryBranch {
+    git show-ref --verify --quiet refs/heads/main
+    if ($LASTEXITCODE -eq 0) { return 'main' }
+
+    git show-ref --verify --quiet refs/heads/master
+    if ($LASTEXITCODE -eq 0) { return 'master' }
+
+    Write-Error "Error: neither 'main' nor 'master' branch found locally."
+    return $null
+}
+
+# -------------------------------------------------------------
+# Standard Git Plugin Aliases & Functions
+# -------------------------------------------------------------
 function gco  { git checkout @args }
 function gcb  { git checkout -b @args }
 function gcm {
-    $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if (-not $currentBranch) {
-        Write-Error "Error: not in a git repository"
-        return
-    }
-    git show-ref --verify --quiet refs/heads/main
-    if ($LASTEXITCODE -eq 0) {
-        git checkout main @args
-    } else {
-        git show-ref --verify --quiet refs/heads/master
-        if ($LASTEXITCODE -eq 0) {
-            git checkout master @args
-        } else {
-            Write-Error "Error: neither 'main' nor 'master' branch found locally."
-        }
+    $currentBranch = Get-GitCurrentBranch
+    if (-not $currentBranch) { return }
+
+    $targetBranch = Resolve-GitPrimaryBranch
+    if ($targetBranch) {
+        git checkout $targetBranch @args
     }
 }
 function gcd  { git checkout develop @args }
@@ -60,7 +77,9 @@ function gcp  { git cherry-pick @args }
 function gcpa { git cherry-pick --abort @args }
 function gcpc { git cherry-pick --continue @args }
 
+# -------------------------------------------------------------
 # Repository Custom Workflow Helpers
+# -------------------------------------------------------------
 function gcommit { git add -A && git commit @args }
 function gamend  { git add -A && git commit --amend --no-edit @args }
 function gfetch  { git fetch @args }
@@ -77,26 +96,11 @@ function gpull   { git pull --rebase origin HEAD @args }
 function gup     { git fetch && git pull --rebase origin HEAD @args }
 
 function gprune {
-    $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if (-not $currentBranch) {
-        Write-Error "Error: not in a git repository"
-        return
-    }
+    $currentBranch = Get-GitCurrentBranch
+    if (-not $currentBranch) { return }
 
-    git show-ref --verify --quiet refs/heads/main
-    $hasMain = ($LASTEXITCODE -eq 0)
-
-    git show-ref --verify --quiet refs/heads/master
-    $hasMaster = ($LASTEXITCODE -eq 0)
-
-    $targetBranch = if ($hasMain) {
-        "main"
-    } elseif ($hasMaster) {
-        "master"
-    } else {
-        Write-Error "Error: neither 'main' nor 'master' branch found locally."
-        return
-    }
+    $targetBranch = Resolve-GitPrimaryBranch
+    if (-not $targetBranch) { return }
 
     git checkout $targetBranch
     if ($LASTEXITCODE -ne 0) {
@@ -112,13 +116,11 @@ function gprune {
 
 function guser-branch {
     $user = if ($env:USER) { $env:USER } else { $env:USERNAME }
-    $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if (-not $branch) {
-        Write-Error "Error: not in a git repository"
-        return
-    }
-    if ($branch.Trim() -ne 'HEAD') {
-        $cleanBranch = $branch.Trim() -replace "^($([regex]::Escape($user))/)+", ""
+    $branch = Get-GitCurrentBranch
+    if (-not $branch) { return }
+
+    if ($branch -ne 'HEAD') {
+        $cleanBranch = $branch -replace "^($([regex]::Escape($user))/)+", ""
         git branch -m "$user/$cleanBranch"
     }
 }
@@ -128,27 +130,11 @@ function fix-abcxyz-branch-name {
 }
 
 function gsync {
-    $currentBranch = (git rev-parse --abbrev-ref HEAD 2>$null)
-    if (-not $currentBranch) {
-        Write-Error "Error: not in a git repository"
-        return
-    }
-    $currentBranch = $currentBranch.Trim()
+    $currentBranch = Get-GitCurrentBranch
+    if (-not $currentBranch) { return }
 
-    git show-ref --verify --quiet refs/heads/main
-    $hasMain = ($LASTEXITCODE -eq 0)
-
-    git show-ref --verify --quiet refs/heads/master
-    $hasMaster = ($LASTEXITCODE -eq 0)
-
-    $targetBranch = if ($hasMain) {
-        "main"
-    } elseif ($hasMaster) {
-        "master"
-    } else {
-        Write-Error "Error: neither 'main' nor 'master' branch found locally."
-        return
-    }
+    $targetBranch = Resolve-GitPrimaryBranch
+    if (-not $targetBranch) { return }
 
     if ($currentBranch -eq $targetBranch) {
         git pull --rebase origin $targetBranch
