@@ -192,6 +192,26 @@ if (Test-Path $sampleCodeDir) {
     }
 }
 
+# Test config/cmd/autorun.cmd
+$cmdAutorunPath = Join-Path $RootDir "config\cmd\autorun.cmd"
+if (Test-Path $cmdAutorunPath) {
+    Pass "CMD AutoRun script exists: config/cmd/autorun.cmd"
+    $cmdOutput = & cmd.exe /c "call `"$cmdAutorunPath`" && set COLORTERM && set BAT_THEME && set PROMPT && doskey /macros"
+    $hasColorTerm = ($cmdOutput -match 'COLORTERM=truecolor')
+    $hasBatTheme = ($cmdOutput -match 'BAT_THEME=Solarized-Dark-TrueColor')
+    $hasPrompt = ($cmdOutput -match 'PROMPT=')
+    $hasLsMacro = ($cmdOutput -match 'ls=ls --color=auto')
+    $hasGitMacro = ($cmdOutput -match 'gst=git status')
+    $hasVimMacro = ($cmdOutput -match 'v=nvim')
+    if ($hasColorTerm -and $hasBatTheme -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro) {
+        Pass "config/cmd/autorun.cmd initializes Solarized environment, ANSI prompt, and doskey macros"
+    } else {
+        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, Prompt: $hasPrompt, Ls: $hasLsMacro, Git: $hasGitMacro)"
+    }
+} else {
+    Fail "config/cmd/autorun.cmd missing" "Expected config/cmd/autorun.cmd to exist"
+}
+
 # -------------------------------------------------------------
 # Test 3: WindowsSettings Module Import & Function Exports
 # -------------------------------------------------------------
@@ -845,6 +865,13 @@ try {
         Pass "setup.ps1 executes cleanly in -DryRun -UseDSC mode"
     } catch {
         Fail "setup.ps1 use-dsc dry-run" $_.Exception.Message
+    }
+
+    try {
+        & $setupScriptPath -DryRun -SkipCMD | Out-Null
+        Pass "setup.ps1 executes cleanly in -DryRun -SkipCMD mode"
+    } catch {
+        Fail "setup.ps1 skip-cmd dry-run" $_.Exception.Message
     }
 
     $bootstrapScriptPath = Join-Path $RootDir "bootstrap.ps1"

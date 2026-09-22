@@ -20,6 +20,7 @@ param(
     [switch]$SkipFonts,
     [switch]$SkipTerminal,
     [switch]$SkipPosh,
+    [switch]$SkipCMD,
     [switch]$SkipCompletions,
     [switch]$SkipVim,
     [switch]$SkipBin

@@ -19,6 +19,7 @@
       -SkipPackages          Skip winget package installation
       -SkipFonts             Skip MesloLGS Nerd Font Mono installation
       -SkipPosh              Skip Oh My Posh & PowerShell module configuration
+      -SkipCMD               Skip Windows Command Prompt (cmd.exe) AutoRun & Doskey configuration
       -SkipCompletions       Skip CLI argument completions registration
       -SkipTerminal          Skip Windows Terminal settings & JSON fragment deployment
       -SkipVim               Skip Neovim & Vim configuration
@@ -38,6 +39,7 @@ param(
     [switch]$SkipFonts,
     [switch]$SkipTerminal,
     [switch]$SkipPosh,
+    [switch]$SkipCMD,
     [switch]$SkipCompletions,
     [switch]$SkipVim,
     [switch]$SkipBin
@@ -56,6 +58,7 @@ $skipUserConfig = $SystemOnly
 if ($skipUserConfig) {
     $SkipFonts = $true
     $SkipPosh = $true
+    $SkipCMD = $true
     $SkipCompletions = $true
     $SkipTerminal = $true
     $SkipVim = $true
@@ -462,6 +465,62 @@ Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue
         } else {
             [Environment]::SetEnvironmentVariable('COLORTERM', 'truecolor', 'User')
             $env:COLORTERM = 'truecolor'
+        }
+    }
+
+    # Configure Windows Command Prompt (cmd.exe) AutoRun & Doskey
+    if (-not $SkipCMD) {
+        Write-Host "==> Setting up Windows Command Prompt (cmd.exe) AutoRun & Doskey..." -ForegroundColor Cyan
+        $cmdSource = Join-Path $RootDir "config\cmd\autorun.cmd"
+        $cmdDest = "$env:LOCALAPPDATA\cmd\autorun.cmd"
+        $cmdAltDest = "$HOME\.config\cmd\autorun.cmd"
+
+        Deploy-ConfigFile -Name "CMD AutoRun script" `
+            -SourcePath $cmdSource `
+            -DestinationPath $cmdDest `
+            -AltDestinations @($cmdAltDest) `
+            -DryRun:$DryRun
+
+        # Enable VirtualTerminalLevel in Console for ANSI escape rendering in conhost
+        $consoleKey = "HKCU:\Console"
+        if (-not (Test-Path $consoleKey)) {
+            if (-not $DryRun) { New-Item -Path $consoleKey -Force | Out-Null }
+        }
+        $vtProp = Get-ItemProperty -Path $consoleKey -Name "VirtualTerminalLevel" -ErrorAction SilentlyContinue
+        if (-not $vtProp -or $vtProp.VirtualTerminalLevel -ne 1) {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would set HKCU:\Console\VirtualTerminalLevel = 1 (DWORD)" -ForegroundColor DarkCyan
+            } else {
+                Set-ItemProperty -Path $consoleKey -Name "VirtualTerminalLevel" -Value 1 -Type DWord -Force
+                Write-Host "==> Console VirtualTerminalLevel (ANSI) enabled." -ForegroundColor Green
+            }
+        }
+
+        # Configure AutoRun in Command Processor registry key
+        $cmdProcessorKey = "HKCU:\Software\Microsoft\Command Processor"
+        $autoRunTarget = 'if exist "%LOCALAPPDATA%\cmd\autorun.cmd" call "%LOCALAPPDATA%\cmd\autorun.cmd"'
+
+        if (-not (Test-Path $cmdProcessorKey)) {
+            if (-not $DryRun) { New-Item -Path $cmdProcessorKey -Force | Out-Null }
+        }
+
+        $apProp = Get-ItemProperty -Path $cmdProcessorKey -Name "AutoRun" -ErrorAction SilentlyContinue
+        $existingAutoRun = if ($apProp) { $apProp.AutoRun } else { $null }
+
+        if (-not $existingAutoRun -or $existingAutoRun -notlike "*autorun.cmd*") {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would configure CMD AutoRun in $cmdProcessorKey" -ForegroundColor DarkCyan
+            } else {
+                $newAutoRun = if ([string]::IsNullOrWhiteSpace($existingAutoRun)) {
+                    $autoRunTarget
+                } else {
+                    "$existingAutoRun & $autoRunTarget"
+                }
+                Set-ItemProperty -Path $cmdProcessorKey -Name "AutoRun" -Value $newAutoRun -Type ExpandString -Force
+                Write-Host "==> CMD AutoRun configured in registry." -ForegroundColor Green
+            }
+        } else {
+            Write-Host "==> CMD AutoRun is already configured in registry." -ForegroundColor Green
         }
     }
 } else {

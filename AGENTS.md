@@ -16,13 +16,14 @@ Any agent modifying this repository must follow these core principles and constr
 | **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ / 0.12+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
 | **Neovim Queries & Tree-sitter** | `config/nvim/queries/`, `after/`, `ftplugin/` | `$env:LOCALAPPDATA\nvim\` | Dedicated AST highlight queries & Java filetype plugin matching Universal Color Contract |
 | **Legacy Vim Config** | `config/vim/_vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Zero-dependency standalone fallback configuration with inline Solarized Dark palette |
+| **Command Prompt AutoRun** | `config/cmd/autorun.cmd` | `%LOCALAPPDATA%\cmd\autorun.cmd` | Native `cmd.exe` AutoRun environment, TrueColor Solarized Dark prompt, and doskey macros |
 | **Terminal Fragments** | `config/terminal/windows-settings.json` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
 | **TrueColor Themes & Syntaxes** | `config/bat/` & `config/colors/` | `%APPDATA%\bat\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes & standalone Sublime syntaxes for `bat`, `eza`, and `dircolors` |
 | **Native User Binaries** | `bin/` | Registered in User `$env:Path` | Dual-execution CLI scripts (`<name>.ps1` + `<name>.cmd`) |
 | **Polyglot Sample Code** | `sample-code/` | Repository validation suite | 20 real-world sample files across languages for syntax & query evaluation |
 | **Package Declarations** | `configuration.dsc.yaml` & `mise.toml` | System Provisioning | Microsoft DSC v3 and Mise declarative package specifications |
 | **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Declarative provisioning and configuration runners supporting `-DryRun` |
-| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 159+ automated validation tests across 8 modules |
+| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 162+ automated validation tests across 8 modules |
 
 ---
 
