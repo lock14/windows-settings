@@ -299,6 +299,15 @@ if ($env:FZF_DEFAULT_OPTS -and $env:FZF_DEFAULT_OPTS -match 'bg\+:#073642' -and 
     Fail "FZF_DEFAULT_OPTS environment variable" "FZF_DEFAULT_OPTS not set properly"
 }
 
+# Test PSReadLine TrueColor syntax colors
+$wsModule = Join-Path $RootDir "module\WindowsSettings.psm1"
+$psm1Content = Get-Content $wsModule -Raw
+if ($psm1Content -match 'Keyword\s*=\s*"`e\[38;2;181;137;0m"' -and $psm1Content -match 'Command\s*=\s*"`e\[38;2;133;153;0m"') {
+    Pass "PSReadLine TrueColor syntax colors configured (Control Flow Keyword in Solarized Yellow #B58900, Command in Solarized Green #859900)"
+} else {
+    Fail "PSReadLine syntax colors" "Keyword is not Solarized Yellow #B58900 or Command is not Solarized Green #859900"
+}
+
 $setupPackagesScript = Join-Path $RootDir "setup.ps1"
 if (Test-Path $setupPackagesScript) {
     $setupPackagesContent = Get-Content $setupPackagesScript -Raw

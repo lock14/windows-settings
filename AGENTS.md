@@ -90,8 +90,8 @@ All visual components across the terminal, shell, prompt, file viewers, and edit
 | **Standard Foreground** | `base0` | `#839496` | Standard typed text, CLI arguments, paths, struct fields, identifiers |
 | **Emphasis Text** | `base1` | `#93A1A1` | Bright text, highlighted labels |
 | **Light Tone (Paper)** | `base2` / `base3` | `#EEE8D5` / `#FDF6E3` | Light background references (never default text) |
-| **Keywords & Control** | `green` | `#859900` | `package`, `import`, `func`, `return`, `if`, `for`, `var`, `type`, `struct`, PSReadLine commands |
-| **Types & Struct Names** | `yellow` | `#B58900` | Primitive types (`int`, `string`, `bool`), PSReadLine type literals (`[string]`, `[int]`) |
+| **Control Flow & Jumps**| `yellow` | `#B58900` | `if`, `return`, `for`, `while`, `switch`, `case`, `select`, `defer`, `match`, `try`, `throw`, `yield`, `await`, PSReadLine control flow keywords |
+| **Structural & Declarations**| `green` | `#859900` | `package`, `import`, `func`, `var`, `type`, `struct`, primitive types (`int`, `string`, `bool`), PSReadLine commands & types |
 | **Functions & Methods** | `blue` | `#268BD2` | Function declarations, method calls, directory names |
 | **Strings & Paths** | `cyan` | `#2AA198` | String literals, PSReadLine strings |
 | **Numbers & Constants** | `magenta` | `#D33682` | Numeric literals, `nil`, `true`, `false`, `iota`, PSReadLine numbers |

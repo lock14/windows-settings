@@ -162,7 +162,7 @@ cd windows-settings
 - **`glow`**: Terminal Markdown renderer with Solarized Dark styling.
 - **`uutils-coreutils`**: Fast, memory-safe compiled Rust GNU coreutils (`ls`, `ll`, `la`, `l`) strictly rendered with unbolded Solarized `LS_COLORS`.
 - **`fzf`**: Interactive fuzzy search (`Ctrl+R`, `Ctrl+T`) styled in TrueColor Solarized Dark, powered by high-speed `ripgrep` (`rg`) and `fd` fallback engines.
-- **`PSReadLine`**: Predictive IntelliSense and restrained 24-bit TrueColor syntax highlighting.
+- **`PSReadLine`**: Predictive IntelliSense and restrained 24-bit TrueColor syntax highlighting (control flow in Solarized Yellow `#B58900`, commands & primitive types in Solarized Green `#859900`, strings in Cyan `#2AA198`, numbers in Magenta `#D33682`).
 
 ### 4. Git & Developer Shortcuts
 Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
