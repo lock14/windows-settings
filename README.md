@@ -45,6 +45,8 @@ windows-settings/
 │   ├── bat/                       # Solarized Dark 24-bit TrueColor bat theme & custom syntaxes
 │   │   ├── Solarized-Dark-TrueColor.tmTheme  # 24-bit TrueColor Solarized Dark theme
 │   │   └── syntaxes/              # 18 custom Sublime Text / bat syntax grammars
+│   ├── cmd/                       # Windows Command Prompt (cmd.exe) AutoRun & doskey macros
+│   │   └── autorun.cmd            # Native CMD AutoRun environment, TrueColor Solarized Dark prompt, and doskey macros
 │   ├── colors/                    # Directory colors (LS_COLORS)
 │   ├── nvim/                      # Modern Lua Neovim 0.11+ (Native LSP, Tree-sitter AST queries)
 │   │   ├── init.lua               # Neovim 0.11+ Native LSP, monochromatic UI, Solarized Dark
@@ -68,7 +70,7 @@ windows-settings/
 ├── sample-code/                   # 20-language polyglot sample suite for syntax highlighting verification
 │
 └── tests/
-    └── test_settings.ps1          # 159 automated tests across all 8 test modules
+    └── test_settings.ps1          # 162 automated tests across all 8 test modules
 ```
 
 ---
@@ -129,6 +131,7 @@ cd windows-settings
 | `-SkipPackages` | *disabled* | Skip winget package installation |
 | `-SkipFonts` | *disabled* | Skip MesloLGS Nerd Font Mono installation |
 | `-SkipPosh` | *disabled* | Skip Oh My Posh & PowerShell module configuration |
+| `-SkipCMD` | *disabled* | Skip Windows Command Prompt (cmd.exe) AutoRun & Doskey configuration |
 | `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
 | `-SkipTerminal` | *disabled* | Skip Windows Terminal settings & JSON fragment deployment |
 | `-SkipVim` | *disabled* | Skip Neovim & Vim configuration |
@@ -155,7 +158,13 @@ cd windows-settings
   ```
 - Instant updates via `git pull` without modifying or corrupting profile files.
 
-### 3. Modern Rust CLI Developer Toolchain
+### 3. Windows Command Prompt (`cmd.exe`) AutoRun & Doskey
+- Seamless Command Prompt parity via `config/cmd/autorun.cmd` registered in `HKCU\Software\Microsoft\Command Processor\AutoRun`.
+- **TrueColor Environment**: Automatically sets `COLORTERM=truecolor`, `BAT_THEME`, `LS_COLORS`, and `EZA_COLORS` on launch.
+- **Solarized Dark ANSI Prompt**: Authentic Cyan path (`#2AA198`) with Green prompt chevron (`#859900`) and VirtualTerminalLevel (ANSI) support.
+- **Doskey Macros**: Mirrors Git shortcuts (`gst`, `gco`, `ga`, `gd`, `gl`, `gp`, etc.), directory listing (`ls`, `ll`, `e`, `el`, `et`), and editor shortcuts (`v`, `vi`, `vim` -> `nvim`).
+
+### 4. Modern Rust CLI Developer Toolchain
 - **`eza`**: 83-code authentic 24-bit TrueColor Solarized Dark palette (`EZA_COLORS`), Git status, long-ISO timestamps, file group ownership, and tree views (`e`, `el`, `elm`, `et`, `elt`, `elx`).
 - **`zoxide` (`z`)**: Frecency-based smart directory jumping.
 - **`bat`**: Syntax-highlighted paging with Git modification markers, authentic Solarized Dark TrueColor theme (`Solarized-Dark-TrueColor.tmTheme`), 18 custom standalone syntaxes compiled via `bat cache --build`, and italic comments (`BAT_OPTS = '--italic-text=always'`).
@@ -164,7 +173,7 @@ cd windows-settings
 - **`fzf`**: Interactive fuzzy search (`Ctrl+R`, `Ctrl+T`) styled in TrueColor Solarized Dark, powered by high-speed `ripgrep` (`rg`) and `fd` fallback engines.
 - **`PSReadLine`**: Predictive IntelliSense and restrained 24-bit TrueColor syntax highlighting (control flow in Solarized Yellow `#B58900`, commands & primitive types in Solarized Green `#859900`, strings in Cyan `#2AA198`, numbers in Magenta `#D33682`).
 
-### 4. Git & Developer Shortcuts
+### 5. Git & Developer Shortcuts
 Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 
 | Shortcut | Description |
@@ -235,7 +244,7 @@ Run the automated test suite locally:
 pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **159 automated tests across all 8 modules**:
+Runs **162 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
 2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
 3. WindowsSettings Module Import & Function Exports (61 functions)
