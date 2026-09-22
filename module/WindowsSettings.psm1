@@ -94,8 +94,6 @@ if ((Test-Path $ompInit) -and (Get-Item $ompInit).Length -gt 0) {
 # -------------------------------------------------------------
 try {
     Import-Module PSReadLine -ErrorAction SilentlyContinue
-    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
-    Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue
     Set-PSReadLineOption -Colors @{
         Default                 = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - standard arguments/paths/text)
         Command                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
@@ -116,6 +114,15 @@ try {
         ListPredictionSelected  = "`e[48;2;7;54;66m"      # Solarized Base02 (#073642 bg)
         ListPredictionTooltip   = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
     } -ErrorAction SilentlyContinue
+
+    # Predictive suggestions require interactive virtual terminal processing
+    try {
+        Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction Stop
+        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
+    } catch {
+        $null = $_
+    }
+
     Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction SilentlyContinue
     Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction SilentlyContinue
     Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward -ErrorAction SilentlyContinue
