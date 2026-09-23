@@ -16,7 +16,7 @@ Any agent modifying this repository must follow these core principles and constr
 | **Neovim Configuration** | `config/nvim/init.lua` | `$env:LOCALAPPDATA\nvim\init.lua` | Neovim 0.11+ / 0.12+ Lua config (Lazy.nvim, Native LSP, Treesitter, Solarized Dark) |
 | **Neovim Queries & Tree-sitter** | `config/nvim/queries/`, `after/`, `ftplugin/` | `$env:LOCALAPPDATA\nvim\` | Dedicated AST highlight queries & Java filetype plugin matching Universal Color Contract |
 | **Legacy Vim Config** | `config/vim/_vimrc` | `$HOME\_vimrc` & `$HOME\.vimrc` | Zero-dependency standalone fallback configuration with inline Solarized Dark palette |
-| **Command Prompt AutoRun** | `config/cmd/autorun.cmd` | `%LOCALAPPDATA%\cmd\autorun.cmd` | Native `cmd.exe` AutoRun environment, TrueColor Solarized Dark prompt, and doskey macros |
+| **Command Prompt AutoRun** | `config/cmd/autorun.cmd` | `%LOCALAPPDATA%\cmd\autorun.cmd` | Zero-dependency native `cmd.exe` AutoRun environment, UTF-8 Base02 Powerline shelf prompt, and doskey macros |
 | **Terminal Fragments** | `config/terminal/windows-settings.json` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension |
 | **TrueColor Themes & Syntaxes** | `config/bat/` & `config/colors/` | `%APPDATA%\bat\` & `$env:LS_COLORS` | 24-bit Solarized Dark themes & standalone Sublime syntaxes for `bat`, `eza`, and `dircolors` |
 | **Native User Binaries** | `bin/` | Registered in User `$env:Path` | Dual-execution CLI scripts (`<name>.ps1` + `<name>.cmd`) |
@@ -200,6 +200,12 @@ Colors across the developer workstation fulfill invariant domain roles across al
 8. **Mise Toolchains & Go Isolation**:
    - Declarative developer toolchains in `mise.toml` (`glow = "latest"`, `tree-sitter = "latest"`, `go = "latest"`, `node = "lts"`, `python = "latest"`, `rust = "latest"`, `neovim = "latest"`, `eza = "latest"`, `bat = "latest"`).
    - Explicit Go environment isolation (`go.set_gobin = false`, `go.set_gopath = false`).
+
+9. **Command Prompt AutoRun (`autorun.cmd`)**:
+   - Zero-dependency native `cmd.exe` environment registered via `HKCU\Software\Microsoft\Command Processor\AutoRun`.
+   - Forces UTF-8 code page (`chcp 65001 >nul`) for clean rendering of Nerd Font and Powerline glyphs.
+   - Authentic Solarized Dark TrueColor Base02 (`#073642`) Powerline shelf prompt (`prompt $E[48;2;7;54;66m...`) matching Oh My Posh visual language without third-party injectors (0ms latency).
+   - Exports `COLORTERM=truecolor`, `BAT_THEME`, `LS_COLORS`, `EZA_COLORS`, compiler defaults (`CC=gcc`, `CXX=g++`), and complete `doskey` macros.
 
 ---
 

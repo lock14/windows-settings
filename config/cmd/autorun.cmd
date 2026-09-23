@@ -1,4 +1,7 @@
 @echo off
+:: Ensure UTF-8 code page (65001) for Unicode & Powerline glyph rendering
+chcp 65001 >nul
+
 :: =============================================================
 :: Windows Command Prompt (cmd.exe) AutoRun Configuration
 :: Solarized Dark TrueColor Environment & Doskey Macros
@@ -121,7 +124,8 @@ doskey yaml_lint=yamllint $*
 doskey clear=cls
 
 :: -------------------------------------------------------------
-:: 6. Solarized Dark TrueColor Prompt
+:: 6. Solarized Dark TrueColor Powerline Shelf Prompt
 :: -------------------------------------------------------------
-:: Cyan ($E[38;2;42;161;152m) working path + Green ($E[38;2;133;153;0m) chevron + reset ($E[0m)
-prompt $E[38;2;42;161;152m$P $E[38;2;133;153;0m$G$E[0m$S
+:: Authentic Base02 dark teal shelf (#073642) matching Oh My Posh:
+:: Base0 Windows icon () + Base01 divider () + Solarized Blue path ( $P) + Base02 wedge cap ()
+prompt $E[48;2;7;54;66m$E[38;2;131;148;150m  $E[38;2;88;110;117m$E[38;2;38;139;210m  $P $E[0m$E[38;2;7;54;66m$E[0m$S
