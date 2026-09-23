@@ -902,9 +902,10 @@ lazy.setup({
                 yamlls = "yaml-language-server",
                 jsonls = "vscode-json-language-server",
             }
+            local path_sep = vim.fn.has("win32") == 1 and ";" or ":"
             local mason_bin_dir = vim.fn.stdpath("data") .. "/mason/bin"
             if not (vim.env.PATH or ""):find(mason_bin_dir, 1, true) then
-                vim.env.PATH = mason_bin_dir .. ":" .. (vim.env.PATH or "")
+                vim.env.PATH = mason_bin_dir .. path_sep .. (vim.env.PATH or "")
             end
             if vim.lsp.config and vim.lsp.enable then
                 for _, s in ipairs(servers) do

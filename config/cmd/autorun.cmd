@@ -24,21 +24,21 @@ set "EXA_COLORS=%EZA_COLORS%"
 :: 2. Toolchain PATH Initializations
 :: -------------------------------------------------------------
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links" (
-    echo "%PATH%" | find /i "%LOCALAPPDATA%\Microsoft\WinGet\Links" >nul || set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Links;%PATH%"
+    path | find /i "%LOCALAPPDATA%\Microsoft\WinGet\Links" >nul || set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Links;%PATH%"
 )
 for /d %%D in ("%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs*") do (
     if exist "%%D\mingw64\bin" (
-        echo "%PATH%" | find /i "%%D\mingw64\bin" >nul || set "PATH=%%D\mingw64\bin;%PATH%"
+        path | find /i "%%D\mingw64\bin" >nul || set "PATH=%%D\mingw64\bin;%PATH%"
     )
 )
 if exist "%USERPROFILE%\go\bin" (
-    echo "%PATH%" | find /i "%USERPROFILE%\go\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\go\bin"
+    path | find /i "%USERPROFILE%\go\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\go\bin"
 )
 if exist "%USERPROFILE%\.cargo\bin" (
-    echo "%PATH%" | find /i "%USERPROFILE%\.cargo\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.cargo\bin"
+    path | find /i "%USERPROFILE%\.cargo\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.cargo\bin"
 )
 if exist "%LOCALAPPDATA%\mise\shims" (
-    echo "%PATH%" | find /i "%LOCALAPPDATA%\mise\shims" >nul || set "PATH=%LOCALAPPDATA%\mise\shims;%PATH%"
+    path | find /i "%LOCALAPPDATA%\mise\shims" >nul || set "PATH=%LOCALAPPDATA%\mise\shims;%PATH%"
 )
 
 :: -------------------------------------------------------------
