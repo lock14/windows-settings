@@ -160,8 +160,9 @@ cd windows-settings
 
 ### 3. Windows Command Prompt (`cmd.exe`) AutoRun & Doskey
 - Seamless Command Prompt parity via `config/cmd/autorun.cmd` registered in `HKCU\Software\Microsoft\Command Processor\AutoRun`.
+- **Zero-Dependency Architecture**: 100% standalone native implementation requiring zero external injectors or tools.
 - **TrueColor Environment**: Automatically sets `COLORTERM=truecolor`, `BAT_THEME`, `LS_COLORS`, and `EZA_COLORS` on launch.
-- **Solarized Dark ANSI Prompt**: Authentic Cyan path (`#2AA198`) with Green prompt chevron (`#859900`) and VirtualTerminalLevel (ANSI) support.
+- **Solarized Dark Powerline Shelf Prompt**: UTF-8 code page (65001) with authentic Base02 (`#073642`) dark teal shelf, calm Base0 Windows icon (``), Base01 divider (``), Solarized Blue path (` $P`), and Base02 solid wedge cap (``) matching the Oh My Posh visual language with 0ms startup overhead.
 - **Doskey Macros**: Mirrors Git shortcuts (`gst`, `gco`, `ga`, `gd`, `gl`, `gp`, etc.), directory listing (`ls`, `ll`, `e`, `el`, `et`), and editor shortcuts (`v`, `vi`, `vim` -> `nvim`).
 
 ### 4. Modern Rust CLI Developer Toolchain

@@ -205,10 +205,13 @@ if (Test-Path $cmdAutorunPath) {
     $hasLsMacro = ($cmdOutput -match 'ls=ls --color=auto')
     $hasGitMacro = ($cmdOutput -match 'gst=git status')
     $hasVimMacro = ($cmdOutput -match 'v=nvim')
-    if ($hasColorTerm -and $hasBatTheme -and $hasCC -and $hasCXX -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro) {
-        Pass "config/cmd/autorun.cmd initializes Solarized environment, compiler defaults, ANSI prompt, and doskey macros"
+    $autorunRaw = Get-Content $cmdAutorunPath -Raw
+    $hasChcp = ($autorunRaw -match 'chcp 65001')
+    $hasShelf = ($autorunRaw -match '48;2;7;54;66m' -and $autorunRaw -match '\$P')
+    if ($hasColorTerm -and $hasBatTheme -and $hasCC -and $hasCXX -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro -and $hasChcp -and $hasShelf) {
+        Pass "config/cmd/autorun.cmd initializes Solarized environment, compiler defaults, UTF-8 Base02 Powerline shelf prompt, and doskey macros"
     } else {
-        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, CC: $hasCC, CXX: $hasCXX, Prompt: $hasPrompt, Ls: $hasLsMacro, Git: $hasGitMacro)"
+        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, CC: $hasCC, CXX: $hasCXX, Prompt: $hasPrompt, Chcp: $hasChcp, Shelf: $hasShelf, Ls: $hasLsMacro, Git: $hasGitMacro)"
     }
 } else {
     Fail "config/cmd/autorun.cmd missing" "Expected config/cmd/autorun.cmd to exist"
