@@ -108,10 +108,10 @@ try {
 $dscPath = Join-Path $RootDir "configuration.dsc.yaml"
 if (Test-Path $dscPath) {
     $dscContent = Get-Content $dscPath -Raw
-    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'JanDeDobbeleer\.OhMyPosh') {
-        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest)"
+    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'JanDeDobbeleer\.OhMyPosh' -and $dscContent -match 'BrechtSanders\.WinLibs') {
+        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest with WinLibs GCC)"
     } else {
-        Fail "configuration.dsc.yaml" "Missing configurationVersion or core resources"
+        Fail "configuration.dsc.yaml" "Missing configurationVersion, OhMyPosh, or WinLibs GCC"
     }
 }
 
@@ -196,17 +196,19 @@ if (Test-Path $sampleCodeDir) {
 $cmdAutorunPath = Join-Path $RootDir "config\cmd\autorun.cmd"
 if (Test-Path $cmdAutorunPath) {
     Pass "CMD AutoRun script exists: config/cmd/autorun.cmd"
-    $cmdOutput = & cmd.exe /c "call `"$cmdAutorunPath`" && set COLORTERM && set BAT_THEME && set PROMPT && doskey /macros"
+    $cmdOutput = & cmd.exe /c "call `"$cmdAutorunPath`" && set COLORTERM && set BAT_THEME && set CC && set CXX && set PROMPT && doskey /macros"
     $hasColorTerm = ($cmdOutput -match 'COLORTERM=truecolor')
     $hasBatTheme = ($cmdOutput -match 'BAT_THEME=Solarized-Dark-TrueColor')
+    $hasCC = ($cmdOutput -match 'CC=gcc')
+    $hasCXX = ($cmdOutput -match 'CXX=g\+\+')
     $hasPrompt = ($cmdOutput -match 'PROMPT=')
     $hasLsMacro = ($cmdOutput -match 'ls=ls --color=auto')
     $hasGitMacro = ($cmdOutput -match 'gst=git status')
     $hasVimMacro = ($cmdOutput -match 'v=nvim')
-    if ($hasColorTerm -and $hasBatTheme -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro) {
-        Pass "config/cmd/autorun.cmd initializes Solarized environment, ANSI prompt, and doskey macros"
+    if ($hasColorTerm -and $hasBatTheme -and $hasCC -and $hasCXX -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro) {
+        Pass "config/cmd/autorun.cmd initializes Solarized environment, compiler defaults, ANSI prompt, and doskey macros"
     } else {
-        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, Prompt: $hasPrompt, Ls: $hasLsMacro, Git: $hasGitMacro)"
+        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, CC: $hasCC, CXX: $hasCXX, Prompt: $hasPrompt, Ls: $hasLsMacro, Git: $hasGitMacro)"
     }
 } else {
     Fail "config/cmd/autorun.cmd missing" "Expected config/cmd/autorun.cmd to exist"
@@ -282,10 +284,10 @@ if (Get-Alias -Name v -ErrorAction SilentlyContinue) {
 $nvimInit = Join-Path $RootDir "config\nvim\init.lua"
 if (Test-Path $nvimInit) {
     $nvimContent = Get-Content $nvimInit -Raw
-    if ($nvimContent -match 'solarized' -and $nvimContent -match 'mason') {
-        Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter + Solarized)"
+    if ($nvimContent -match 'solarized' -and $nvimContent -match 'mason' -and $nvimContent -match 'vim\.env\.CC = "gcc"' -and $nvimContent -match 'BrechtSanders\.WinLibs') {
+        Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter GCC discovery + Solarized)"
     } else {
-        Fail "Neovim init.lua" "Missing LSP or Solarized configuration"
+        Fail "Neovim init.lua" "Missing LSP, Solarized, or Treesitter GCC discovery configuration"
     }
 }
 
@@ -317,6 +319,12 @@ if ($env:FZF_DEFAULT_OPTS -and $env:FZF_DEFAULT_OPTS -match 'bg\+:#073642' -and 
     Pass "FZF_DEFAULT_OPTS environment variable configured (Solarized Dark)"
 } else {
     Fail "FZF_DEFAULT_OPTS environment variable" "FZF_DEFAULT_OPTS not set properly"
+}
+
+if ($env:CC -eq 'gcc' -and $env:CXX -eq 'g++') {
+    Pass "CC and CXX compiler environment variables configured (gcc/g++)"
+} else {
+    Fail "CC/CXX environment variables" "CC ($env:CC) or CXX ($env:CXX) not configured to gcc/g++"
 }
 
 # Test PSReadLine TrueColor syntax colors

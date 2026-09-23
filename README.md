@@ -219,7 +219,7 @@ Includes the full Oh My Zsh Git plugin suite and developer workflow helpers:
 ### 5. Modern Lua Neovim (`config/nvim/init.lua`)
 - Lua-first Neovim configuration with **Lazy.nvim**.
 - **Native LSP (`mason.nvim` + `nvim-lspconfig`)**: Neovim 0.11+ / 0.12+ LSP architecture (`LspAttach`, `vim.lsp.config`, `vim.lsp.enable`) managing Go (`gopls`), Terraform (`terraform-ls`), Python (`pyright`), YAML.
-- **Tree-sitter AST Queries**: Comprehensive base query supersedures (`queries/`) and runtime overrides (`after/queries/`) across 17 languages for authentic Solarized Dark highlighting.
+- **Tree-sitter AST Queries & GCC Compiler Discovery**: Comprehensive base query supersedures (`queries/`) and runtime overrides (`after/queries/`) across 17 languages for authentic Solarized Dark highlighting, with automatic WinLibs GCC compiler discovery on Windows.
 - **Monochromatic UI Chrome**: Subtle dark borders, calm status lines, and minimal gutter clutter.
 - **4-Tier Diagnostic Ladder**: Clear diagnostic distinction (Error Red, Warn Yellow, Info Blue, Hint Cyan).
 - **Subtle Dark Diff Tints**: `diffAdd`, `diffDelete`, `diffChange` matching terminal Solarized Dark backgrounds.
@@ -244,7 +244,7 @@ Run the automated test suite locally:
 pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **162 automated tests across all 8 modules**:
+Runs **163 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
 2. JSON, YAML & Manifest Validity (`configuration.dsc.yaml`, `p10k.omp.json`, `settings.json`, fragments)
 3. WindowsSettings Module Import & Function Exports (61 functions)

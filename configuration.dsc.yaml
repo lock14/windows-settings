@@ -96,6 +96,13 @@ properties:
         id: vim.vim
         source: winget
 
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install WinLibs GCC & MinGW-w64 (C/C++ compiler for Tree-sitter)
+      settings:
+        id: BrechtSanders.WinLibs.POSIX.UCRT
+        source: winget
+
     # ---------------------------------------------------------
     # Fonts
     # ---------------------------------------------------------
