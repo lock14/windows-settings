@@ -587,6 +587,34 @@ lazy.setup({
         lazy = false,
         priority = 900,
         config = function()
+            -- Ensure C/C++ compiler is discoverable and configured for Tree-sitter builds on Windows
+            if vim.fn.has("win32") == 1 then
+                if vim.fn.executable("gcc") == 0 then
+                    local local_app_data = vim.fn.getenv("LOCALAPPDATA")
+                    if local_app_data and local_app_data ~= vim.NIL then
+                        local winlibs_pattern = local_app_data .. "\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs*\\mingw64\\bin"
+                        local winlibs_matches = vim.fn.glob(winlibs_pattern, true, true)
+                        if #winlibs_matches > 0 and vim.fn.isdirectory(winlibs_matches[1]) == 1 then
+                            vim.env.PATH = winlibs_matches[1] .. ";" .. (vim.env.PATH or "")
+                        end
+                    end
+                end
+                if vim.fn.executable("gcc") == 1 then
+                    vim.env.CC = "gcc"
+                    vim.env.CXX = "g++"
+                elseif vim.fn.executable("clang") == 1 then
+                    vim.env.CC = "clang"
+                    vim.env.CXX = "clang++"
+                elseif vim.fn.executable("cl") == 1 then
+                    vim.env.CC = "cl"
+                end
+
+                local ts_install_ok, ts_install = pcall(require, "nvim-treesitter.install")
+                if ts_install_ok and ts_install.compilers then
+                    ts_install.compilers = { "gcc", "clang", "cl", "zig" }
+                end
+            end
+
             local parsers = {
                 "c", "cpp", "go", "java", "python", "rust", "typescript",
                 "javascript", "bash", "markdown", "markdown_inline",

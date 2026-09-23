@@ -46,6 +46,10 @@ $env:BAT_OPTS = '--italic-text=always'
 # Enable 24-bit TrueColor across modern CLI tools (bat, delta, eza, etc.)
 $env:COLORTERM = 'truecolor'
 
+# Default C/C++ compilers for Tree-sitter and native toolchains
+if (-not $env:CC) { $env:CC = 'gcc' }
+if (-not $env:CXX) { $env:CXX = 'g++' }
+
 # FZF Solarized Dark theme & ripgrep / fd integration
 $env:FZF_DEFAULT_OPTS = '--color=bg+:#073642,bg:#002B36,spinner:#859900,hl:#586E75 --color=fg:#839496,header:#586E75,info:#B58900,pointer:#859900 --color=marker:#859900,fg+:#93A1A1,prompt:#B58900,hl+:#268BD2 --layout=reverse --border=rounded --info=inline'
 if (Get-Command rg -ErrorAction SilentlyContinue) {

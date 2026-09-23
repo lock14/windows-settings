@@ -10,6 +10,8 @@
 set "COLORTERM=truecolor"
 set "BAT_THEME=Solarized-Dark-TrueColor"
 set "BAT_OPTS=--italic-text=always"
+if not defined CC set "CC=gcc"
+if not defined CXX set "CXX=g++"
 
 :: Calibrated Solarized Dark LS_COLORS (unbolded GNU dircolors)
 set "LS_COLORS=no=00:fi=00:rs=0:di=34:ow=34;40:ln=36:mh=00:pi=33:so=35:do=35:bd=35:cd=35:or=31:mi=31:su=37;41:sg=30;43:ca=30;41:tw=30;42:st=37;44:ex=32:*.cmd=32:*.exe=32:*.com=32:*.bat=32:*.reg=32:*.app=32:*.bmp=95:*.cgm=95:*.dl=95:*.dvi=95:*.emf=95:*.eps=95:*.gif=95:*.jpeg=95:*.jpg=95:*.JPG=95:*.mng=95:*.pbm=95:*.pcx=95:*.pgm=95:*.png=95:*.ppm=95:*.pps=95:*.ppsx=95:*.ps=95:*.svg=95:*.svgz=95:*.tga=95:*.tif=95:*.tiff=95:*.webp=95:*.xbm=95:*.xcf=95:*.xpm=95:*.xwd=95:*.yuv=95:*.aac=95:*.au=95:*.flac=95:*.mid=95:*.midi=95:*.mka=95:*.mp3=95:*.mpa=95:*.ogg=95:*.ra=95:*.wav=95:*.anx=95:*.asf=95:*.avi=95:*.axv=95:*.flc=95:*.fli=95:*.flv=95:*.gl=95:*.m2v=95:*.m4v=95:*.mkv=95:*.mov=95:*.mp4=95:*.mp4v=95:*.mpeg=95:*.mpg=95:*.nuv=95:*.ogm=95:*.ogv=95:*.ogx=95:*.qt=95:*.rm=95:*.rmvb=95:*.swf=95:*.vob=95:*.webm=95:*.wmv=95:*.7z=91:*.apk=91:*.arj=91:*.bin=91:*.bz=91:*.bz2=91:*.cab=91:*.deb=91:*.dmg=91:*.gem=91:*.gz=91:*.iso=91:*.jar=91:*.msi=91:*.rar=91:*.rpm=91:*.tar=91:*.tbz=91:*.tbz2=91:*.tgz=91:*.tx=91:*.war=91:*.xpi=91:*.xz=91:*.z=91:*.Z=91:*.zip=91:*.zst=91:*.txt=00:*.org=00:*.md=00:*.mkd=00:*.markdown=00:*.doc=00:*.docx=00:*.rtf=00:*.dot=00:*.dotx=00:*.xls=00:*.xlsx=00:*.ppt=00:*.pptx=00:*.pdf=00:*.tex=00:*.epub=00:*.c=00:*.C=00:*.cc=00:*.cpp=00:*.cxx=00:*.h=00:*.hh=00:*.hpp=00:*.hxx=00:*.rs=00:*.go=00:*.py=00:*.java=00:*.js=00:*.ts=00:*.sh=00:*.zsh=00:*.bash=00:*.json=00:*.yaml=00:*.yml=00:*.toml=00:*.xml=00:*.html=00:*.css=00:*.sql=00:*.tf=00:*.gpg=35:*.pgp=35:*.asc=35:*.3des=35:*.aes=35:*.enc=35:*.key=35:*.pem=35:*.crt=35:*.cer=35:*.bak=90:*.BAK=90:*.old=90:*.OLD=90:*.orig=90:*.ORIG=90:*.swp=90:*.swo=90:*~=90:*#=90:*.log=90:"
@@ -23,6 +25,11 @@ set "EXA_COLORS=%EZA_COLORS%"
 :: -------------------------------------------------------------
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links" (
     echo "%PATH%" | find /i "%LOCALAPPDATA%\Microsoft\WinGet\Links" >nul || set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Links;%PATH%"
+)
+for /d %%D in ("%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs*") do (
+    if exist "%%D\mingw64\bin" (
+        echo "%PATH%" | find /i "%%D\mingw64\bin" >nul || set "PATH=%%D\mingw64\bin;%PATH%"
+    )
 )
 if exist "%USERPROFILE%\go\bin" (
     echo "%PATH%" | find /i "%USERPROFILE%\go\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\go\bin"

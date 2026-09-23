@@ -150,7 +150,8 @@ if ($shouldInstallPackages) {
             $cliPackages = @(
                 'uutils.coreutils', 'uutils.diffutils', 'Git.Git', 'GitHub.cli',
                 'ajeetdsouza.zoxide', 'JanDeDobbeleer.OhMyPosh', 'BurntSushi.ripgrep.MSVC',
-                'sharkdp.fd', 'junegunn.fzf', 'jqlang.jq', 'jdx.mise', 'vim.vim'
+                'sharkdp.fd', 'junegunn.fzf', 'jqlang.jq', 'jdx.mise', 'vim.vim',
+                'BrechtSanders.WinLibs.POSIX.UCRT'
             )
             $guiPackages = @('Microsoft.VisualStudioCode', 'Microsoft.WindowsTerminal', 'Docker.DockerDesktop')
             $targetPackages = if ($enableGUI) { $cliPackages + $guiPackages } else { $cliPackages }
@@ -649,6 +650,28 @@ if (-not $SkipBin) {
                 $newPath = ($pathParts + $miseShims) -join ';'
                 [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
                 $env:Path = "$miseShims;$env:Path"
+            }
+        }
+    }
+
+    # Ensure WinLibs GCC bin is registered in User PATH if present
+    $winlibsDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages"
+    if (Test-Path $winlibsDir) {
+        $winlibsPackages = Get-ChildItem -Path $winlibsDir -Filter "BrechtSanders.WinLibs*" -Directory -ErrorAction SilentlyContinue
+        if ($winlibsPackages) {
+            $winlibsBin = Join-Path $winlibsPackages[0].FullName "mingw64\bin"
+            if (Test-Path $winlibsBin) {
+                $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+                $pathParts = if ($userPath) { $userPath -split ';' | Where-Object { $_ -and $_.Trim() } } else { @() }
+                if ($pathParts -notcontains $winlibsBin) {
+                    if ($DryRun) {
+                        Write-Host "  [DryRun] Would add $winlibsBin to User PATH" -ForegroundColor DarkCyan
+                    } else {
+                        $newPath = ($pathParts + $winlibsBin) -join ';'
+                        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+                        $env:Path = "$winlibsBin;$env:Path"
+                    }
+                }
             }
         }
     }

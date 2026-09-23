@@ -23,7 +23,7 @@ Any agent modifying this repository must follow these core principles and constr
 | **Polyglot Sample Code** | `sample-code/` | Repository validation suite | 20 real-world sample files across languages for syntax & query evaluation |
 | **Package Declarations** | `configuration.dsc.yaml` & `mise.toml` | System Provisioning | Microsoft DSC v3 and Mise declarative package specifications |
 | **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Declarative provisioning and configuration runners supporting `-DryRun` |
-| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 162+ automated validation tests across 8 modules |
+| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 163+ automated validation tests across 8 modules |
 
 ---
 
