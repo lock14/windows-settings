@@ -12,7 +12,7 @@
           "style": "plain",
           "foreground": "#839496",
           "background": "#073642",
-          "template": " {{ if .WSL }}WSL at {{ end }}{{ .Icon }} <#657b83>\uE0B1</>"
+          "template": " {{ if .WSL }}WSL at {{ end }}{{ if .Env._HS_PROMPT_OS_ICON }}{{ .Env._HS_PROMPT_OS_ICON }}{{ else }}{{ .Icon }}{{ end }} <#657b83>\uE0B1</>"
         },
         {
           "type": "path",
@@ -43,7 +43,7 @@
             "branch_gone_icon": "≢",
             "fetch_status": true
           },
-          "template": "<#657b83>\uE0B1</> {{ if .UpstreamIcon }}{{ .UpstreamIcon }} {{ end }}{{ .HEAD }}{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \uEB4B {{ .StashCount }}{{ end }} "
+          "template": "<#657b83>\uE0B1</> {{ if .UpstreamIcon }}{{ .UpstreamIcon }} {{ end }}{{ .HEAD }}{{ if .Env._WS_GIT_PR_URL }}{{ url .Env._WS_GIT_PR_LABEL .Env._WS_GIT_PR_URL }}{{ else if .Env._WS_GIT_PR_LABEL }}{{ .Env._WS_GIT_PR_LABEL }}{{ end }}{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \uEB4B {{ .StashCount }}{{ end }} "
         },
         {
           "type": "text",

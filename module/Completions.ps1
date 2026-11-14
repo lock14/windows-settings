@@ -6,17 +6,68 @@
 param()
 
 # GitHub CLI (gh) - Cached on disk
-$ghCache = "$HOME\.cache\powershell\gh_completion.ps1"
-if ((Test-Path $ghCache) -and (Get-Item $ghCache).Length -gt 0) {
+$ghCache = Join-Path $HOME '.cache\powershell\gh_completion.ps1'
+if ([System.IO.File]::Exists($ghCache) -and ([System.IO.FileInfo]::new($ghCache)).Length -gt 0) {
     . $ghCache
 } elseif (Get-Command gh -ErrorAction SilentlyContinue) {
-    if (-not (Test-Path "$HOME\.cache\powershell")) {
-        New-Item -ItemType Directory -Force -Path "$HOME\.cache\powershell" | Out-Null
+    $cacheDir = Join-Path $HOME '.cache\powershell'
+    if (-not [System.IO.Directory]::Exists($cacheDir)) {
+        New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     }
     gh completion -s powershell | Out-File -FilePath $ghCache -Encoding utf8 -Force
-    if ((Test-Path $ghCache) -and (Get-Item $ghCache).Length -gt 0) {
+    if ([System.IO.File]::Exists($ghCache) -and ([System.IO.FileInfo]::new($ghCache)).Length -gt 0) {
         . $ghCache
     }
+}
+
+# Theme Engine (17 built-in palettes + custom user themes + flags)
+Register-ArgumentCompleter -CommandName theme -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $null = $commandAst; $null = $cursorPosition
+    $candidates = [System.Collections.Generic.List[string]]@(
+        'solarized-dark', 'solarized-light', 'catppuccin-mocha', 'catppuccin-latte',
+        'gruvbox-dark', 'tokyonight-night', 'kanagawa-wave', 'nord', 'onedark',
+        'new-years', 'valentines', 'st-patricks', 'easter',
+        'independence-day', 'halloween', 'thanksgiving', 'christmas',
+        '--list', '--current', '--set', '--preview', '--holiday', '--sync-assets',
+        '--create', '--from', '--path', '--env', '--no-live', '--dry-run', '--plain', '--help'
+    )
+    foreach ($userDir in @(
+        (Join-Path $HOME '.config\themes'),
+        (Join-Path $HOME '.config\windows-settings\themes')
+    )) {
+        if ([System.IO.Directory]::Exists($userDir)) {
+            foreach ($f in [System.IO.Directory]::GetFiles($userDir, '*.theme')) {
+                $slug = [System.IO.Path]::GetFileNameWithoutExtension($f).ToLowerInvariant()
+                if (-not $candidates.Contains($slug)) { $candidates.Add($slug) }
+            }
+        }
+    }
+    $candidates | Where-Object { $_ -like "$wordToComplete*" } |
+        ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+}
+
+# IDE Workspace Launcher (flags + active/saved session names)
+Register-ArgumentCompleter -CommandName ide -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $null = $commandAst; $null = $cursorPosition
+    $candidates = [System.Collections.Generic.List[string]]@(
+        '--3pane', '--2pane', '--detach', '--desktop', '--new-window', '--backend',
+        '--sessions', '--next-attention', '--toggle', '--focus-role',
+        '--ai', '--open', '--preview', '--open-or-edit',
+        '--cd', '--send', '--agent-state', '--ack-ai', '--open-pr',
+        '--monitor', '--keys', '--refresh', '--quit', '--force', '--kill',
+        '--list', '--plain', '--dry-run', '--help'
+    )
+    $ideStateDir = Join-Path $HOME '.cache\windows-settings\ide'
+    if ([System.IO.Directory]::Exists($ideStateDir)) {
+        foreach ($f in [System.IO.Directory]::GetFiles($ideStateDir, '*.json')) {
+            $sName = [System.IO.Path]::GetFileNameWithoutExtension($f)
+            if (-not $candidates.Contains($sName)) { $candidates.Add($sName) }
+        }
+    }
+    $candidates | Where-Object { $_ -like "$wordToComplete*" } |
+        ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 
 # WinGet

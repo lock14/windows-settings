@@ -26,6 +26,19 @@ jobs:
           $ompDir | Out-File -FilePath $env:GITHUB_PATH -Append
           oh-my-posh --version
 
+      - name: Install Zellij
+        shell: pwsh
+        run: |
+          $zellijDir = Join-Path $env:RUNNER_TEMP 'zellij-bin'
+          New-Item -ItemType Directory -Force -Path $zellijDir | Out-Null
+          $zipPath = Join-Path $zellijDir 'zellij.zip'
+          Invoke-WebRequest -Uri 'https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-pc-windows-msvc.zip' -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $zellijDir -Force
+          Remove-Item -Path $zipPath -Force
+          $env:Path = "$zellijDir;$env:Path"
+          $zellijDir | Out-File -FilePath $env:GITHUB_PATH -Append
+          zellij --version
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: |
@@ -46,7 +59,7 @@ jobs:
       - name: Run Test Suite
         shell: pwsh
         run: |
-          ./tests/test_settings.ps1
+          $null | ./tests/test_settings.ps1
 
   ci-gatekeeper:
     name: ci-gatekeeper

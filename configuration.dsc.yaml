@@ -42,6 +42,13 @@ properties:
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
+        description: Install Delta TrueColor Git Pager
+      settings:
+        id: dandavison.delta
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
         description: Install Oh My Posh Prompt Engine
       settings:
         id: JanDeDobbeleer.OhMyPosh
@@ -80,6 +87,48 @@ properties:
         description: Install jq (JSON processor)
       settings:
         id: jqlang.jq
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install yq (YAML/XML/TOML processor)
+      settings:
+        id: MikeFarah.yq
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install dust (Disk usage analyzer)
+      settings:
+        id: bootandy.dust
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install sd (Intuitive find & replace)
+      settings:
+        id: chmln.sd
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Tealdeer (Fast Rust tldr client)
+      settings:
+        id: dbrgn.tealdeer
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Zellij (Terminal workspace & agent session multiplexer)
+      settings:
+        id: Zellij.Zellij
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install btop4win (TrueColor system monitor)
+      settings:
+        id: aristocratos.btop4win
         source: winget
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage

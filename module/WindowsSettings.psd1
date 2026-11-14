@@ -6,7 +6,7 @@
     RootModule = 'WindowsSettings.psm1'
 
     # Version number of this module.
-    ModuleVersion = '2.0.0'
+    ModuleVersion = '3.0.0'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Core')
@@ -18,7 +18,7 @@
     Author = 'Brian Bechtel'
 
     # Description of the functionality provided by this module
-    Description = 'Modern Windows Developer Workstation Shell Module (Oh My Posh, Git, eza, zoxide, uutils, completions)'
+    Description = 'Modern Windows Developer Workstation Shell Module (17-Theme Engine, Oh My Posh, Git, eza, zoxide, uutils, IDE, completions)'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '7.0'
@@ -29,21 +29,28 @@
         'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
         'glog', 'glo', 'grb', 'grba', 'grbc', 'grbi', 'grh', 'grhh',
         'gsw', 'gswc', 'gcp', 'gcpa', 'gcpc', 'gcommit', 'gamend',
-        'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'guser-branch',
+        'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gpurge', 'guser-branch',
         'fix-abcxyz-branch-name', 'gsync',
         'go-testall', 'go-buildall', 'go-lint', 'yaml-lint',
         'go_testall', 'go_buildall', 'go_lint', 'yaml_lint',
-        'cat', 'ls', 'll', 'la', 'l', 'lt', 'Format-PathTree', 'fs',
-        'e', 'el', 'et', 'elm', 'elt', 'elx',
-        'gen-passwd', 'repeat-until-success', 'sum'
+        'v', 'ide', 'ide2', 'ide3', 'idek', 'qide', 'quit',
+        'b', 'ls', 'll', 'la', 'l', 'lt', 'Format-PathTree', 'fs',
+        'e', 'el', 'et', 'elm', 'elt', 'elx', 'icd',
+        'gen-passwd', 'repeat-until-success', 'sum',
+        'ds', 'btop', 'update', 'update-system', 'theme'
     )
 
     # Cmdlets to export from this module
     CmdletsToExport = @()
 
     # Variables to export from this module
-    VariablesToExport = @('LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'BAT_THEME', 'BAT_OPTS', 'COLORTERM', 'FZF_DEFAULT_OPTS', 'FZF_DEFAULT_COMMAND', 'FZF_CTRL_T_COMMAND')
+    VariablesToExport = @(
+        'LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'JQ_COLORS',
+        'BAT_THEME', 'BAT_OPTS', 'COLORTERM', 'FORCE_HYPERLINK',
+        'EDITOR', 'VISUAL', 'IDE_AI_CLI',
+        'FZF_DEFAULT_OPTS', 'FZF_DEFAULT_COMMAND', 'FZF_CTRL_T_COMMAND'
+    )
 
     # Aliases to export from this module
-    AliasesToExport = @('tf', 'vi', 'vim', 'v')
+    AliasesToExport = @('tf', 'vi', 'vim')
 }

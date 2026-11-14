@@ -1,0 +1,37 @@
+# Managed Theme: st-patricks
+THEME_ID="st-patricks"
+THEME_LABEL="St. Patrick's Day"
+THEME_DESCRIPTION="Emerald Isle clover canvas with neon shamrock green, pot-of-gold bullion, and spring lime"
+THEME_MODE="dark"
+BAT_THEME_NAME="St-Patricks-TrueColor"
+BTOP_THEME_NAME="st_patricks"
+GHOSTTY_THEME_NAME="St Patricks"
+
+# Monotone Surface & Content Ramp
+BASE03="#042210"
+BASE02="#0A3B1E"
+BASE04="#021509"
+BASE01="#529E6E"
+BASE00="#6BB887"
+BASE0="#E6FAEC"
+BASE1="#F5FFF8"
+BASE2="#FFFDF0"
+BASE3="#FFFFFF"
+
+# Semantic Accent Palette (Shamrock Green, Pot-of-Gold Bullion, Rainbow Aqua & Irish Tricolor Amber)
+YELLOW="#FF9100"
+ORANGE="#FF5722"
+RED="#FF1744"
+MAGENTA="#FF66B2"
+VIOLET="#B88CFF"
+BLUE="#FFD700"
+CYAN="#38E5FF"
+GREEN="#00F556"
+
+# Diff & Search Surface Tints
+MIX_GREEN="#054A20"
+MIX_RED="#451220"
+MIX_YELLOW="#38390E"
+MIX_BLUE="#3B4B0D"
+MIX_MAGENTA="#382E30"
+MIX_BASE1="#1B4D2B"

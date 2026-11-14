@@ -1,0 +1,37 @@
+# Managed Theme: thanksgiving
+THEME_ID="thanksgiving"
+THEME_LABEL="Thanksgiving"
+THEME_DESCRIPTION="Warm spiced cider canvas with pumpkin pie orange, harvest cornucopia gold, and cranberry"
+THEME_MODE="dark"
+BAT_THEME_NAME="Thanksgiving-TrueColor"
+BTOP_THEME_NAME="thanksgiving"
+GHOSTTY_THEME_NAME="Thanksgiving"
+
+# Monotone Surface & Content Ramp
+BASE03="#221107"
+BASE02="#381C0C"
+BASE04="#150A04"
+BASE01="#9C7458"
+BASE00="#B88E70"
+BASE0="#F7E8D8"
+BASE1="#FFF6EB"
+BASE2="#FFFDF9"
+BASE3="#FFFFFF"
+
+# Semantic Accent Palette (Autumn Sage Green, Pumpkin Pie Orange, Gourd Teal & Harvest Gold)
+YELLOW="#FFD000"
+ORANGE="#FFA866"
+RED="#FF1F2D"
+MAGENTA="#FF6699"
+VIOLET="#C780FF"
+BLUE="#FF7814"
+CYAN="#38D9B8"
+GREEN="#8CE645"
+
+# Diff & Search Surface Tints
+MIX_GREEN="#243D14"
+MIX_RED="#4D1214"
+MIX_YELLOW="#4F3809"
+MIX_BLUE="#4F260B"
+MIX_MAGENTA="#4F2224"
+MIX_BASE1="#472A1A"

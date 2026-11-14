@@ -1,16 +1,24 @@
 <#
 .SYNOPSIS
     Master setup engine for windows-settings.
-    Automates package provisioning, fonts, Oh My Posh prompt, WindowsSettings module,
-    CLI completions, utility PATH, Neovim, and Windows Terminal.
+    Automates package provisioning, fonts, 17-theme palette engine, Oh My Posh prompt,
+    WindowsSettings module, CLI completions, utility PATH, Neovim/Vim, CLI tool configs,
+    Windows Terminal fragments, and modular uninstallation.
 
 .DESCRIPTION
     Execution Modes:
-      -Bootstrap             Full new machine bootstrap (winget packages, fonts, oh-my-posh, module, terminal, nvim)
-      -DotfilesOnly          Configure user dotfiles, fonts, nvim, terminal, and shell module only (no package install)
+      -Bootstrap             Full new machine bootstrap (winget packages, fonts, themes, oh-my-posh, module, terminal, nvim)
+      -DotfilesOnly          Configure user dotfiles, fonts, themes, nvim, terminal, and shell module only (no package install)
       -SystemOnly            Provision winget packages and CLI tools only
       -UseDSC                Provision workstation packages using declarative WinGet DSC v3 manifest (configuration.dsc.yaml)
+      -Theme <slug|holiday>  Apply initial color theme (default: existing user theme or 'solarized-dark'; supports 'holiday')
       -DryRun                Preview actions without modifying the system
+
+    Uninstall Modes:
+      -Uninstall             Cleanly remove deployed windows-settings dotfiles, module, fragments, fonts, and bin PATH entry
+      -UninstallDotfiles     Remove deployed dotfiles, PowerShell module, CMD AutoRun, and Windows Terminal fragment only
+      -UninstallFonts        Remove installed MesloLGS Nerd Font Mono files and registry entries only
+      -UninstallBin          Remove repository bin/ directory from User PATH only
 
     GUI Options:
       -WithGUI, -IncludeGUI  Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget)
@@ -18,7 +26,7 @@
     Granular Skip Flags:
       -SkipPackages          Skip winget package installation
       -SkipFonts             Skip MesloLGS Nerd Font Mono installation
-      -SkipPosh              Skip Oh My Posh & PowerShell module configuration
+      -SkipPosh              Skip Oh My Posh, Theme Engine & PowerShell module configuration
       -SkipCMD               Skip Windows Command Prompt (cmd.exe) AutoRun & Doskey configuration
       -SkipCompletions       Skip CLI argument completions registration
       -SkipTerminal          Skip Windows Terminal settings & JSON fragment deployment
@@ -35,6 +43,11 @@ param(
     [switch]$WithGUI,
     [switch]$IncludeGUI,
     [switch]$InstallPackages,
+    [string]$Theme = '',
+    [switch]$Uninstall,
+    [switch]$UninstallDotfiles,
+    [switch]$UninstallFonts,
+    [switch]$UninstallBin,
     [switch]$SkipPackages,
     [switch]$SkipFonts,
     [switch]$SkipTerminal,
@@ -47,30 +60,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-
-# Normalize GUI switch
-$enableGUI = $WithGUI -or $IncludeGUI
-
-# Resolve execution modes
-$shouldInstallPackages = ($InstallPackages -or $Bootstrap -or $SystemOnly -or $UseDSC) -and (-not $SkipPackages) -and (-not $DotfilesOnly)
-$skipUserConfig = $SystemOnly
-
-if ($skipUserConfig) {
-    $SkipFonts = $true
-    $SkipPosh = $true
-    $SkipCMD = $true
-    $SkipCompletions = $true
-    $SkipTerminal = $true
-    $SkipVim = $true
-    $SkipBin = $true
-}
-
-Write-Host "=====================================================" -ForegroundColor Cyan
-Write-Host "         Windows Settings Setup Automation           " -ForegroundColor Cyan
-if ($DryRun) {
-    Write-Host "               [DRY RUN PREVIEW MODE]                " -ForegroundColor Magenta
-}
-Write-Host "=====================================================" -ForegroundColor Cyan
 
 # -------------------------------------------------------------
 # Reusable Declarative Deployment Function
@@ -92,8 +81,9 @@ function Deploy-ConfigFile {
 
     $allDests = @($DestinationPath) + $AltDestinations
     foreach ($dest in $allDests) {
+        if (-not $dest) { continue }
         $destDir = Split-Path -Parent $dest
-        if (-not (Test-Path $destDir)) {
+        if ($destDir -and -not (Test-Path $destDir)) {
             if (-not $DryRun) {
                 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
             }
@@ -101,7 +91,8 @@ function Deploy-ConfigFile {
 
         if (Test-Path $dest) {
             $existingContent = Get-Content $dest -Raw
-            $isDiff = ($existingContent.Trim() -ne $sourceContent.Trim())
+            $existingTrimmed = if ($null -ne $existingContent) { $existingContent.Trim() } else { '' }
+            $isDiff = ($existingTrimmed -ne $sourceContent.Trim())
 
             if ($isDiff) {
                 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -129,6 +120,399 @@ function Deploy-ConfigFile {
     }
 }
 
+function ConvertTo-NormalizedZellijConfig([string]$Content) {
+    if (-not $Content) { return '' }
+    $norm = $Content.Replace("`r`n", "`n")
+    $norm = [regex]::Replace($norm, '(?s)// BEGIN WINDOWS-SETTINGS TRAY COLORS.*?// END WINDOWS-SETTINGS TRAY COLORS', '// __WS_TRAY__')
+    $norm = [regex]::Replace($norm, '(?s)// BEGIN WINDOWS-SETTINGS TERMINAL THEME.*?// END WINDOWS-SETTINGS TERMINAL THEME', '// __WS_TERM__')
+    return $norm.Trim()
+}
+
+function Deploy-ZellijConfig([string]$SourcePath, [string]$DestinationPath, [switch]$DryRun) {
+    if (-not (Test-Path -LiteralPath $SourcePath)) { return }
+    $srcLf = (Get-Content -LiteralPath $SourcePath -Raw).Replace("`r`n", "`n")
+    $destDir = Split-Path -Parent $DestinationPath
+    if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+        if (-not $DryRun) {
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+        }
+    }
+    if (Test-Path -LiteralPath $DestinationPath) {
+        $existingRaw = Get-Content -LiteralPath $DestinationPath -Raw
+        $isSame = ((ConvertTo-NormalizedZellijConfig $existingRaw) -eq (ConvertTo-NormalizedZellijConfig $srcLf))
+        if (-not $isSame) {
+            $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+            $backup = "$DestinationPath.bak_$timestamp"
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would backup $DestinationPath to $backup" -ForegroundColor DarkCyan
+                Write-Host "  [DryRun] Would update Zellij configuration at $DestinationPath" -ForegroundColor DarkCyan
+            } else {
+                Write-Host "Backing up existing Zellij config to $backup..." -ForegroundColor Yellow
+                Copy-Item -LiteralPath $DestinationPath -Destination $backup -Force
+                [System.IO.File]::WriteAllText($DestinationPath, $srcLf, [System.Text.UTF8Encoding]::new($false))
+                Write-Host "==> Zellij configuration updated at $DestinationPath" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "==> Zellij configuration at $DestinationPath is already up to date." -ForegroundColor Green
+        }
+    } else {
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would deploy Zellij configuration to $DestinationPath" -ForegroundColor DarkCyan
+        } else {
+            [System.IO.File]::WriteAllText($DestinationPath, $srcLf, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "==> Zellij configuration deployed to $DestinationPath" -ForegroundColor Green
+        }
+    }
+}
+
+function Sync-AntigravityHooksJson([switch]$Remove, [switch]$DryRun) {
+    $hooksDir = Join-Path (Join-Path $HOME '.gemini') 'config'
+    $hooksPath = Join-Path $hooksDir 'hooks.json'
+    $hookKey = 'windows-settings-ide'
+
+    $desiredSpec = [ordered]@{
+        SessionStart = @(
+            [ordered]@{
+                type    = 'command'
+                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook SessionStart || echo {}'
+                timeout = 5
+            }
+        )
+        PreInvocation = @(
+            [ordered]@{
+                type    = 'command'
+                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook PreInvocation || echo {}'
+                timeout = 5
+            }
+        )
+        Stop = @(
+            [ordered]@{
+                type    = 'command'
+                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook Stop || echo {"decision":"allow"}'
+                timeout = 5
+            }
+        )
+    }
+
+    if ($Remove) {
+        if (-not (Test-Path -LiteralPath $hooksPath)) { return }
+        try {
+            $rootObj = Get-Content -LiteralPath $hooksPath -Raw | ConvertFrom-Json -AsHashtable
+        } catch {
+            return
+        }
+        if (-not $rootObj -or -not $rootObj.ContainsKey($hookKey)) { return }
+        $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        $backup = "$hooksPath.bak_$timestamp"
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would backup $hooksPath to $backup and remove '$hookKey' hook" -ForegroundColor DarkCyan
+            return
+        }
+        Copy-Item -LiteralPath $hooksPath -Destination $backup -Force
+        [void]$rootObj.Remove($hookKey)
+        if ($rootObj.Count -eq 0) {
+            Remove-Item -LiteralPath $hooksPath -Force -ErrorAction SilentlyContinue
+        } else {
+            $jsonOut = ($rootObj | ConvertTo-Json -Depth 10).Replace("`r`n", "`n") + "`n"
+            [System.IO.File]::WriteAllText($hooksPath, $jsonOut, [System.Text.UTF8Encoding]::new($false))
+        }
+        Write-Host "  Removed '$hookKey' from $hooksPath" -ForegroundColor Green
+        return
+    }
+
+    $existingMap = [ordered]@{}
+    $fileExists = Test-Path -LiteralPath $hooksPath
+    if ($fileExists) {
+        try {
+            $parsed = Get-Content -LiteralPath $hooksPath -Raw | ConvertFrom-Json
+            if ($parsed) {
+                foreach ($prop in $parsed.PSObject.Properties) {
+                    $existingMap[$prop.Name] = $prop.Value
+                }
+            }
+        } catch {
+            Write-Warning "Skipping $hooksPath hook merge because existing JSON could not be parsed: $_"
+            return
+        }
+    }
+
+    $desiredJsonCompact = ($desiredSpec | ConvertTo-Json -Depth 10 -Compress)
+    $currentEntryCompact = if ($existingMap.Contains($hookKey)) {
+        ($existingMap[$hookKey] | ConvertTo-Json -Depth 10 -Compress)
+    } else {
+        ''
+    }
+
+    if ($fileExists -and $currentEntryCompact -eq $desiredJsonCompact) {
+        Write-Host "==> Antigravity OSC 7501 hook at $hooksPath is already up to date." -ForegroundColor Green
+        return
+    }
+
+    $existingMap[$hookKey] = $desiredSpec
+    $finalJson = ($existingMap | ConvertTo-Json -Depth 10).Replace("`r`n", "`n") + "`n"
+
+    if ($DryRun) {
+        if ($fileExists) {
+            $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+            Write-Host "  [DryRun] Would backup $hooksPath to $hooksPath.bak_$timestamp" -ForegroundColor DarkCyan
+        }
+        Write-Host "  [DryRun] Would configure '$hookKey' OSC 7501 hook in $hooksPath" -ForegroundColor DarkCyan
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $hooksDir)) {
+        New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
+    }
+    if ($fileExists) {
+        $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        $backup = "$hooksPath.bak_$timestamp"
+        Copy-Item -LiteralPath $hooksPath -Destination $backup -Force
+    }
+    [System.IO.File]::WriteAllText($hooksPath, $finalJson, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "==> Antigravity OSC 7501 hook configured in $hooksPath" -ForegroundColor Green
+}
+
+# -------------------------------------------------------------
+# Modular Uninstall Handler (-Uninstall / -UninstallDotfiles / -UninstallFonts / -UninstallBin)
+# -------------------------------------------------------------
+function Invoke-WorkstationUninstall {
+    param(
+        [bool]$DoDotfiles,
+        [bool]$DoFonts,
+        [bool]$DoBin,
+        [bool]$IsDryRun
+    )
+
+    Write-Host "=====================================================" -ForegroundColor Cyan
+    Write-Host "        Windows Settings Uninstall Workflow          " -ForegroundColor Cyan
+    if ($IsDryRun) {
+        Write-Host "               [DRY RUN PREVIEW MODE]                " -ForegroundColor Magenta
+    }
+    Write-Host "=====================================================" -ForegroundColor Cyan
+
+    if ($DoDotfiles) {
+        Write-Host "`n==> Removing deployed dotfiles, module, fragments, and shell hooks..." -ForegroundColor Yellow
+
+        # 1. PowerShell Module
+        $moduleDest = Join-Path $HOME "Documents\PowerShell\Modules\WindowsSettings"
+        if (Test-Path $moduleDest) {
+            if ($IsDryRun) {
+                Write-Host "  [DryRun] Would remove PowerShell module directory $moduleDest" -ForegroundColor DarkCyan
+            } else {
+                Remove-Item -Recurse -Force -Path $moduleDest -ErrorAction SilentlyContinue
+                Write-Host "  Removed $moduleDest" -ForegroundColor Green
+            }
+        }
+
+        # 2. PowerShell $PROFILE (non-destructive backup before stripping Import-Module line)
+        if ($PROFILE -and (Test-Path $PROFILE)) {
+            $profRaw = Get-Content $PROFILE -Raw
+            if ($profRaw -match 'WindowsSettings') {
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                $profBackup = "$PROFILE.bak_$timestamp"
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would backup $PROFILE to $profBackup and remove WindowsSettings import" -ForegroundColor DarkCyan
+                } else {
+                    Copy-Item -Path $PROFILE -Destination $profBackup -Force
+                    $cleaned = [regex]::Replace($profRaw, '(?m)^\s*#\s*=+\r?\n\s*#\s*PowerShell Profile - windows-settings\r?\n\s*#\s*=+\r?\n?', '')
+                    $cleaned = [regex]::Replace($cleaned, '(?m)^\s*Import-Module\s+WindowsSettings[^\r\n]*\r?\n?', '').Trim()
+                    if ($cleaned) {
+                        [System.IO.File]::WriteAllText($PROFILE, ($cleaned + "`n"), [System.Text.Encoding]::UTF8)
+                    } else {
+                        Remove-Item -Force -Path $PROFILE -ErrorAction SilentlyContinue
+                    }
+                    Write-Host "  Cleaned WindowsSettings import from $PROFILE (backup: $profBackup)" -ForegroundColor Green
+                }
+            }
+        }
+
+        # 3. Windows Terminal Fragments
+        $fragDirs = @()
+        if ($env:LOCALAPPDATA) {
+            $fragDirs += Join-Path $env:LOCALAPPDATA "Microsoft\Windows Terminal\Fragments\WindowsSettings"
+            $fragDirs += Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings"
+            $fragDirs += Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings"
+        }
+        foreach ($fd in $fragDirs) {
+            if (Test-Path $fd) {
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would remove Windows Terminal fragment directory $fd" -ForegroundColor DarkCyan
+                } else {
+                    Remove-Item -Recurse -Force -Path $fd -ErrorAction SilentlyContinue
+                    Write-Host "  Removed $fd" -ForegroundColor Green
+                }
+            }
+        }
+
+        # 4. CMD AutoRun & Registry Hook
+        $cmdFiles = @((Join-Path $HOME ".config\cmd\autorun.cmd"))
+        if ($env:LOCALAPPDATA) { $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\autorun.cmd") }
+        foreach ($cf in $cmdFiles) {
+            if (Test-Path $cf) {
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would remove CMD AutoRun script $cf" -ForegroundColor DarkCyan
+                } else {
+                    Remove-Item -Force -Path $cf -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        $cmdProcessorKey = "HKCU:\Software\Microsoft\Command Processor"
+        if (Test-Path $cmdProcessorKey) {
+            $apProp = Get-ItemProperty -Path $cmdProcessorKey -Name "AutoRun" -ErrorAction SilentlyContinue
+            if ($apProp -and $apProp.AutoRun -like "*autorun.cmd*") {
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would remove autorun.cmd hook from $cmdProcessorKey\AutoRun" -ForegroundColor DarkCyan
+                } else {
+                    $autoRunTarget = 'if exist "%LOCALAPPDATA%\cmd\autorun.cmd" call "%LOCALAPPDATA%\cmd\autorun.cmd"'
+                    $updatedAr = $apProp.AutoRun.Replace(" & $autoRunTarget", '').Replace($autoRunTarget, '').Trim()
+                    if ($updatedAr) {
+                        Set-ItemProperty -Path $cmdProcessorKey -Name "AutoRun" -Value $updatedAr -Type ExpandString -Force
+                    } else {
+                        Remove-ItemProperty -Path $cmdProcessorKey -Name "AutoRun" -ErrorAction SilentlyContinue
+                    }
+                    Write-Host "  Removed autorun.cmd hook from registry" -ForegroundColor Green
+                }
+            }
+        }
+
+        # 5. State & Compiled Caches
+        foreach ($cacheTarget in @(
+            (Join-Path $HOME ".config\windows-settings"),
+            (Join-Path $HOME ".cache\windows-settings"),
+            (Join-Path $HOME ".cache\powershell\omp_init.ps1"),
+            (Join-Path $HOME ".cache\powershell\theme_env.ps1"),
+            (Join-Path $HOME ".cache\powershell\zoxide_init.ps1"),
+            (Join-Path $HOME ".cache\powershell\gh_completion.ps1")
+        )) {
+            if (Test-Path $cacheTarget) {
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would remove $cacheTarget" -ForegroundColor DarkCyan
+                } else {
+                    Remove-Item -Recurse -Force -Path $cacheTarget -ErrorAction SilentlyContinue
+                }
+            }
+        }
+
+        # 6. Git Delta include.path cleanup
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            $deltaInclude = '~/.config/windows-settings/delta-theme.gitconfig'
+            $existingIncludes = @(git config --global --get-all include.path 2>$null)
+            if ($existingIncludes -contains $deltaInclude) {
+                if ($IsDryRun) {
+                    Write-Host "  [DryRun] Would remove git global include.path $deltaInclude" -ForegroundColor DarkCyan
+                } else {
+                    git config --global --unset-all include.path "^$([regex]::Escape($deltaInclude))$" 2>$null
+                }
+            }
+        }
+
+        # 7. Zellij Config, Layouts, Theme & Antigravity OSC 7501 Hook cleanup
+        if ($env:APPDATA) {
+            $zellijCfgRoot = Join-Path (Join-Path $env:APPDATA 'Zellij') 'config'
+            foreach ($zf in @(
+                (Join-Path $zellijCfgRoot 'config.kdl'),
+                (Join-Path (Join-Path $zellijCfgRoot 'layouts') 'ide-3pane.kdl'),
+                (Join-Path (Join-Path $zellijCfgRoot 'layouts') 'ide-2pane.kdl'),
+                (Join-Path (Join-Path $zellijCfgRoot 'themes') 'windows-settings.kdl')
+            )) {
+                if (Test-Path -LiteralPath $zf) {
+                    if ($IsDryRun) {
+                        Write-Host "  [DryRun] Would remove Zellij config file $zf" -ForegroundColor DarkCyan
+                    } else {
+                        Remove-Item -Force -LiteralPath $zf -ErrorAction SilentlyContinue
+                        Write-Host "  Removed $zf" -ForegroundColor Green
+                    }
+                }
+            }
+        }
+        Sync-AntigravityHooksJson -Remove -DryRun:$IsDryRun
+    }
+
+    if ($DoFonts) {
+        Write-Host "`n==> Removing MesloLGS Nerd Font Mono files and registry entries..." -ForegroundColor Yellow
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $fontsDir = if ($isAdmin) { Join-Path $env:SystemRoot "Fonts" } else { Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts" }
+        $regKey = if ($isAdmin) { "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" } else { "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" }
+        $monoFonts = @(
+            @{ File = "MesloLGSNerdFontMono-Regular.ttf"; RegName = "MesloLGS Nerd Font Mono Regular (TrueType)" },
+            @{ File = "MesloLGSNerdFontMono-Bold.ttf"; RegName = "MesloLGS Nerd Font Mono Bold (TrueType)" },
+            @{ File = "MesloLGSNerdFontMono-Italic.ttf"; RegName = "MesloLGS Nerd Font Mono Italic (TrueType)" },
+            @{ File = "MesloLGSNerdFontMono-BoldItalic.ttf"; RegName = "MesloLGS Nerd Font Mono Bold Italic (TrueType)" }
+        )
+        foreach ($mf in $monoFonts) {
+            $fp = Join-Path $fontsDir $mf.File
+            if ($IsDryRun) {
+                Write-Host "  [DryRun] Would unregister $($mf.RegName) and remove $fp" -ForegroundColor DarkCyan
+            } else {
+                if (Test-Path $regKey) {
+                    Remove-ItemProperty -Path $regKey -Name $mf.RegName -ErrorAction SilentlyContinue
+                }
+                if (Test-Path $fp) {
+                    Remove-Item -Force -Path $fp -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+
+    if ($DoBin) {
+        $binDir = Join-Path $RootDir "bin"
+        Write-Host "`n==> Removing $binDir from User PATH..." -ForegroundColor Yellow
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $pathParts = if ($userPath) { @($userPath -split ';' | Where-Object { $_ -and $_.Trim() }) } else { @() }
+        if ($pathParts -contains $binDir) {
+            if ($IsDryRun) {
+                Write-Host "  [DryRun] Would remove $binDir from User PATH" -ForegroundColor DarkCyan
+            } else {
+                $filtered = @($pathParts | Where-Object { $_ -ne $binDir })
+                [Environment]::SetEnvironmentVariable('Path', ($filtered -join ';'), 'User')
+                Write-Host "  Removed $binDir from User PATH" -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  $binDir is not present in User PATH." -ForegroundColor Green
+        }
+    }
+
+    Write-Host "`n=====================================================" -ForegroundColor Cyan
+    if ($IsDryRun) {
+        Write-Host " Uninstall dry run complete! No changes were made.   " -ForegroundColor Magenta
+    } else {
+        Write-Host " Uninstall workflow completed successfully!          " -ForegroundColor Green
+    }
+    Write-Host "=====================================================" -ForegroundColor Cyan
+}
+
+if ($Uninstall -or $UninstallDotfiles -or $UninstallFonts -or $UninstallBin) {
+    $doDf = [bool]($Uninstall -or $UninstallDotfiles)
+    $doFt = [bool]($Uninstall -or $UninstallFonts)
+    $doBn = [bool]($Uninstall -or $UninstallBin)
+    Invoke-WorkstationUninstall -DoDotfiles $doDf -DoFonts $doFt -DoBin $doBn -IsDryRun ([bool]$DryRun)
+    return
+}
+
+# Normalize GUI switch
+$enableGUI = $WithGUI -or $IncludeGUI
+
+# Resolve execution modes
+$shouldInstallPackages = ($InstallPackages -or $Bootstrap -or $SystemOnly -or $UseDSC) -and (-not $SkipPackages) -and (-not $DotfilesOnly)
+$skipUserConfig = $SystemOnly
+
+if ($skipUserConfig) {
+    $SkipFonts = $true
+    $SkipPosh = $true
+    $SkipCMD = $true
+    $SkipCompletions = $true
+    $SkipTerminal = $true
+    $SkipVim = $true
+    $SkipBin = $true
+}
+
+Write-Host "=====================================================" -ForegroundColor Cyan
+Write-Host "         Windows Settings Setup Automation           " -ForegroundColor Cyan
+if ($DryRun) {
+    Write-Host "               [DRY RUN PREVIEW MODE]                " -ForegroundColor Magenta
+}
+Write-Host "=====================================================" -ForegroundColor Cyan
+
 # -------------------------------------------------------------
 # 0. Workstation Package Provisioning via WinGet / DSC / Mise
 # -------------------------------------------------------------
@@ -150,8 +534,10 @@ if ($shouldInstallPackages) {
             $cliPackages = @(
                 'uutils.coreutils', 'uutils.diffutils', 'Git.Git', 'GitHub.cli',
                 'ajeetdsouza.zoxide', 'JanDeDobbeleer.OhMyPosh', 'BurntSushi.ripgrep.MSVC',
-                'sharkdp.fd', 'junegunn.fzf', 'jqlang.jq', 'jdx.mise', 'vim.vim',
-                'BrechtSanders.WinLibs.POSIX.UCRT'
+                'sharkdp.fd', 'sharkdp.bat', 'eza-community.eza', 'dandavison.delta',
+                'junegunn.fzf', 'jqlang.jq', 'MikeFarah.yq', 'bootandy.dust',
+                'chmln.sd', 'dbrgn.tealdeer', 'aristocratos.btop4win', 'Zellij.Zellij',
+                'jdx.mise', 'vim.vim', 'BrechtSanders.WinLibs.POSIX.UCRT'
             )
             $guiPackages = @('Microsoft.VisualStudioCode', 'Microsoft.WindowsTerminal', 'Docker.DockerDesktop')
             $targetPackages = if ($enableGUI) { $cliPackages + $guiPackages } else { $cliPackages }
@@ -166,8 +552,8 @@ if ($shouldInstallPackages) {
             }
 
             # Ensure portable WinGet packages are linked
-            $linksDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
-            $pkgDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages"
+            $linksDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
+            $pkgDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
             if (Test-Path $pkgDir) {
                 if (-not (Test-Path $linksDir)) {
                     if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $linksDir | Out-Null }
@@ -193,7 +579,7 @@ if ($shouldInstallPackages) {
 
     # Hydrate declarative polyglot toolchains via mise
     $miseConfig = Join-Path $RootDir "mise.toml"
-    Deploy-ConfigFile -Name "Global Mise configuration" -SourcePath $miseConfig -DestinationPath "$HOME\.config\mise\config.toml" -DryRun:$DryRun
+    Deploy-ConfigFile -Name "Global Mise configuration" -SourcePath $miseConfig -DestinationPath (Join-Path $HOME ".config\mise\config.toml") -DryRun:$DryRun
 
     if (Get-Command mise -ErrorAction SilentlyContinue) {
         Write-Host "==> Hydrating declarative toolchains via mise..." -ForegroundColor Cyan
@@ -315,18 +701,20 @@ if (-not $SkipFonts) {
     Write-Host "`n[1/6] Skipping Fonts Setup." -ForegroundColor DarkCyan
 }
 
-# 2. Oh My Posh Prompt & WindowsSettings Module Setup
+# 2. Oh My Posh Prompt, 17-Theme Engine, CLI Tool Configs & WindowsSettings Module Setup
 if (-not $SkipPosh) {
-    Write-Host "`n[2/6] Setting up Oh My Posh Prompt & WindowsSettings PowerShell Module..." -ForegroundColor Yellow
+    Write-Host "`n[2/6] Setting up Oh My Posh, 17-Theme Engine, CLI Configs & WindowsSettings Module..." -ForegroundColor Yellow
 
-    # Deploy Oh My Posh prompt theme
+    # Deploy Oh My Posh prompt theme (bin/theme.ps1 renders active palette colors below)
     $p10kSource = Join-Path $RootDir "config\powershell\p10k_single_line.omp.json"
-    $p10kDest = "$HOME\.poshthemes\p10k_single_line.omp.json"
-    Deploy-ConfigFile -Name "Oh My Posh theme" -SourcePath $p10kSource -DestinationPath $p10kDest -DryRun:$DryRun
+    $p10kDest = Join-Path $HOME ".poshthemes\p10k_single_line.omp.json"
+    if (-not (Test-Path $p10kDest) -or $DryRun) {
+        Deploy-ConfigFile -Name "Oh My Posh theme" -SourcePath $p10kSource -DestinationPath $p10kDest -DryRun:$DryRun
+    }
 
     # Compile Oh My Posh prompt hook into compiled cache
-    $ompCacheDir = "$HOME\.cache\powershell"
-    $ompInit = "$ompCacheDir\omp_init.ps1"
+    $ompCacheDir = Join-Path $HOME ".cache\powershell"
+    $ompInit = Join-Path $ompCacheDir "omp_init.ps1"
     if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         if ($DryRun) {
             Write-Host "  [DryRun] Would compile Oh My Posh prompt hook to $ompInit" -ForegroundColor DarkCyan
@@ -337,45 +725,105 @@ if (-not $SkipPosh) {
         }
     }
 
-    # Deploy bat TrueColor syntax theme and custom syntaxes
+    # Deploy bat TrueColor syntax themes (17 palettes) and 37 custom syntaxes
     $batThemeSource = Join-Path $RootDir "config\bat\Solarized-Dark-TrueColor.tmTheme"
+    $batThemesDirSource = Join-Path $RootDir "config\bat\themes"
     $batSyntaxesSource = Join-Path $RootDir "config\bat\syntaxes"
-    $batConfigDir = "$env:APPDATA\bat"
+    $batConfigDir = Join-Path $env:APPDATA "bat"
+    $batThemesDest = Join-Path $batConfigDir "themes"
     $batConfigFile = Join-Path $batConfigDir "config"
     $targetBatTheme = '--theme="Solarized-Dark-TrueColor"'
 
-    Deploy-ConfigFile -Name "bat theme" -SourcePath $batThemeSource -DestinationPath "$batConfigDir\themes\Solarized-Dark-TrueColor.tmTheme" -DryRun:$DryRun
+    Deploy-ConfigFile -Name "bat Solarized Dark theme" -SourcePath $batThemeSource -DestinationPath (Join-Path $batThemesDest "Solarized-Dark-TrueColor.tmTheme") -DryRun:$DryRun
+
+    if (Test-Path $batThemesDirSource) {
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would deploy 17 bat TrueColor themes to $batThemesDest" -ForegroundColor DarkCyan
+        } else {
+            if (-not (Test-Path $batThemesDest)) { New-Item -ItemType Directory -Force -Path $batThemesDest | Out-Null }
+            Copy-Item -Path (Join-Path $batThemesDirSource "*.tmTheme") -Destination $batThemesDest -Force
+            Write-Host "==> 17 bat TrueColor themes deployed to $batThemesDest" -ForegroundColor Green
+        }
+    }
 
     if (Test-Path $batSyntaxesSource) {
         $batSyntaxesDest = Join-Path $batConfigDir "syntaxes"
         if ($DryRun) {
-            Write-Host "  [DryRun] Would deploy bat syntaxes to $batSyntaxesDest" -ForegroundColor DarkCyan
+            Write-Host "  [DryRun] Would deploy 37 bat syntaxes to $batSyntaxesDest" -ForegroundColor DarkCyan
         } else {
             if (-not (Test-Path $batSyntaxesDest)) { New-Item -ItemType Directory -Force -Path $batSyntaxesDest | Out-Null }
-            Copy-Item -Path "$batSyntaxesSource\*" -Destination $batSyntaxesDest -Force
+            Copy-Item -Path (Join-Path $batSyntaxesSource "*.sublime-syntax") -Destination $batSyntaxesDest -Force
             Write-Host "==> bat syntaxes deployed to $batSyntaxesDest" -ForegroundColor Green
         }
     }
 
     if ($DryRun) {
-        Write-Host "  [DryRun] Would ensure $targetBatTheme is configured in $batConfigFile" -ForegroundColor DarkCyan
+        Write-Host "  [DryRun] Would ensure --theme is configured in $batConfigFile and rebuild bat cache" -ForegroundColor DarkCyan
     } else {
         if (-not (Test-Path $batConfigDir)) { New-Item -ItemType Directory -Force -Path $batConfigDir | Out-Null }
         if (Test-Path $batConfigFile) {
             $existingBatConfig = Get-Content $batConfigFile -Raw
             if ($existingBatConfig -notmatch '--theme=') {
                 Add-Content -Path $batConfigFile -Value "`n$targetBatTheme" -Encoding utf8
-            } elseif ($existingBatConfig -notmatch [regex]::Escape($targetBatTheme)) {
-                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-                Copy-Item -Path $batConfigFile -Destination "$batConfigFile.bak_$timestamp" -Force
-                $updatedConfig = $existingBatConfig -replace '--theme=\S+', $targetBatTheme
-                [System.IO.File]::WriteAllText($batConfigFile, $updatedConfig, [System.Text.Encoding]::UTF8)
             }
         } else {
             $targetBatTheme | Set-Content -Path $batConfigFile -Encoding utf8
         }
         if (Get-Command bat -ErrorAction SilentlyContinue) {
             & bat cache --build | Out-Null
+        }
+    }
+
+    # Deploy Git Delta, Tealdeer (tldr), Clangd, and btop4win Configurations
+    $deltaSrc = Join-Path $RootDir "config\git\delta.gitconfig"
+    $deltaDest = Join-Path $HOME ".config\windows-settings\delta-theme.gitconfig"
+    if (-not (Test-Path $deltaDest) -or $DryRun) {
+        Deploy-ConfigFile -Name "Git Delta theme config" -SourcePath $deltaSrc -DestinationPath $deltaDest -DryRun:$DryRun
+    }
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $deltaInclude = '~/.config/windows-settings/delta-theme.gitconfig'
+        $existingIncludes = @(git config --global --get-all include.path 2>$null)
+        if ($existingIncludes -notcontains $deltaInclude) {
+            if ($DryRun) {
+                Write-Host "  [DryRun] Would register git global include.path -> $deltaInclude" -ForegroundColor DarkCyan
+            } else {
+                git config --global --add include.path $deltaInclude
+                $existingPager = git config --global --get core.pager 2>$null
+                if (-not $existingPager -and (Get-Command delta -ErrorAction SilentlyContinue)) {
+                    git config --global core.pager delta
+                    git config --global interactive.diffFilter 'delta --color-only'
+                }
+            }
+        }
+    }
+
+    $tealdeerSrc = Join-Path $RootDir "config\tealdeer\config.toml"
+    if ($env:APPDATA) {
+        $tealdeerDest = Join-Path $env:APPDATA "tealdeer\config.toml"
+        if (-not (Test-Path $tealdeerDest) -or $DryRun) {
+            Deploy-ConfigFile -Name "Tealdeer (tldr) config" -SourcePath $tealdeerSrc -DestinationPath $tealdeerDest -DryRun:$DryRun
+        }
+    }
+
+    $clangdSrc = Join-Path $RootDir "config\clangd\config.yaml"
+    if ($env:LOCALAPPDATA) {
+        Deploy-ConfigFile -Name "Clangd config" -SourcePath $clangdSrc -DestinationPath (Join-Path $env:LOCALAPPDATA "clangd\config.yaml") -DryRun:$DryRun
+    }
+
+    $btopConfSrc = Join-Path $RootDir "config\btop\btop.conf"
+    $btopThemesSrc = Join-Path $RootDir "config\btop\themes"
+    $btopDestDir = Join-Path $HOME ".config\btop"
+    $btopConfDest = Join-Path $btopDestDir "btop.conf"
+    if (-not (Test-Path $btopConfDest) -or $DryRun) {
+        Deploy-ConfigFile -Name "btop config" -SourcePath $btopConfSrc -DestinationPath $btopConfDest -DryRun:$DryRun
+    }
+    if (Test-Path $btopThemesSrc) {
+        $btopThemesDest = Join-Path $btopDestDir "themes"
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would deploy 17 btop themes to $btopThemesDest" -ForegroundColor DarkCyan
+        } else {
+            if (-not (Test-Path $btopThemesDest)) { New-Item -ItemType Directory -Force -Path $btopThemesDest | Out-Null }
+            Copy-Item -Path (Join-Path $btopThemesSrc "*.theme") -Destination $btopThemesDest -Force
         }
     }
 
@@ -395,7 +843,6 @@ if (-not $SkipPosh) {
             if (-not (Test-Path $moduleDest)) {
                 New-Item -ItemType Directory -Force -Path $moduleDest | Out-Null
             } else {
-                # Clean up legacy subdirectories if migrating from v1
                 $legacyDirs = @('Public', 'Completions')
                 foreach ($ld in $legacyDirs) {
                     $stalePath = Join-Path $moduleDest $ld
@@ -404,8 +851,54 @@ if (-not $SkipPosh) {
                     }
                 }
             }
-            Copy-Item -Path "$moduleSource\*" -Destination $moduleDest -Recurse -Force
+            Copy-Item -Path (Join-Path $moduleSource "*") -Destination $moduleDest -Recurse -Force
             Write-Host "==> WindowsSettings module deployed to $moduleDest" -ForegroundColor Green
+        }
+    }
+
+    # Deploy Zellij 0.46+ Configuration, IDE Layouts, Theme Seed & Antigravity OSC 7501 Hook
+    $zellijSrcDir = Join-Path $RootDir "config\zellij"
+    $zellijDestDir = if ($env:APPDATA) {
+        Join-Path (Join-Path $env:APPDATA "Zellij") "config"
+    } else {
+        Join-Path $HOME ".config\zellij"
+    }
+    if (Test-Path -LiteralPath $zellijSrcDir) {
+        Deploy-ZellijConfig -SourcePath (Join-Path $zellijSrcDir "config.kdl") -DestinationPath (Join-Path $zellijDestDir "config.kdl") -DryRun:$DryRun
+        Deploy-ConfigFile -Name "Zellij 3-pane IDE layout" -SourcePath (Join-Path $zellijSrcDir "layouts\ide-3pane.kdl") -DestinationPath (Join-Path $zellijDestDir "layouts\ide-3pane.kdl") -DryRun:$DryRun
+        Deploy-ConfigFile -Name "Zellij 2-pane IDE layout" -SourcePath (Join-Path $zellijSrcDir "layouts\ide-2pane.kdl") -DestinationPath (Join-Path $zellijDestDir "layouts\ide-2pane.kdl") -DryRun:$DryRun
+        $zellijThemeSeedDst = Join-Path $zellijDestDir "themes\windows-settings.kdl"
+        if (-not (Test-Path -LiteralPath $zellijThemeSeedDst) -or $DryRun) {
+            Deploy-ConfigFile -Name "Zellij theme seed" -SourcePath (Join-Path $zellijSrcDir "themes\windows-settings.kdl") -DestinationPath $zellijThemeSeedDst -DryRun:$DryRun
+        }
+    }
+    Sync-AntigravityHooksJson -DryRun:$DryRun
+
+    # Apply Active Color Theme via bin/theme.ps1
+    $themeScript = Join-Path $RootDir "bin\theme.ps1"
+    if (Test-Path $themeScript) {
+        $savedThemeFile = Join-Path $HOME ".config\windows-settings\theme"
+        $effectiveTheme = if ($Theme -and $Theme.Trim()) {
+            $Theme.Trim().ToLowerInvariant()
+        } elseif (Test-Path $savedThemeFile) {
+            (Get-Content $savedThemeFile -Raw).Trim().ToLowerInvariant()
+        } else {
+            'solarized-dark'
+        }
+        if (-not $effectiveTheme) { $effectiveTheme = 'solarized-dark' }
+
+        if ($DryRun) {
+            if ($effectiveTheme -eq 'holiday') {
+                & $themeScript --dry-run --holiday --no-live | Out-Host
+            } else {
+                & $themeScript --dry-run --set $effectiveTheme --no-live | Out-Host
+            }
+        } else {
+            $themeArgs = if ($effectiveTheme -eq 'holiday') { @('--holiday') } else { @('--set', $effectiveTheme) }
+            if ([Console]::IsOutputRedirected -or $env:WS_TEST_MODE -eq '1') {
+                $themeArgs += '--no-live'
+            }
+            & $themeScript @themeArgs | Out-Host
         }
     }
 
@@ -473,8 +966,8 @@ Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue
     if (-not $SkipCMD) {
         Write-Host "==> Setting up Windows Command Prompt (cmd.exe) AutoRun & Doskey..." -ForegroundColor Cyan
         $cmdSource = Join-Path $RootDir "config\cmd\autorun.cmd"
-        $cmdDest = "$env:LOCALAPPDATA\cmd\autorun.cmd"
-        $cmdAltDest = "$HOME\.config\cmd\autorun.cmd"
+        $cmdDest = Join-Path $env:LOCALAPPDATA "cmd\autorun.cmd"
+        $cmdAltDest = Join-Path $HOME ".config\cmd\autorun.cmd"
 
         Deploy-ConfigFile -Name "CMD AutoRun script" `
             -SourcePath $cmdSource `
@@ -561,10 +1054,10 @@ if (-not $SkipCompletions) {
 if (-not $SkipTerminal) {
     Write-Host "`n[4/6] Setting up Windows Terminal (JSON Fragments & Settings)..." -ForegroundColor Yellow
     $fragmentSource = Join-Path $RootDir "config\terminal\windows-settings.json"
-    $primaryDest = "$env:LOCALAPPDATA\Microsoft\Windows Terminal\Fragments\WindowsSettings\windows-settings.json"
+    $primaryDest = Join-Path $env:LOCALAPPDATA "Microsoft\Windows Terminal\Fragments\WindowsSettings\windows-settings.json"
     $altDests = @(
-        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings\windows-settings.json",
-        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings\windows-settings.json"
+        (Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings\windows-settings.json"),
+        (Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\Fragments\WindowsSettings\windows-settings.json")
     )
 
     Deploy-ConfigFile -Name "Windows Terminal JSON Fragment" -SourcePath $fragmentSource -DestinationPath $primaryDest -AltDestinations $altDests -DryRun:$DryRun
@@ -573,17 +1066,21 @@ if (-not $SkipTerminal) {
 }
 
 # -------------------------------------------------------------
-# 5. Neovim & Vim Setup
+# 5. Neovim & Vim Setup (43 Tree-sitter Queries, lazy-lock, _vimrc)
 # -------------------------------------------------------------
 if (-not $SkipVim) {
     Write-Host "`n[5/6] Setting up Neovim & Vim configuration..." -ForegroundColor Yellow
 
-    # Modern Neovim (init.lua, queries, after/queries, ftplugin, lazy-lock.json)
     $nvimSourceDir = Join-Path $RootDir "config\nvim"
     $nvimDestDir = Join-Path $env:LOCALAPPDATA "nvim"
     $nvimSource = Join-Path $nvimSourceDir "init.lua"
     $nvimDest = Join-Path $nvimDestDir "init.lua"
     Deploy-ConfigFile -Name "Neovim configuration" -SourcePath $nvimSource -DestinationPath $nvimDest -DryRun:$DryRun
+
+    $staleMdInline = Join-Path $nvimDestDir "after\queries\markdown_inline"
+    if (-not $DryRun -and (Test-Path $staleMdInline)) {
+        Remove-Item -Recurse -Force -Path $staleMdInline -ErrorAction SilentlyContinue
+    }
 
     $nvimSubDirs = @('queries', 'after', 'ftplugin')
     foreach ($sd in $nvimSubDirs) {
@@ -594,11 +1091,12 @@ if (-not $SkipVim) {
                 Write-Host "  [DryRun] Would deploy Neovim $sd to $dstPath" -ForegroundColor DarkCyan
             } else {
                 if (-not (Test-Path $dstPath)) { New-Item -ItemType Directory -Force -Path $dstPath | Out-Null }
-                Copy-Item -Path "$srcPath\*" -Destination $dstPath -Recurse -Force
+                Copy-Item -Path (Join-Path $srcPath "*") -Destination $dstPath -Recurse -Force
                 Write-Host "==> Neovim $sd deployed to $dstPath" -ForegroundColor Green
             }
         }
     }
+
     $lockSrc = Join-Path $nvimSourceDir "lazy-lock.json"
     if (Test-Path $lockSrc) {
         Deploy-ConfigFile -Name "Neovim lazy-lock" -SourcePath $lockSrc -DestinationPath (Join-Path $nvimDestDir "lazy-lock.json") -DryRun:$DryRun
@@ -606,7 +1104,7 @@ if (-not $SkipVim) {
 
     # Legacy Vim (_vimrc)
     $vimrcSource = Join-Path $RootDir "config\vim\_vimrc"
-    Deploy-ConfigFile -Name "Vim configuration" -SourcePath $vimrcSource -DestinationPath "$HOME\_vimrc" -AltDestinations @("$HOME\.vimrc") -DryRun:$DryRun
+    Deploy-ConfigFile -Name "Vim configuration" -SourcePath $vimrcSource -DestinationPath (Join-Path $HOME "_vimrc") -AltDestinations @((Join-Path $HOME ".vimrc")) -DryRun:$DryRun
 } else {
     Write-Host "`n[5/6] Skipping Editor Setup." -ForegroundColor DarkCyan
 }
@@ -637,7 +1135,7 @@ if (-not $SkipBin) {
 
     # Ensure mise.toml is deployed even if package install was skipped
     $miseConfig = Join-Path $RootDir "mise.toml"
-    Deploy-ConfigFile -Name "Global Mise configuration" -SourcePath $miseConfig -DestinationPath "$HOME\.config\mise\config.toml" -DryRun:$DryRun
+    Deploy-ConfigFile -Name "Global Mise configuration" -SourcePath $miseConfig -DestinationPath (Join-Path $HOME ".config\mise\config.toml") -DryRun:$DryRun
 
     $miseShims = Join-Path $env:LOCALAPPDATA "mise\shims"
     if (Test-Path $miseShims) {
@@ -655,7 +1153,7 @@ if (-not $SkipBin) {
     }
 
     # Ensure WinLibs GCC bin is registered in User PATH if present
-    $winlibsDir = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages"
+    $winlibsDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
     if (Test-Path $winlibsDir) {
         $winlibsPackages = Get-ChildItem -Path $winlibsDir -Filter "BrechtSanders.WinLibs*" -Directory -ErrorAction SilentlyContinue
         if ($winlibsPackages) {
@@ -677,6 +1175,14 @@ if (-not $SkipBin) {
     }
 } else {
     Write-Host "`n[6/6] Skipping User PATH configuration." -ForegroundColor DarkCyan
+}
+
+if (-not $DryRun -and -not $SkipPosh -and -not $SystemOnly -and $env:WS_TEST_MODE -ne '1') {
+    try {
+        Import-Module WindowsSettings -Force -Global -DisableNameChecking -ErrorAction SilentlyContinue
+    } catch {
+        $null = $_
+    }
 }
 
 Write-Host "`n=====================================================" -ForegroundColor Cyan

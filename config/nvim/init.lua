@@ -1,6 +1,6 @@
 -- =============================================================
 -- Modern Lua Neovim Configuration (init.lua)
--- Developer Workstation Configuration (Linux, macOS, Windows)
+-- Developer Workstation Configuration (Windows, Linux, macOS)
 -- =============================================================
 
 -- Compatibility polyfills (Neovim 0.9 / 0.10 / 0.11+)
@@ -12,6 +12,28 @@ if not (vim.fs and vim.fs.joinpath) then
         local result = table.concat(parts, "/"):gsub("//+", "/")
         return result
     end
+end
+
+local is_win32 = vim.fn.has("win32") == 1
+
+local function is_abs_path(p)
+    if type(p) ~= "string" or p == "" then
+        return false
+    end
+    return p:match("^/") ~= nil or p:match("^%a:[/\\]") ~= nil or p:match("^\\\\") ~= nil
+end
+
+local function same_dir_stat(p1, s1, p2, s2)
+    if not s1 or not s2 then
+        return false
+    end
+    if not is_win32 and s1.ino and s2.ino and s1.ino ~= 0 and s2.ino ~= 0 then
+        return s1.dev == s2.dev and s1.ino == s2.ino
+    end
+    if type(p1) == "string" and type(p2) == "string" and p1 ~= "" and p2 ~= "" then
+        return vim.fs.normalize(p1):lower() == vim.fs.normalize(p2):lower()
+    end
+    return false
 end
 
 -- Set Leader Key
@@ -55,11 +77,213 @@ opt.writebackup = false
 opt.swapfile = false
 opt.undofile = true
 
--- Performance & Responsiveness
+-- Performance, Responsiveness & Live Buffer Reloading
 opt.updatetime = 250
 opt.timeoutlen = 300
+opt.autoread = true
 
--- System Clipboard Integration
+local function recover_stale_cwd()
+    local uv = vim.uv or vim.loop
+    if not uv then
+        return
+    end
+    local pwd = nil
+    for _, cand in ipairs({ vim.env.PWD or "", vim.env.IDE_WORKDIR or "", vim.env.IDE_INITIAL_ROOT or "" }) do
+        if cand and cand ~= "" and vim.fn.isdirectory(cand) == 1 then
+            pwd = cand
+            break
+        end
+    end
+    if pwd then
+        local cur_cwd = uv.cwd()
+        local s_dot = uv.fs_stat(".")
+        local s_pwd = uv.fs_stat(pwd)
+        local deleted_dir = (not is_win32) and (not s_dot or s_dot.nlink == 0)
+        if not cur_cwd or not s_dot or deleted_dir
+            or (vim.fn.haslocaldir() == 0 and vim.fn.haslocaldir(-1, 0) == 0 and s_pwd and not same_dir_stat(cur_cwd, s_dot, pwd, s_pwd))
+        then
+            pcall(vim.fn.chdir, pwd)
+            vim.env.PWD = pwd
+        end
+    end
+end
+
+do
+    recover_stale_cwd()
+    local uv = vim.uv or vim.loop
+    if uv then
+        local init_cwd = uv.cwd()
+        local s_dot = uv.fs_stat(".")
+        local cur_pwd = vim.env.PWD
+        local s_pwd = (cur_pwd and cur_pwd ~= "") and uv.fs_stat(cur_pwd) or nil
+        if init_cwd and init_cwd ~= "" and s_dot and (is_win32 or s_dot.nlink ~= 0) and not same_dir_stat(init_cwd, s_dot, cur_pwd, s_pwd) then
+            vim.env.PWD = init_cwd
+        end
+    end
+    if vim.fs and type(vim.fs.abspath) == "function" and not vim.fs._hs_abspath_wrapped then
+        local orig_abspath = vim.fs.abspath
+        vim.fs._hs_abspath_wrapped = true
+        vim.fs.abspath = function(path)
+            local ok, res = pcall(orig_abspath, path)
+            if ok then
+                return res
+            end
+            recover_stale_cwd()
+            ok, res = pcall(orig_abspath, path)
+            if ok then
+                return res
+            end
+            if type(path) ~= "string" then
+                error(res, 2)
+            end
+            local home_dir = vim.env.HOME or vim.env.USERPROFILE or "~"
+            local expanded = path:gsub("^~", home_dir)
+            if is_abs_path(expanded) then
+                return vim.fs.normalize(expanded)
+            end
+            local fb = (vim.env.PWD and is_abs_path(vim.env.PWD)) and vim.env.PWD
+                or (vim.env.IDE_WORKDIR and is_abs_path(vim.env.IDE_WORKDIR)) and vim.env.IDE_WORKDIR
+                or (vim.env.IDE_INITIAL_ROOT and is_abs_path(vim.env.IDE_INITIAL_ROOT)) and vim.env.IDE_INITIAL_ROOT
+                or home_dir
+            if expanded == "." or expanded == "" then
+                return vim.fs.normalize(fb)
+            end
+            return vim.fs.normalize(vim.fs.joinpath(fb, expanded))
+        end
+    end
+end
+
+local autoread_group = vim.api.nvim_create_augroup("SolarizedAutoRead", { clear = true })
+vim.api.nvim_create_autocmd("DirChanged", {
+    group = autoread_group,
+    pattern = "global",
+    callback = function(ev)
+        if ev.file and ev.file ~= "" then
+            local uv = vim.uv or vim.loop
+            local cur_pwd = vim.env.PWD
+            local s_cur = (uv and cur_pwd and cur_pwd ~= "") and uv.fs_stat(cur_pwd) or nil
+            local s_ev = uv and uv.fs_stat(ev.file) or nil
+            if not same_dir_stat(cur_pwd, s_cur, ev.file, s_ev) then
+                vim.env.PWD = ev.file
+            end
+        end
+    end,
+})
+vim.api.nvim_create_autocmd({ "BufReadPre", "FileType" }, {
+    group = autoread_group,
+    callback = function()
+        recover_stale_cwd()
+    end,
+})
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
+    group = autoread_group,
+    callback = function()
+        recover_stale_cwd()
+        if vim.fn.getcmdwintype() == "" then
+            pcall(vim.cmd, "silent! checktime")
+        end
+    end,
+})
+
+-- Forward declaration for Markdown link navigation
+local follow_editor_link
+
+-- Markdown Prose Readability (Word-Boundary Soft-Wrapping without Mutating Code Buffers)
+vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("SolarizedMarkdownReadability", { clear = true }),
+    pattern = { "markdown" },
+    callback = function(ev)
+        vim.opt_local.wrap = true
+        vim.opt_local.linebreak = true
+        vim.opt_local.breakindent = true
+        local buf = (ev and ev.buf) or true
+        vim.keymap.set("n", "<CR>", function()
+            if not (follow_editor_link and follow_editor_link(false, false)) then
+                vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
+            end
+        end, { buffer = buf, silent = true, desc = "Follow Markdown link under cursor" })
+        vim.keymap.set("n", "gd", function()
+            if not (follow_editor_link and follow_editor_link(false, true)) then
+                vim.lsp.buf.definition()
+            end
+        end, { buffer = buf, silent = true, desc = "Follow Markdown link or LSP definition" })
+    end,
+})
+
+-- Protocol Buffers, Textproto, GraphQL, Starlark/Bazel, OPA Rego, Lean 4, Dockerfile & Make Filetype & Tree-sitter Registration
+if vim.filetype and vim.filetype.add then
+    vim.filetype.add({
+        extension = {
+            proto = "proto",
+            textproto = "pbtxt",
+            pbtxt = "pbtxt",
+            textpb = "pbtxt",
+            prototxt = "pbtxt",
+            graphql = "graphql",
+            graphqls = "graphql",
+            gql = "graphql",
+            bzl = "bzl",
+            bazel = "bzl",
+            star = "bzl",
+            rego = "rego",
+            lean = "lean",
+            Dockerfile = "dockerfile",
+            dockerfile = "dockerfile",
+            Containerfile = "dockerfile",
+            containerfile = "dockerfile",
+            mk = "make",
+            mak = "make",
+        },
+        filename = {
+            ["Dockerfile"] = "dockerfile",
+            ["dockerfile"] = "dockerfile",
+            ["Containerfile"] = "dockerfile",
+            ["containerfile"] = "dockerfile",
+            ["Makefile"] = "make",
+            ["makefile"] = "make",
+            ["GNUmakefile"] = "make",
+        },
+        pattern = {
+            [".*%.pb%.txt"] = "pbtxt",
+            [".*%.proto%.text"] = "pbtxt",
+            ["[Dd]ockerfile%..*"] = "dockerfile",
+            ["[Cc]ontainerfile%..*"] = "dockerfile",
+        },
+    })
+end
+if vim.treesitter and vim.treesitter.language and vim.treesitter.language.register then
+    pcall(vim.treesitter.language.register, "properties", { "jproperties", "properties" })
+    pcall(vim.treesitter.language.register, "textproto", { "pbtxt", "textproto", "textpb", "prototxt" })
+    pcall(vim.treesitter.language.register, "graphql", { "graphql", "graphqls", "gql" })
+    pcall(vim.treesitter.language.register, "starlark", { "bzl", "starlark", "bazel" })
+    pcall(vim.treesitter.language.register, "rego", { "rego" })
+    pcall(vim.treesitter.language.register, "lean", { "lean" })
+end
+
+-- System Clipboard Integration (Windows Win32, Linux X11/Wayland, macOS + Native Neovim OSC 52)
+if vim.fn.has("linux") == 1 then
+    local in_ssh = (vim.env.SSH_CONNECTION ~= nil and vim.env.SSH_CONNECTION ~= "")
+        or (vim.env.SSH_TTY ~= nil and vim.env.SSH_TTY ~= "")
+        or (vim.env.SSH_CLIENT ~= nil and vim.env.SSH_CLIENT ~= "")
+    if not in_ssh then
+        if (not vim.env.DISPLAY or vim.env.DISPLAY == "") and vim.uv.fs_stat("/tmp/.X11-unix/X0") then
+            vim.env.DISPLAY = ":0"
+        end
+        local uid = (vim.uv.getuid and vim.uv.getuid()) or nil
+        if uid then
+            local run_dir = "/run/user/" .. tostring(uid)
+            if (not vim.env.WAYLAND_DISPLAY or vim.env.WAYLAND_DISPLAY == "") and vim.uv.fs_stat(run_dir .. "/wayland-0") then
+                vim.env.WAYLAND_DISPLAY = "wayland-0"
+            end
+            if not vim.env.XAUTHORITY or vim.env.XAUTHORITY == "" then
+                local auth_files = vim.fn.glob(run_dir .. "/.mutter-Xwaylandauth.*", true, true)
+                if type(auth_files) == "table" and #auth_files > 0 then
+                    vim.env.XAUTHORITY = auth_files[1]
+                end
+            end
+        end
+    end
+end
 opt.clipboard = "unnamedplus"
 
 -- Split Windows
@@ -67,22 +291,194 @@ opt.splitright = true
 opt.splitbelow = true
 
 -- -------------------------------------------------------------
--- 2. General Keymaps
+-- 2. General Keymaps & Cross-Platform IDE Helpers
 -- -------------------------------------------------------------
 local map = vim.keymap.set
+
+local nvim_init_source = debug.getinfo(1, "S").source
+local nvim_init_path = (nvim_init_source and nvim_init_source:sub(1, 1) == "@")
+    and nvim_init_source:sub(2)
+    or (vim.fn.stdpath("config") .. "/init.lua")
+local nvim_init_real = ((vim.uv or vim.loop).fs_realpath(nvim_init_path)) or nvim_init_path
+
+local function candidate_repo_roots()
+    local roots = {}
+    local function add_root(r)
+        if r and r ~= "" then
+            local norm = vim.fs.normalize(r)
+            if not vim.tbl_contains(roots, norm) then
+                table.insert(roots, norm)
+            end
+        end
+    end
+    add_root(vim.fn.fnamemodify(nvim_init_real, ":h:h:h"))
+    add_root(vim.fn.fnamemodify(nvim_init_real, ":h:h:h:h"))
+    local theme_exe = vim.fn.exepath("theme")
+    if theme_exe ~= "" then
+        local real_exe = ((vim.uv or vim.loop).fs_realpath(theme_exe)) or theme_exe
+        add_root(vim.fn.fnamemodify(real_exe, ":h:h"))
+    end
+    local ide_exe = vim.fn.exepath("ide")
+    if ide_exe ~= "" then
+        local real_ide = ((vim.uv or vim.loop).fs_realpath(ide_exe)) or ide_exe
+        add_root(vim.fn.fnamemodify(real_ide, ":h:h"))
+    end
+    return roots
+end
+
+local function resolve_cli_bin(name)
+    local exe = vim.fn.exepath(name)
+    if exe ~= "" and vim.fn.executable(exe) == 1 then
+        return exe
+    end
+    for _, root in ipairs(candidate_repo_roots()) do
+        if is_win32 then
+            local cmd_bin = root .. "/bin/" .. name .. ".cmd"
+            if vim.fn.executable(cmd_bin) == 1 then
+                return cmd_bin
+            end
+        end
+        local plain_bin = root .. "/bin/" .. name
+        if vim.fn.executable(plain_bin) == 1 then
+            return plain_bin
+        end
+    end
+    local local_bin = vim.fn.expand("$HOME/.local/bin/" .. name)
+    if vim.fn.executable(local_bin) == 1 then
+        return local_bin
+    end
+    return ""
+end
+
+local function in_ide_workspace()
+    return (vim.env.TMUX ~= nil and vim.env.TMUX ~= "")
+        or (vim.env.ZELLIJ ~= nil and vim.env.ZELLIJ ~= "")
+        or (vim.env.IDE_SESSION ~= nil and vim.env.IDE_SESSION ~= "")
+        or (vim.env.NVIM_IDE_SOCKET ~= nil and vim.env.NVIM_IDE_SOCKET ~= "")
+end
+
+local function open_external_url(url)
+    if vim.ui and vim.ui.open then
+        local ok = pcall(vim.ui.open, url)
+        if ok then
+            return
+        end
+    end
+    if is_win32 then
+        vim.fn.jobstart({ "cmd.exe", "/c", "start", "", url }, { detach = true })
+    elseif vim.fn.has("mac") == 1 then
+        vim.fn.jobstart({ "open", url }, { detach = true })
+    else
+        vim.fn.jobstart({ "xdg-open", url }, { detach = true })
+    end
+end
+
+-- Auto-copy mouse visual selection to system clipboard (+) on mouse release
+map("x", "<LeftRelease>", '<LeftRelease>"+ygv', { silent = true, desc = "Auto-copy mouse selection to clipboard" })
+map("x", "<C-c>", '"+y', { silent = true, desc = "Copy visual selection to system clipboard" })
+map("x", "<M-c>", '"+y', { silent = true, desc = "Copy visual selection to system clipboard" })
+map({ "n", "i", "v", "t" }, "<M-v>", function()
+    local text = vim.fn.getreg("+")
+    if type(text) == "string" and text ~= "" then
+        vim.api.nvim_paste(text, true, -1)
+    end
+end, { silent = true, desc = "Paste from system clipboard" })
 
 -- Clear search highlight
 map("n", "<leader>h", "<cmd>nohlsearch<CR>", { desc = "Clear search highlight" })
 
--- Fast Save & Quit
+-- Fast Save
 map("n", "<leader>w", "<cmd>w<CR>", { desc = "Save file" })
-map("n", "<leader>q", "<cmd>q<CR>", { desc = "Quit buffer" })
 
--- Better Window Navigation (Ctrl + hjkl)
-map("n", "<C-h>", "<C-w>h", { desc = "Move to left window" })
-map("n", "<C-j>", "<C-w>j", { desc = "Move to lower window" })
-map("n", "<C-k>", "<C-w>k", { desc = "Move to upper window" })
-map("n", "<C-l>", "<C-w>l", { desc = "Move to right window" })
+-- Smart Home: jump to first non-blank character of line (matching _vimrc)
+map({ "n", "v", "o" }, "<Home>", "^", { desc = "Move to first non-blank character of line" })
+map("i", "<Home>", "<Esc>^i", { desc = "Move to first non-blank character of line" })
+
+-- Layer 1 (Ctrl + hjkl in Normal mode): internal Neovim split navigation only (guarded against floating modals)
+local function internal_split_nav(dir)
+    return function()
+        local cur_win = vim.api.nvim_get_current_win()
+        local win_cfg = vim.api.nvim_win_get_config(cur_win)
+        if win_cfg.relative and win_cfg.relative ~= "" then
+            return
+        end
+        vim.cmd("wincmd " .. dir)
+    end
+end
+
+-- Layer 2a (Alt + hjkl in all modes): seamless 2D spatial navigation across Neovim splits
+-- (Zellij intercepts Alt+hjkl at the multiplexer layer; in Locked mode or tmux, bridges panes)
+local zellij_dir_map = { h = "Left", j = "Down", k = "Up", l = "Right" }
+local function smart_pane_nav(dir, tmux_dir)
+    return function()
+        local cur_win = vim.api.nvim_get_current_win()
+        local win_cfg = vim.api.nvim_win_get_config(cur_win)
+        if win_cfg.relative and win_cfg.relative ~= "" then
+            return
+        end
+        local mode = vim.api.nvim_get_mode().mode
+        if mode == "t" or mode == "i" then
+            vim.cmd("stopinsert")
+        elseif mode == "v" or mode == "V" or mode == "\22" then
+            vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+        end
+        vim.cmd("wincmd " .. dir)
+        if vim.api.nvim_get_current_win() == cur_win then
+            if vim.env.TMUX then
+                local pane = vim.env.TMUX_PANE
+                local target_cmd = (pane and pane ~= "")
+                    and ("select-pane -t " .. pane .. " -" .. tmux_dir)
+                    or ("select-pane -" .. tmux_dir)
+                local cmd = { "tmux", "if-shell" }
+                if pane and pane ~= "" then
+                    vim.list_extend(cmd, { "-t", pane })
+                end
+                vim.list_extend(cmd, { "-F", "#{==:#{window_zoomed_flag},0}", target_cmd })
+                vim.fn.jobstart(cmd, { detach = true })
+            elseif vim.env.ZELLIJ and zellij_dir_map[dir] and vim.fn.executable("zellij") == 1 then
+                vim.fn.jobstart({ "zellij", "action", "move-focus", zellij_dir_map[dir] }, { detach = true })
+            end
+        end
+    end
+end
+
+map("n", "<C-h>", internal_split_nav("h"), { desc = "Move to left split" })
+map("n", "<C-j>", internal_split_nav("j"), { desc = "Move to lower split" })
+map("n", "<C-k>", internal_split_nav("k"), { desc = "Move to upper split" })
+map("n", "<C-l>", internal_split_nav("l"), { desc = "Move to right split" })
+
+map({ "n", "i", "v", "t" }, "<M-h>", smart_pane_nav("h", "L"), { desc = "Move to left split or pane" })
+map({ "n", "i", "v", "t" }, "<M-j>", smart_pane_nav("j", "D"), { desc = "Move to lower split or pane" })
+map({ "n", "i", "v", "t" }, "<M-k>", smart_pane_nav("k", "U"), { desc = "Move to upper split or pane" })
+map({ "n", "i", "v", "t" }, "<M-l>", smart_pane_nav("l", "R"), { desc = "Move to right split or pane" })
+
+-- Fast Buffer Cycling & Side Mouse Button (Mouse4/Mouse5) Jumplist Navigation
+map("n", "H", "<cmd>bprevious<CR>", { silent = true, desc = "Previous buffer" })
+map("n", "L", "<cmd>bnext<CR>", { silent = true, desc = "Next buffer" })
+map({ "n", "v" }, "<X1Mouse>", "<C-o>", { silent = true, desc = "Jump back in jumplist (Mouse4)" })
+map({ "n", "v" }, "<X2Mouse>", "<C-i>", { silent = true, desc = "Jump forward in jumplist (Mouse5)" })
+map("i", "<X1Mouse>", "<C-\\><C-o><C-o>", { silent = true, desc = "Jump back in jumplist (Mouse4)" })
+map("i", "<X2Mouse>", "<C-\\><C-o><C-i>", { silent = true, desc = "Jump forward in jumplist (Mouse5)" })
+
+-- Markdown & Universal Link Navigation (Ctrl+Click, Alt+Click, gx)
+map({ "n", "v" }, "<C-LeftMouse>", function()
+    if follow_editor_link then
+        follow_editor_link(true, true)
+    end
+end, { silent = true, desc = "Follow Markdown/file/web link or LSP definition" })
+map({ "n", "v" }, "<M-LeftMouse>", function()
+    if follow_editor_link then
+        follow_editor_link(true, false)
+    end
+end, { silent = true, desc = "Follow Markdown/file/web link or LSP definition" })
+map("n", "gx", function()
+    if not (follow_editor_link and follow_editor_link(false, false)) then
+        local cfile = vim.fn.expand("<cfile>")
+        if cfile ~= "" then
+            open_external_url(cfile)
+        end
+    end
+end, { silent = true, desc = "Follow Markdown/file/web link under cursor" })
 
 -- Stay in indent mode when shifting
 map("v", "<", "<gv", { desc = "Indent left" })
@@ -92,15 +488,1127 @@ map("v", ">", ">gv", { desc = "Indent right" })
 map("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move text down" })
 map("v", "K", ":m '<-2<CR>gv=gv", { desc = "Move text up" })
 
--- File Explorer Toggle (Netrw fallback)
-map("n", "<leader>e", "<cmd>Explore<CR>", { desc = "Open File Explorer" })
+-- Built-in Netrw Project Tree Sidebar Configuration
+vim.g.netrw_banner = 0
+vim.g.netrw_liststyle = 3
+vim.g.netrw_browse_split = 4
+vim.g.netrw_altv = 1
+vim.g.netrw_winsize = 20
+
+local function ide_job(...)
+    local ide_bin = resolve_cli_bin("ide")
+    if ide_bin == "" then
+        return
+    end
+    local cmd = { ide_bin, ... }
+    local sess = vim.env.IDE_SESSION
+    if sess and sess ~= "" then
+        table.insert(cmd, sess)
+    end
+    vim.fn.jobstart(cmd, { detach = true })
+end
+
+-- -------------------------------------------------------------
+-- Standard Tree-sitter & LSP Link / Definition Navigation
+-- -------------------------------------------------------------
+local function url_decode(str)
+    return (str:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end))
+end
+
+local function markdown_heading_slug(raw)
+    if not raw or raw == "" then return "" end
+    local h = raw:gsub("^%s*#+%s+", ""):gsub("%s+#+%s*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    h = h:gsub("%[(.-)%]%b()", "%1"):gsub("%[(.-)%]%b[]", "%1"):gsub("<[^>]+>", "")
+    h = h:gsub("–", ""):gsub("—", ""):gsub("‘", ""):gsub("’", ""):gsub("“", ""):gsub("”", "")
+    h = vim.fn.tolower(h):gsub("%p", function(c)
+        return (c == "-" or c == "_") and c or ""
+    end)
+    return (h:gsub(" ", "-"))
+end
+
+local function find_markdown_anchor_line(bufnr, raw_slug)
+    local cleaned_slug = url_decode(raw_slug or ""):gsub("^#+", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local target_slug = vim.fn.tolower(cleaned_slug)
+    if target_slug == "" then return nil end
+
+    local b = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
+    local ok, parser = pcall(vim.treesitter.get_parser, b, "markdown")
+    if ok and parser then
+        local tree = (parser:parse(true) or {})[1]
+        if tree then
+            local q = vim.treesitter.query.parse("markdown", "(atx_heading (inline) @h)")
+            local seen = {}
+            for _, node in q:iter_captures(tree:root(), b) do
+                local base = markdown_heading_slug(vim.treesitter.get_node_text(node, b))
+                local count = seen[base] or 0
+                seen[base] = count + 1
+                local full = count == 0 and base or string.format("%s-%d", base, count)
+                if full == target_slug or (count == 0 and base == target_slug) then
+                    return (node:range()) + 1
+                end
+            end
+        end
+    end
+    for lnum, line in ipairs(vim.api.nvim_buf_get_lines(b, 0, -1, false)) do
+        local html_id = line:match('<a%s+[^>]*id=["\']([^"\']+)["\']') or line:match('<a%s+[^>]*name=["\']([^"\']+)["\']')
+        if html_id and html_id:lower() == target_slug then
+            return lnum
+        end
+    end
+    return nil
+end
+
+local function extract_link_at_cursor()
+    pcall(vim.treesitter.start, 0)
+    pcall(function() vim.treesitter.get_parser(0):parse(true) end)
+    local pos = vim.api.nvim_win_get_cursor(0)
+    local row, col = pos[1] - 1, pos[2]
+    local line = vim.api.nvim_get_current_line()
+    local bcol = line:find("%[")
+    if bcol and col < bcol - 1 and line:sub(1, bcol):match("^%s*[-*+%d.)]*%s*%[$") then
+        col = bcol - 1
+    end
+    local ok, node = pcall(vim.treesitter.get_node, { pos = { row, col }, ignore_injections = false })
+    while ok and node do
+        local t = node:type()
+        if t == "uri_autolink" then
+            return (vim.treesitter.get_node_text(node, 0):gsub("^<", ""):gsub(">$", "")), true
+        elseif t == "inline_link" then
+            local dest, label = nil, nil
+            for child in node:iter_children() do
+                local ct = child:type()
+                if ct == "link_destination" then
+                    dest = vim.treesitter.get_node_text(child, 0):gsub("^<", ""):gsub(">$", "")
+                elseif ct == "link_text" then
+                    label = vim.treesitter.get_node_text(child, 0):gsub("^%[", ""):gsub("%]$", ""):gsub("^`", ""):gsub("`$", "")
+                end
+            end
+            if dest then
+                if label and not dest:find("[#:]") then
+                    local lbl_line = label:match(":[Ll]?(%d+)") or label:match("#[Ll]?(%d+)")
+                    if lbl_line then
+                        dest = dest .. "#L" .. lbl_line
+                    end
+                end
+                return dest, true
+            end
+        end
+        node = node:parent()
+    end
+    if #line > 0 then
+        local idx = math.min(math.max(1, col + 1), #line)
+        local sep_pat = "[%s%(%)%[%]%{%}<>\"'`,;*]"
+        if line:sub(idx, idx):match(sep_pat) then
+            if idx < #line and not line:sub(idx + 1, idx + 1):match(sep_pat) then
+                idx = idx + 1
+            elseif idx > 1 and not line:sub(idx - 1, idx - 1):match(sep_pat) then
+                idx = idx - 1
+            end
+        end
+        if not line:sub(idx, idx):match(sep_pat) then
+            local s, e = idx, idx
+            while s > 1 and not line:sub(s - 1, s - 1):match(sep_pat) do
+                s = s - 1
+            end
+            while e < #line and not line:sub(e + 1, e + 1):match(sep_pat) do
+                e = e + 1
+            end
+            local tok = line:sub(s, e)
+            if not tok:match("/%.%.%.?$") then
+                tok = tok:gsub("[.,;:]+$", "")
+            end
+            if tok ~= "" then
+                return tok, false
+            end
+        end
+    end
+    local cfile = vim.fn.expand("<cfile>")
+    if cfile ~= "" then
+        return cfile:gsub("^<", ""):gsub("[>.,;)]+$", ""), false
+    end
+    return nil, false
+end
+
+local function resolve_custom_link_rule(word, cwd)
+    if not word or word == "" then
+        return nil
+    end
+    local uv = vim.uv or vim.loop
+    local xdg_cfg = vim.env.XDG_CONFIG_HOME
+    if not xdg_cfg or xdg_cfg == "" then
+        xdg_cfg = vim.fn.expand("$HOME/.config")
+    end
+    local ps_rules = (vim.env.IDE_LINK_RULES_PS1 and vim.env.IDE_LINK_RULES_PS1 ~= "")
+        and vim.env.IDE_LINK_RULES_PS1
+        or (xdg_cfg .. "/ide/links.ps1")
+    local ps_st = uv.fs_stat(ps_rules)
+    if ps_st and ps_st.type == "file" and vim.fn.executable("pwsh") == 1 then
+        local out = vim.fn.system({
+            "pwsh",
+            "-NoLogo",
+            "-NoProfile",
+            "-Command",
+            ". $args[0]; if (Get-Command Resolve-IdeLink -ErrorAction SilentlyContinue) { Resolve-IdeLink $args[1] $args[2] }",
+            ps_rules,
+            word,
+            cwd or uv.cwd() or "",
+        })
+        if vim.v.shell_error == 0 and out then
+            out = out:gsub("[\r\n]+$", "")
+            if out ~= "" then
+                return out
+            end
+        end
+    end
+    local rules = vim.env.IDE_LINK_RULES
+    if not rules or rules == "" then
+        rules = xdg_cfg .. "/ide/links.sh"
+    end
+    local st = uv.fs_stat(rules)
+    if not st or st.type ~= "file" or vim.fn.executable("bash") ~= 1 then
+        return nil
+    end
+    local out = vim.fn.system({
+        "bash",
+        "-c",
+        '. "$1" && declare -F ide_resolve_link >/dev/null && ide_resolve_link "$2" "$3"',
+        "ide",
+        rules,
+        word,
+        cwd or uv.cwd() or "",
+    })
+    if vim.v.shell_error ~= 0 or not out then
+        return nil
+    end
+    out = out:gsub("[\r\n]+$", "")
+    return out ~= "" and out or nil
+end
+
+follow_editor_link = function(at_mouse, fallback_tag)
+    if at_mouse then
+        local m = vim.fn.getmousepos()
+        if m.winid > 0 and vim.api.nvim_win_is_valid(m.winid) then
+            if vim.fn.mode():find("[vV\22]") then
+                vim.cmd("normal! \27")
+            end
+            vim.api.nvim_set_current_win(m.winid)
+            if m.line > 0 then
+                local bufnr = vim.api.nvim_win_get_buf(m.winid)
+                local line_cnt = vim.api.nvim_buf_line_count(bufnr)
+                local lnum = math.min(m.line, line_cnt)
+                local line_str = (vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1]) or ""
+                local col = math.min(math.max(0, m.column - 1), math.max(0, #line_str - 1))
+                pcall(vim.api.nvim_win_set_cursor, m.winid, { lnum, col })
+            end
+        end
+    end
+
+    local uv = vim.uv or vim.loop
+    local base_dir = vim.fn.expand("%:p:h")
+    if base_dir == "" then base_dir = uv.cwd() end
+
+    local function open_local_file_target(raw_target, dir)
+        local raw_path = raw_target:gsub("^file://[^/]*", "")
+        raw_path = url_decode(raw_path):gsub("^/+(%a:[/\\])", "%1")
+
+        local file_path, fragment = raw_path:match("^([^#]+)#?(.*)$")
+        file_path = file_path or raw_path
+        fragment = fragment or ""
+
+        local line_num = fragment:match("^[Ll]?(%d+)")
+            or file_path:match("^%a:[/\\].*:[Ll]?(%d+)")
+            or (not file_path:match("^%a:[/\\]") and file_path:match(":[Ll]?(%d+)"))
+        if file_path:match("^%a:[/\\]") then
+            file_path = file_path:gsub("^(%a:[/\\][^:]+):[Ll]?%d+.*$", "%1")
+        elseif file_path:match(":[Ll]?%d+") then
+            file_path = file_path:gsub(":[Ll]?%d+.*$", "")
+        end
+
+        local resolved_path = is_abs_path(file_path)
+            and vim.fs.normalize(file_path)
+            or vim.fs.normalize(vim.fs.joinpath(dir, file_path))
+        local st = uv.fs_stat(resolved_path)
+
+        if st and st.type == "file" then
+            pcall(function() require("mini.files").close() end)
+            vim.cmd("normal! m'")
+            vim.cmd("keepjumps edit " .. vim.fn.fnameescape(resolved_path))
+            if line_num and tonumber(line_num) then
+                vim.cmd(string.format("keepjumps call cursor(%d, 1) | normal! ^zz", tonumber(line_num)))
+            elseif fragment and fragment ~= "" then
+                local lnum = find_markdown_anchor_line(0, fragment)
+                if lnum then
+                    vim.cmd(string.format("keepjumps call cursor(%d, 1) | normal! ^zz", lnum))
+                end
+            end
+            return true
+        end
+        return false
+    end
+
+    local target, is_md = extract_link_at_cursor()
+    if target and target ~= "" then
+        if target:sub(1, 1) == "#" and (is_md or vim.bo.filetype == "markdown") then
+            local lnum = find_markdown_anchor_line(0, target:sub(2))
+            if lnum then
+                vim.cmd("normal! m'")
+                vim.cmd(string.format("keepjumps call cursor(%d, 1) | normal! ^zz", lnum))
+                return true
+            end
+            return false
+        end
+
+        if target:match("^https?://") then
+            local custom_target = resolve_custom_link_rule(target, base_dir)
+            if custom_target and custom_target:match("^file://") and open_local_file_target(custom_target, base_dir) then
+                return true
+            end
+            local open_url = (custom_target and custom_target:match("^https?://")) and custom_target or target
+            if vim.env.TMUX and vim.env.TMUX ~= "" and resolve_cli_bin("ide") ~= "" then
+                ide_job("--open-link", open_url, open_url, base_dir)
+            else
+                open_external_url(open_url)
+            end
+            return true
+        end
+
+        if is_md or vim.bo.filetype == "markdown" or target:match("^file://") or target:find("[/\\.]") then
+            if not target:match("^//") and open_local_file_target(target, base_dir) then
+                return true
+            end
+            if target:find("[/\\]") or target:match("^@?%d%d%d%d%d%d+$") then
+                local custom_target = resolve_custom_link_rule(target, base_dir)
+                if custom_target then
+                    if open_local_file_target(custom_target, base_dir) then
+                        return true
+                    elseif custom_target:match("^https?://") then
+                        if vim.env.TMUX and vim.env.TMUX ~= "" and resolve_cli_bin("ide") ~= "" then
+                            ide_job("--open-link", custom_target, custom_target, base_dir)
+                        else
+                            open_external_url(custom_target)
+                        end
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    if at_mouse or fallback_tag then
+        local has_lsp = vim.lsp and vim.lsp.get_clients and #vim.lsp.get_clients({ bufnr = 0, method = "textDocument/definition" }) > 0
+        if has_lsp then
+            vim.lsp.buf.definition()
+            return true
+        elseif fallback_tag then
+            pcall(vim.cmd, "normal! \29")
+            return true
+        end
+    end
+    return false
+end
+
+-- Project File Explorer Toggle: toggles mini.files (`Space+e` at current buffer / `Space+E` at cwd, falling back to Lexplore)
+local function toggle_file_explorer(use_cwd)
+    local ok, mf = pcall(require, "mini.files")
+    if ok and mf then
+        if not mf.close() then
+            local uv = vim.uv or vim.loop
+            local buf_name = vim.api.nvim_buf_get_name(0)
+            if not use_cwd and buf_name ~= "" then
+                if uv.fs_stat(buf_name) then
+                    mf.open(buf_name, false)
+                    return
+                end
+                local buf_dir = vim.fn.fnamemodify(buf_name, ":h")
+                if buf_dir ~= "" and uv.fs_stat(buf_dir) then
+                    mf.open(buf_dir, false)
+                    return
+                end
+            end
+            recover_stale_cwd()
+            mf.open(uv.cwd(), false)
+        end
+    else
+        vim.cmd("Lexplore")
+    end
+end
+map("n", "<leader>e", function()
+    toggle_file_explorer(false)
+end, { desc = "Toggle Mini.files Navigator (Buffer Dir)" })
+map("n", "<leader>E", function()
+    toggle_file_explorer(true)
+end, { desc = "Toggle Mini.files Navigator (Workspace Root)" })
+
+-- Workspace Role Jump & Context Dispatch (Editor <-> AI Agent <-> Shell)
+map("n", "<leader>a", function()
+    if in_ide_workspace() then
+        ide_job("--toggle")
+    end
+end, { desc = "Toggle Focus: Editor <-> AI Agent" })
+
+map("n", "<leader>s", function()
+    if in_ide_workspace() then
+        ide_job("--sessions")
+    end
+end, { desc = "Open IDE Session Manager & Attention Inbox" })
+
+map("x", "<leader>a", function()
+    local cur_mode = vim.fn.mode()
+    local in_visual = (cur_mode == "v" or cur_mode == "V" or cur_mode == "\22")
+    local v1, v2
+    if in_visual then
+        v1 = vim.fn.line("v")
+        v2 = vim.fn.line(".")
+    else
+        v1 = vim.fn.line("'<")
+        v2 = vim.fn.line("'>")
+        if v1 == 0 or v2 == 0 then
+            v1 = vim.fn.line(".")
+            v2 = v1
+        end
+    end
+    local l1 = math.min(v1, v2)
+    local l2 = math.max(v1, v2)
+    local buf_name = vim.api.nvim_buf_get_name(0)
+    local is_file_buf = (vim.bo.buftype == "" and buf_name ~= "")
+    local region_lines = nil
+    if not is_file_buf then
+        if in_visual and vim.fn.getregion then
+            local ok, reg = pcall(vim.fn.getregion, vim.fn.getpos("v"), vim.fn.getpos("."), { type = cur_mode })
+            if ok and reg and #reg > 0 then
+                region_lines = reg
+            end
+        end
+        if not region_lines then
+            region_lines = vim.api.nvim_buf_get_lines(0, math.max(0, l1 - 1), l2, false)
+        end
+    end
+    if in_visual then
+        vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+    end
+    if is_file_buf then
+        local buf_path = vim.fn.fnamemodify(buf_name, ":p")
+        local ref = string.format("%s:%d-%d", buf_path, l1, l2)
+        pcall(vim.fn.setreg, "+", ref)
+        if in_ide_workspace() then
+            ide_job("--send", "--ref", ref)
+        else
+            vim.notify("Copied reference to clipboard: " .. ref, vim.log.levels.INFO)
+        end
+    elseif region_lines then
+        local text = table.concat(region_lines, "\n")
+        if text ~= "" then
+            pcall(vim.fn.setreg, "+", text)
+            if in_ide_workspace() then
+                ide_job("--send", "--text", text)
+            else
+                vim.notify("Copied selection to clipboard", vim.log.levels.INFO)
+            end
+        end
+    end
+end, { desc = "Send Visual Selection Reference to AI Agent" })
+
+map("n", "<leader>il", function()
+    local buf_name = vim.api.nvim_buf_get_name(0)
+    if vim.bo.buftype == "" and buf_name ~= "" then
+        local buf_path = vim.fn.fnamemodify(buf_name, ":p")
+        local ref = string.format("%s:%d", buf_path, vim.fn.line("."))
+        pcall(vim.fn.setreg, "+", ref)
+        if in_ide_workspace() then
+            ide_job("--send", "--ref", ref)
+        else
+            vim.notify("Copied line reference to clipboard: " .. ref, vim.log.levels.INFO)
+        end
+    else
+        local line_text = vim.api.nvim_get_current_line()
+        if line_text ~= "" then
+            pcall(vim.fn.setreg, "+", line_text)
+            if in_ide_workspace() then
+                ide_job("--send", "--text", line_text)
+            end
+        end
+    end
+end, { desc = "Send Current Line Reference to AI Agent" })
+
+map("n", "<leader>id", function()
+    local diags = vim.diagnostic.get(0)
+    if not diags or #diags == 0 then
+        vim.notify("No diagnostics in current buffer", vim.log.levels.INFO)
+        return
+    end
+    table.sort(diags, function(a, b)
+        if a.lnum ~= b.lnum then
+            return a.lnum < b.lnum
+        end
+        return (a.col or 0) < (b.col or 0)
+    end)
+    local sev_names = {
+        [vim.diagnostic.severity.ERROR] = "ERROR",
+        [vim.diagnostic.severity.WARN] = "WARN",
+        [vim.diagnostic.severity.INFO] = "INFO",
+        [vim.diagnostic.severity.HINT] = "HINT",
+    }
+    local buf_name = vim.api.nvim_buf_get_name(0)
+    local header_path = (buf_name ~= "") and vim.fn.fnamemodify(buf_name, ":.") or "[No Name]"
+    local out = { string.format("Diagnostics in %s:", header_path) }
+    for _, d in ipairs(diags) do
+        local sev = sev_names[d.severity] or "DIAG"
+        local msg = tostring(d.message or ""):gsub("%s*\n%s*", " ")
+        table.insert(out, string.format("- [%s] L%d:%d: %s", sev, (d.lnum or 0) + 1, (d.col or 0) + 1, msg))
+    end
+    local payload = table.concat(out, "\n") .. "\n"
+    pcall(vim.fn.setreg, "+", payload)
+    if in_ide_workspace() then
+        ide_job("--send", "--text", payload)
+    else
+        vim.notify("Copied buffer diagnostics to clipboard", vim.log.levels.INFO)
+    end
+end, { desc = "Send Buffer Diagnostics to AI Agent" })
+
+local function open_ide_keys_popup()
+    local ide_bin = resolve_cli_bin("ide")
+    if ide_bin == "" then
+        return
+    end
+    if vim.env.TMUX then
+        local cmd = { "tmux", "display-popup" }
+        if (vim.env.TMUX_PANE or "") ~= "" then
+            table.insert(cmd, "-t")
+            table.insert(cmd, vim.env.TMUX_PANE)
+        end
+        vim.list_extend(cmd, { "-E", "-w", "90", "-h", "30", vim.fn.shellescape(ide_bin) .. " --keys" })
+        vim.fn.jobstart(cmd, { detach = true })
+        return
+    elseif vim.env.ZELLIJ and vim.fn.executable("zellij") == 1 then
+        vim.fn.jobstart({
+            "zellij", "run", "-f", "-c",
+            "--width", "88%", "--height", "82%", "-x", "6%", "-y", "9%",
+            "--", ide_bin, "--keys",
+        }, { detach = true })
+        return
+    end
+    local buf = vim.api.nvim_create_buf(false, true)
+    local w = math.min(92, math.max(60, vim.o.columns - 6))
+    local h = math.min(30, math.max(16, vim.o.lines - 4))
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        width = w,
+        height = h,
+        row = math.max(0, math.floor((vim.o.lines - h) / 2)),
+        col = math.max(0, math.floor((vim.o.columns - w) / 2)),
+        style = "minimal",
+        border = "rounded",
+        title = " IDE Keybindings (press q or Esc to close) ",
+        title_pos = "center",
+    })
+    vim.fn.termopen({ ide_bin, "--keys" })
+    vim.keymap.set({ "n", "t" }, "q", function()
+        if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_close(win, true)
+        end
+    end, { buffer = buf, silent = true })
+    vim.keymap.set({ "n", "t" }, "<Esc>", function()
+        if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_close(win, true)
+        end
+    end, { buffer = buf, silent = true })
+end
+map("n", "<leader>?", open_ide_keys_popup, { desc = "Open IDE Keybinding Cheatsheet" })
+map({ "n", "i", "v", "t" }, "<M-?>", open_ide_keys_popup, { desc = "Open IDE Keybinding Cheatsheet" })
+
+-- One-Command Quit Everything (:Q, :Quit, Space+q, Alt+q, qide)
+local function count_real_modified_buffers()
+    local cnt = 0
+    for _, b in ipairs(vim.fn.getbufinfo({ bufmodified = 1 })) do
+        local bt = vim.bo[b.bufnr].buftype
+        if bt == "" then
+            if b.name and b.name ~= "" then
+                cnt = cnt + 1
+            else
+                local lines = vim.api.nvim_buf_get_lines(b.bufnr, 0, -1, false)
+                local text = table.concat(lines, ""):gsub("%s+", "")
+                if text ~= "" then
+                    cnt = cnt + 1
+                end
+            end
+        end
+    end
+    return cnt
+end
+_G.count_ide_modified_buffers = count_real_modified_buffers
+
+local function quit_ide_or_nvim(force, target_sessions)
+    local targets = target_sessions or {}
+    if in_ide_workspace() and resolve_cli_bin("ide") ~= "" then
+        local cur_sess = vim.env.IDE_SESSION or ""
+        local checks_local = (#targets == 0)
+        if not checks_local and cur_sess ~= "" then
+            for _, t in ipairs(targets) do
+                if t == cur_sess then
+                    checks_local = true
+                    break
+                end
+            end
+        end
+        if not force and checks_local then
+            local modified = count_real_modified_buffers()
+            if modified > 0 then
+                vim.api.nvim_echo({ { "E37: No write since last change in " .. modified .. " buffer(s) (save with :wa or press Alt+Shift+Q / :Q! to force)", "ErrorMsg" } }, true, {})
+                return
+            end
+        end
+        if #targets == 0 then
+            if force then
+                ide_job("--quit", "--force")
+            else
+                ide_job("--quit")
+            end
+        else
+            local cmd = { resolve_cli_bin("ide"), "--quit" }
+            if force then
+                table.insert(cmd, "--force")
+            end
+            for _, t in ipairs(targets) do
+                table.insert(cmd, t)
+            end
+            vim.fn.jobstart(cmd, { detach = true })
+        end
+        if not vim.env.TMUX and not vim.env.ZELLIJ then
+            vim.schedule(function()
+                vim.cmd("qa!")
+            end)
+        end
+    else
+        vim.cmd(force and "qa!" or "confirm qa")
+    end
+end
+
+local function complete_ide_sessions(arg_lead)
+    local ide_bin = resolve_cli_bin("ide")
+    if ide_bin == "" then
+        return {}
+    end
+    local lines = vim.fn.systemlist({ ide_bin, "--list", "--plain" })
+    if vim.v.shell_error ~= 0 then
+        return {}
+    end
+    local matches = {}
+    for _, s in ipairs(lines) do
+        local trimmed = vim.trim(s)
+        if trimmed ~= "" and trimmed:find(arg_lead, 1, true) == 1 then
+            table.insert(matches, trimmed)
+        end
+    end
+    return matches
+end
+
+map("n", "<leader>q", function() quit_ide_or_nvim(false) end, { desc = "Quit Entire IDE Workspace" })
+map({ "n", "i", "v", "t" }, "<M-q>", function() quit_ide_or_nvim(false) end, { desc = "Quit Entire IDE Workspace" })
+map({ "n", "i", "v", "t" }, "<M-Q>", function() quit_ide_or_nvim(true) end, { desc = "Force-Quit Entire IDE Workspace" })
+vim.api.nvim_create_user_command("Q", function(opts) quit_ide_or_nvim(opts.bang, opts.fargs) end, { bang = true, nargs = "*", complete = complete_ide_sessions, desc = "Quit Entire IDE Workspace" })
+vim.api.nvim_create_user_command("Quit", function(opts) quit_ide_or_nvim(opts.bang, opts.fargs) end, { bang = true, nargs = "*", complete = complete_ide_sessions, desc = "Quit Entire IDE Workspace" })
+
+vim.api.nvim_create_user_command("IdeCd", function(opts)
+    local target = vim.trim(opts.args or "")
+    local resolved
+    if target == "" then
+        local buf_dir = vim.fn.expand("%:p:h")
+        if buf_dir ~= "" and vim.fn.isdirectory(buf_dir) == 1 then
+            resolved = buf_dir
+        else
+            resolved = vim.fn.getcwd()
+        end
+    elseif target == "~" or target == "--reset" then
+        resolved = vim.env.IDE_INITIAL_ROOT or vim.fn.getcwd()
+    else
+        resolved = vim.fn.fnamemodify(vim.fn.expand(target), ":p"):gsub("[/\\]+$", "")
+        if resolved:match("^%a:$") then
+            resolved = resolved .. (is_win32 and "\\" or "/")
+        end
+    end
+    if resolved == "" then
+        resolved = is_win32 and (vim.env.SystemDrive or "C:") .. "\\" or "/"
+    end
+    if vim.fn.isdirectory(resolved) ~= 1 then
+        vim.notify("IdeCd: not a directory: " .. tostring(target), vim.log.levels.WARN)
+        return
+    end
+    pcall(vim.cmd, "cd " .. vim.fn.fnameescape(resolved))
+    if in_ide_workspace() then
+        ide_job("--cd", resolved)
+    end
+end, { nargs = "?", complete = "dir", desc = "Dive IDE Workspace (Editor & Shell) to directory" })
+
+map("n", "<leader>cd", "<cmd>IdeCd<CR>", { desc = "Dive IDE Workspace to Current Buffer Directory" })
+
+vim.api.nvim_create_user_command("IdeSend", function(opts)
+    local ide_bin = resolve_cli_bin("ide")
+    local target = vim.trim(opts.args or "")
+    if target == "" then
+        target = vim.env.IDE_SESSION or ""
+    end
+    local mode_flag = opts.bang and "--switch" or "--no-focus"
+    local l1 = math.min(opts.line1 or vim.fn.line("."), opts.line2 or vim.fn.line("."))
+    local l2 = math.max(opts.line1 or vim.fn.line("."), opts.line2 or vim.fn.line("."))
+    local has_range = (opts.range or 0) > 0
+    local buf_name = vim.api.nvim_buf_get_name(0)
+    if vim.bo.buftype == "" and buf_name ~= "" then
+        local buf_path = vim.fn.fnamemodify(buf_name, ":p")
+        local ref = has_range and string.format("%s:%d-%d", buf_path, l1, l2) or string.format("%s:%d", buf_path, l1)
+        pcall(vim.fn.setreg, "+", ref)
+        if in_ide_workspace() and ide_bin ~= "" then
+            local cmd = { ide_bin, "--send", "--ref", ref, mode_flag }
+            if target ~= "" then
+                table.insert(cmd, target)
+            end
+            vim.fn.jobstart(cmd, { detach = true })
+        end
+    else
+        local lines = vim.api.nvim_buf_get_lines(0, math.max(0, l1 - 1), l2, false)
+        local text = table.concat(lines, "\n")
+        if text == "" then
+            return
+        end
+        pcall(vim.fn.setreg, "+", text)
+        if in_ide_workspace() and ide_bin ~= "" then
+            local cmd = { ide_bin, "--send", "--text", text, mode_flag }
+            if target ~= "" then
+                table.insert(cmd, target)
+            end
+            vim.fn.jobstart(cmd, { detach = true })
+        end
+    end
+end, { bang = true, range = true, nargs = "?", complete = complete_ide_sessions, desc = "Stage line or visual range into target IDE session AI prompt" })
+
+-- -------------------------------------------------------------
+-- Active Color Theme Palette Resolution and Live RPC Hot-Reload
+-- -------------------------------------------------------------
+local default_solarized_palette = {
+    base03 = "#002B36",
+    base02 = "#073642",
+    base04 = "#002731",
+    base01 = "#586E75",
+    base00 = "#657B83",
+    base0 = "#839496",
+    base1 = "#93A1A1",
+    base2 = "#EEE8D5",
+    base3 = "#FDF6E3",
+    yellow = "#B58900",
+    orange = "#CB4B16",
+    red = "#DC322F",
+    magenta = "#D33682",
+    violet = "#6C71C4",
+    blue = "#268BD2",
+    cyan = "#2AA198",
+    green = "#859900",
+    mix_green = "#274C25",
+    mix_yellow = "#364725",
+    mix_blue = "#0B4764",
+    mix_red = "#422D33",
+    mix_magenta = "#3E2E4C",
+    mix_base1 = "#2C4E56",
+}
+
+local default_solarized_light_palette = {
+    base03 = "#FDF6E3",
+    base02 = "#EEE8D5",
+    base04 = "#E6DFCA",
+    base01 = "#93A1A1",
+    base00 = "#839496",
+    base0 = "#657B83",
+    base1 = "#586E75",
+    base2 = "#073642",
+    base3 = "#002B36",
+    yellow = "#B58900",
+    orange = "#CB4B16",
+    red = "#DC322F",
+    magenta = "#D33682",
+    violet = "#6C71C4",
+    blue = "#268BD2",
+    cyan = "#2AA198",
+    green = "#859900",
+    mix_green = "#E5ECD0",
+    mix_yellow = "#F0E4C0",
+    mix_blue = "#D8E6EE",
+    mix_red = "#F6D8D3",
+    mix_magenta = "#F3D9E4",
+    mix_base1 = "#E4DEC8",
+}
+
+local builtin_theme_slugs = {
+    "solarized-dark", "solarized-light", "catppuccin-mocha", "catppuccin-latte",
+    "gruvbox-dark", "tokyonight-night", "kanagawa-wave", "nord", "onedark",
+    "new-years", "valentines", "st-patricks", "easter",
+    "independence-day", "halloween", "thanksgiving", "christmas",
+}
+
+local theme_key_map = {
+    BASE03 = "base03",
+    BASE02 = "base02",
+    BASE04 = "base04",
+    BASE01 = "base01",
+    BASE00 = "base00",
+    BASE0 = "base0",
+    BASE1 = "base1",
+    BASE2 = "base2",
+    BASE3 = "base3",
+    YELLOW = "yellow",
+    ORANGE = "orange",
+    RED = "red",
+    MAGENTA = "magenta",
+    VIOLET = "violet",
+    BLUE = "blue",
+    CYAN = "cyan",
+    GREEN = "green",
+    MIX_GREEN = "mix_green",
+    MIX_YELLOW = "mix_yellow",
+    MIX_BLUE = "mix_blue",
+    MIX_RED = "mix_red",
+    MIX_MAGENTA = "mix_magenta",
+    MIX_BASE1 = "mix_base1",
+}
+
+local function theme_search_dirs(cfg_home)
+    local dirs = {}
+    local function add_dir(d)
+        if d and d ~= "" and not vim.tbl_contains(dirs, d) then
+            table.insert(dirs, d)
+        end
+    end
+    add_dir(vim.env.WINDOWS_SETTINGS_USER_THEMES_DIR)
+    add_dir(vim.env.HOME_SETTINGS_USER_THEMES_DIR)
+    add_dir(cfg_home .. "/themes")
+    add_dir(cfg_home .. "/windows-settings/themes")
+    add_dir(cfg_home .. "/home-settings/themes")
+    for _, root in ipairs(candidate_repo_roots()) do
+        add_dir(root .. "/config/themes")
+        add_dir(root .. "/colors/themes")
+    end
+    return dirs
+end
+
+local function parse_theme_file_kv(path)
+    local kv = {}
+    if vim.fn.filereadable(path) ~= 1 then
+        return kv
+    end
+    for _, raw_line in ipairs(vim.fn.readfile(path)) do
+        local s = vim.trim(raw_line)
+        if s ~= "" and s:sub(1, 1) ~= "#" then
+            s = s:gsub("^export%s+", "")
+            local k, v = s:match("^([A-Za-z_][A-Za-z0-9_]*)%s*=%s*(.*)$")
+            if k and v then
+                v = vim.trim(v)
+                local q = v:sub(1, 1)
+                if (q == '"' or q == "'") and #v >= 2 then
+                    local end_idx = v:find(q, 2, true)
+                    if end_idx then
+                        local rest = vim.trim(v:sub(end_idx + 1))
+                        if rest == "" or rest:sub(1, 1) == "#" then
+                            v = v:sub(2, end_idx - 1)
+                        end
+                    end
+                else
+                    v = vim.trim((v:gsub("%s+#.*$", "")))
+                end
+                kv[k] = v
+            end
+        end
+    end
+    return kv
+end
+
+local function is_valid_hex(val)
+    return type(val) == "string"
+        and val:match("^#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$") ~= nil
+end
+
+local function resolve_active_theme_palette(_)
+    local cfg_home = (vim.env.XDG_CONFIG_HOME and vim.env.XDG_CONFIG_HOME ~= "")
+        and vim.env.XDG_CONFIG_HOME
+        or (vim.fn.expand("$HOME") .. "/.config")
+    local theme_files = {
+        vim.env.WINDOWS_SETTINGS_THEME_FILE,
+        vim.env.HOME_SETTINGS_THEME_FILE,
+        cfg_home .. "/windows-settings/active-theme.theme",
+        cfg_home .. "/home-settings/active-theme.theme",
+    }
+    local raw_env_slug = (vim.env.WINDOWS_SETTINGS_THEME and vim.env.WINDOWS_SETTINGS_THEME ~= "")
+        and vim.env.WINDOWS_SETTINGS_THEME
+        or (vim.env.HOME_SETTINGS_THEME or "")
+    local requested_slug = vim.trim(raw_env_slug):lower():gsub("_", "-")
+    local parsed = {}
+    local found_file = false
+    for _, tf in ipairs(theme_files) do
+        if tf and tf ~= "" and vim.fn.filereadable(tf) == 1 then
+            parsed = parse_theme_file_kv(tf)
+            found_file = true
+            break
+        end
+    end
+    if not found_file and requested_slug ~= "" then
+        local search_dirs = theme_search_dirs(cfg_home)
+        for _, dir in ipairs(search_dirs) do
+            for _, ext in ipairs({ ".theme", ".conf" }) do
+                local candidate = dir .. "/" .. requested_slug .. ext
+                if vim.fn.filereadable(candidate) == 1 then
+                    parsed = parse_theme_file_kv(candidate)
+                    found_file = true
+                    break
+                end
+            end
+            if found_file then
+                break
+            end
+        end
+        if not found_file then
+            for _, dir in ipairs(search_dirs) do
+                local files = vim.list_extend(
+                    vim.fn.glob(dir .. "/*.theme", false, true),
+                    vim.fn.glob(dir .. "/*.conf", false, true)
+                )
+                table.sort(files)
+                for _, f in ipairs(files) do
+                    local kv = parse_theme_file_kv(f)
+                    local cid = vim.trim(kv.THEME_ID or vim.fn.fnamemodify(f, ":t:r")):lower():gsub("_", "-")
+                    if cid == requested_slug then
+                        parsed = kv
+                        found_file = true
+                        break
+                    end
+                end
+                if found_file then
+                    break
+                end
+            end
+        end
+    end
+    local theme_id = (parsed.THEME_ID and parsed.THEME_ID ~= "")
+        and parsed.THEME_ID:lower():gsub("_", "-")
+        or ((requested_slug ~= "" and found_file) and requested_slug or "solarized-dark")
+    local theme_mode = (tostring(parsed.THEME_MODE or ""):lower() == "light") and "light" or "dark"
+    vim.g.home_settings_theme = theme_id
+    vim.g.windows_settings_theme = theme_id
+    vim.g.home_settings_theme_mode = theme_mode
+    vim.env.HOME_SETTINGS_THEME = theme_id
+    vim.env.WINDOWS_SETTINGS_THEME = theme_id
+    vim.env.HOME_SETTINGS_THEME_MODE = theme_mode
+    if parsed.BAT_THEME_NAME and parsed.BAT_THEME_NAME ~= "" then
+        vim.env.BAT_THEME = parsed.BAT_THEME_NAME
+    end
+    local base_defaults = (theme_mode == "light") and default_solarized_light_palette or default_solarized_palette
+    local out = vim.tbl_extend("force", {}, base_defaults)
+    for env_k, lua_k in pairs(theme_key_map) do
+        if is_valid_hex(parsed[env_k]) then
+            out[lua_k] = parsed[env_k]:upper()
+        end
+    end
+    if not is_valid_hex(parsed.BASE04) and is_valid_hex(parsed.BASE02) then
+        out.base04 = parsed.BASE02:upper()
+    end
+    return out
+end
+
+local function apply_terminal_ansi_palette(colors)
+    vim.g.terminal_color_0 = colors.base02
+    vim.g.terminal_color_1 = colors.red
+    vim.g.terminal_color_2 = colors.green
+    vim.g.terminal_color_3 = colors.yellow
+    vim.g.terminal_color_4 = colors.blue
+    vim.g.terminal_color_5 = colors.magenta
+    vim.g.terminal_color_6 = colors.cyan
+    vim.g.terminal_color_7 = colors.base2
+    vim.g.terminal_color_8 = colors.base01
+    vim.g.terminal_color_9 = colors.orange
+    vim.g.terminal_color_10 = colors.base01
+    vim.g.terminal_color_11 = colors.base00
+    vim.g.terminal_color_12 = colors.base0
+    vim.g.terminal_color_13 = colors.violet
+    vim.g.terminal_color_14 = colors.base1
+    vim.g.terminal_color_15 = colors.base3
+end
+
+local build_theme_highlights
+
+local function sync_solarized_plugin_palette(colors)
+    local ok, palette_mod = pcall(require, "solarized.palette")
+    if ok and type(palette_mod) == "table" and type(palette_mod.solarized) == "table" then
+        local sp = palette_mod.solarized
+        for k, v in pairs(colors) do
+            sp[k] = v
+        end
+        sp.base4 = colors.base3
+        sp.diag_error = colors.red
+        sp.diag_warning = colors.yellow
+        sp.diag_info = colors.blue
+        sp.diag_hint = colors.cyan
+        sp.diag_ok = colors.green
+        sp.git_add = colors.green
+        sp.git_modify = colors.yellow
+        sp.git_delete = colors.red
+    end
+    local ok_light, light_mod = pcall(require, "solarized.palette.solarized-light")
+    if ok_light and type(light_mod) == "table" and type(light_mod.solarized) == "table" then
+        local lp = light_mod.solarized
+        lp.base3 = colors.base03
+        lp.base2 = colors.base02
+        lp.base4 = colors.base04
+        lp.base1 = colors.base01
+        lp.base0 = colors.base00
+        lp.base00 = colors.base0
+        lp.base01 = colors.base1
+        lp.base02 = colors.base2
+        lp.base03 = colors.base3
+        lp.yellow = colors.yellow
+        lp.orange = colors.orange
+        lp.red = colors.red
+        lp.magenta = colors.magenta
+        lp.violet = colors.violet
+        lp.blue = colors.blue
+        lp.cyan = colors.cyan
+        lp.green = colors.green
+        lp.mix_green = colors.mix_green
+        lp.mix_yellow = colors.mix_yellow
+        lp.mix_blue = colors.mix_blue
+        lp.mix_red = colors.mix_red
+        lp.mix_magenta = colors.mix_magenta
+        lp.mix_base1 = colors.mix_base1
+        lp.mix_base01 = colors.mix_base1
+        lp.diag_error = colors.red
+        lp.diag_warning = colors.yellow
+        lp.diag_info = colors.blue
+        lp.diag_hint = colors.cyan
+        lp.diag_ok = colors.green
+        lp.git_add = colors.green
+        lp.git_modify = colors.yellow
+        lp.git_delete = colors.red
+    end
+end
+
+_G.apply_home_settings_theme = function()
+    local p = resolve_active_theme_palette(nil)
+    local target_bg = (vim.g.home_settings_theme_mode == "light") and "light" or "dark"
+    vim.o.background = target_bg
+    sync_solarized_plugin_palette(p)
+    local applied_via_colorscheme = false
+    if package.loaded["solarized"] and _G._hs_solarized_opts then
+        applied_via_colorscheme = pcall(function()
+            require("solarized").setup(_G._hs_solarized_opts)
+            vim.cmd.colorscheme("solarized")
+        end)
+    end
+    if not applied_via_colorscheme then
+        if build_theme_highlights then
+            local hl = build_theme_highlights(p)
+            for group, spec in pairs(hl) do
+                pcall(vim.api.nvim_set_hl, 0, group, spec)
+            end
+        else
+            vim.cmd(string.format(
+                "highlight Normal guibg=%s guifg=%s | highlight CursorLine guibg=%s | highlight Comment guifg=%s",
+                p.base03, p.base0, p.base02, p.base01
+            ))
+        end
+    end
+    apply_terminal_ansi_palette(p)
+    return vim.g.home_settings_theme or "solarized-dark"
+end
+_G.apply_windows_settings_theme = _G.apply_home_settings_theme
+
+do
+    local initial_palette = resolve_active_theme_palette(nil)
+    vim.o.background = (vim.g.home_settings_theme_mode == "light") and "light" or "dark"
+    apply_terminal_ansi_palette(initial_palette)
+end
+
+vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("SolarizedTerminalAnsiPalette", { clear = true }),
+    pattern = "solarized",
+    callback = function()
+        apply_terminal_ansi_palette(resolve_active_theme_palette(nil))
+    end,
+})
+
+vim.api.nvim_create_user_command("Theme", function(opts)
+    local arg = vim.trim(opts.args or "")
+    if arg == "" then
+        vim.notify("Active theme: " .. tostring(vim.g.home_settings_theme or "solarized-dark"), vim.log.levels.INFO)
+        return
+    end
+    local theme_bin = resolve_cli_bin("theme")
+    if theme_bin == "" then
+        vim.notify("Theme executable not found", vim.log.levels.ERROR)
+        return
+    end
+    local cmd = (arg == "--holiday" or arg == "holiday")
+        and { theme_bin, "--holiday" }
+        or { theme_bin, "--set=" .. arg }
+    local prev_skip = vim.env.THEME_SKIP_NVIM_SOCKET
+    vim.env.THEME_SKIP_NVIM_SOCKET = vim.v.servername or ""
+    local out = vim.fn.system(cmd)
+    local rc = vim.v.shell_error
+    vim.env.THEME_SKIP_NVIM_SOCKET = prev_skip
+    if rc ~= 0 then
+        local msg = vim.trim(out or "")
+        vim.notify("Theme switch failed: " .. (msg ~= "" and msg or arg), vim.log.levels.ERROR)
+        return
+    end
+    _G.apply_home_settings_theme()
+end, {
+    nargs = "?",
+    complete = function(arg_lead)
+        local cfg_home = (vim.env.XDG_CONFIG_HOME and vim.env.XDG_CONFIG_HOME ~= "")
+            and vim.env.XDG_CONFIG_HOME
+            or (vim.fn.expand("$HOME") .. "/.config")
+        local seen = {}
+        local items = {}
+        local function add_item(name)
+            if name and name ~= "" and not seen[name] then
+                seen[name] = true
+                table.insert(items, name)
+            end
+        end
+        for _, slug in ipairs(builtin_theme_slugs) do
+            add_item(slug)
+        end
+        local custom = {}
+        for _, dir in ipairs(theme_search_dirs(cfg_home)) do
+            local files = vim.list_extend(
+                vim.fn.glob(dir .. "/*.theme", false, true),
+                vim.fn.glob(dir .. "/*.conf", false, true)
+            )
+            for _, f in ipairs(files) do
+                local stem = vim.fn.fnamemodify(f, ":t:r")
+                if stem ~= "active-theme" then
+                    local kv = parse_theme_file_kv(f)
+                    local slug = vim.trim(kv.THEME_ID or stem):lower():gsub("_", "-")
+                    if slug ~= "" and slug ~= "active-theme" and not seen[slug] then
+                        seen[slug] = true
+                        table.insert(custom, slug)
+                    end
+                end
+            end
+        end
+        table.sort(custom)
+        for _, slug in ipairs(custom) do
+            table.insert(items, slug)
+        end
+        add_item("--holiday")
+        return vim.tbl_filter(function(item)
+            return item:find(arg_lead, 1, true) == 1
+        end, items)
+    end,
+    desc = "Switch or inspect active windows-settings color theme",
+})
 
 -- -------------------------------------------------------------
 -- 3. Bootstrap Lazy.nvim Plugin Manager
 -- -------------------------------------------------------------
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
-    vim.fn.system({
+    local out = vim.fn.system({
         "git",
         "clone",
         "--filter=blob:none",
@@ -108,6 +1616,9 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
         "--branch=stable",
         lazypath,
     })
+    if vim.v.shell_error ~= 0 then
+        error("Failed to clone lazy.nvim:\n" .. tostring(out))
+    end
 end
 vim.opt.rtp:prepend(lazypath)
 
@@ -116,17 +1627,49 @@ vim.opt.rtp:prepend(lazypath)
 -- -------------------------------------------------------------
 local status_ok, lazy = pcall(require, "lazy")
 if not status_ok then
-    -- Fallback Solarized colors if offline/lazy not present
-    vim.cmd([[
-        highlight Normal guibg=#002B36 guifg=#839496
-        highlight CursorLine guibg=#073642
-        highlight Comment guifg=#586E75
-    ]])
+    _G.apply_home_settings_theme()
     return
 end
 
+if package.loaded["lazy.core.config"] then
+    _G.apply_home_settings_theme()
+    return
+end
+
+local cfg_lockfile = vim.fn.stdpath("config") .. "/lazy-lock.json"
+local lazy_lockfile = cfg_lockfile
+if not (vim.uv or vim.loop).fs_stat(vim.fn.stdpath("data") .. "/lazy/solarized.nvim") then
+    local uv = vim.uv or vim.loop
+    local state_dir = vim.fn.stdpath("state")
+    vim.fn.mkdir(state_dir, "p")
+    lazy_lockfile = state_dir .. "/lazy-lock.json"
+    local seed_lockfile = (vim.fn.filereadable(cfg_lockfile) == 1) and cfg_lockfile or nil
+    if not seed_lockfile then
+        for _, root in ipairs(candidate_repo_roots()) do
+            for _, rel in ipairs({ "/config/nvim/lazy-lock.json", "/dotfiles/.config/nvim/lazy-lock.json" }) do
+                if vim.fn.filereadable(root .. rel) == 1 then
+                    seed_lockfile = root .. rel
+                    break
+                end
+            end
+            if seed_lockfile then
+                break
+            end
+        end
+    end
+    local lock_stat = uv.fs_stat(lazy_lockfile)
+    if seed_lockfile and not (lock_stat and (lock_stat.size or 0) > 0) then
+        local tmp_lock = string.format("%s.%d.tmp", lazy_lockfile, vim.fn.getpid())
+        if pcall(vim.fn.writefile, vim.fn.readfile(seed_lockfile), tmp_lock) then
+            if not uv.fs_rename(tmp_lock, lazy_lockfile) then
+                uv.fs_unlink(tmp_lock)
+            end
+        end
+    end
+end
+
 lazy.setup({
-    -- Authentic Solarized Dark Theme (1:1 with Terminal & Ethan Schoonover palette)
+    -- Authentic Solarized Dark & Multi-Theme Engine (1:1 with Terminal & Universal Color Contract)
     {
         "maxmx03/solarized.nvim",
         lazy = false,
@@ -143,10 +1686,12 @@ lazy.setup({
                 variables = { italic = false },
                 parameters = { italic = false },
             },
-            on_highlights = function(colors, _)
-                return {
+            on_highlights = function(base_colors, _)
+                local colors = resolve_active_theme_palette(base_colors)
+                sync_solarized_plugin_palette(colors)
+                local hl = {
                     -- =========================================================================
-                    -- Non-Language-Specific UI & Framing Architecture (Converged Solarized Dark)
+                    -- Non-Language-Specific UI & Framing Architecture
                     -- =========================================================================
                     -- Base Canvas & Cursor
                     Normal = { fg = colors.base0, bg = colors.base03 },
@@ -155,6 +1700,11 @@ lazy.setup({
                     CursorLine = { bg = colors.base02 },
                     CursorColumn = { bg = colors.base02 },
                     ColorColumn = { bg = colors.base02 },
+                    EndOfBuffer = { fg = colors.base03, bg = "NONE" },
+                    NonText = { fg = colors.base01 },
+                    Whitespace = { fg = colors.base01 },
+                    SpecialKey = { fg = colors.base01 },
+                    Conceal = { fg = colors.base01 },
 
                     -- Gutter & Navigation Coordinates (Calm Monochromatic Luminance)
                     LineNr = { fg = colors.base01, bg = colors.base03 },
@@ -172,15 +1722,48 @@ lazy.setup({
                     FloatTitle = { fg = colors.base1, bg = colors.base02, bold = true },
                     NormalFloat = { fg = colors.base0, bg = colors.base04 },
 
+                    -- Mini.files Columnar Navigator
+                    MiniFilesBorder = { fg = colors.base01, bg = colors.base04 },
+                    MiniFilesBorderModified = { fg = colors.yellow, bg = colors.base04 },
+                    MiniFilesCursorLine = { bg = colors.base02 },
+                    MiniFilesNormal = { fg = colors.base0, bg = colors.base04 },
+                    MiniFilesTitle = { fg = colors.base01, bg = colors.base02 },
+                    MiniFilesTitleFocused = { fg = colors.base1, bg = colors.base02, bold = true },
+
+                    -- Telescope Fuzzy Finder Framing
+                    TelescopeNormal = { fg = colors.base0, bg = colors.base04 },
+                    TelescopeBorder = { fg = colors.base01, bg = colors.base04 },
+                    TelescopePromptNormal = { fg = colors.base0, bg = colors.base04 },
+                    TelescopePromptBorder = { fg = colors.base01, bg = colors.base04 },
+                    TelescopeResultsNormal = { fg = colors.base0, bg = colors.base04 },
+                    TelescopeResultsBorder = { fg = colors.base01, bg = colors.base04 },
+                    TelescopePreviewNormal = { fg = colors.base0, bg = colors.base04 },
+                    TelescopePreviewBorder = { fg = colors.base01, bg = colors.base04 },
+                    TelescopeTitle = { fg = colors.base1, bg = colors.base02, bold = true },
+                    TelescopePromptPrefix = { fg = colors.blue, bg = colors.base04 },
+                    TelescopeSelection = { fg = colors.base1, bg = colors.base02, bold = true },
+                    TelescopeSelectionCaret = { fg = colors.blue, bg = colors.base02 },
+                    TelescopeMatching = { fg = colors.yellow, bold = true },
+
                     -- Delimiter Matching (Luminance Bounding without Syntax Corruption)
                     MatchParen = { fg = colors.base1, bg = colors.base02, bold = true },
 
                     -- Search & Selection Plane (Zero Collision)
-                    Visual = { bg = colors.mix_base1 },
-                    VisualNOS = { bg = colors.mix_base1 },
+                    Visual = { fg = colors.base1, bg = colors.mix_base1 },
+                    VisualNOS = { fg = colors.base1, bg = colors.mix_base1 },
                     Search = { fg = colors.base1, bg = colors.mix_yellow, bold = true },
                     IncSearch = { fg = colors.magenta, bg = colors.mix_magenta, bold = true },
                     CurSearch = { fg = colors.magenta, bg = colors.mix_magenta, bold = true },
+
+                    -- Messages & Status Prompts
+                    Error = { fg = colors.red },
+                    ErrorMsg = { fg = colors.red },
+                    WarningMsg = { fg = colors.yellow },
+                    MoreMsg = { fg = colors.green },
+                    ModeMsg = { fg = colors.base1, bold = true },
+                    Question = { fg = colors.cyan },
+                    Title = { fg = colors.orange, bold = false },
+                    Todo = { fg = colors.magenta, bg = colors.base02, bold = true },
 
                     -- Status, Tabline & Completion Menus
                     StatusLine = { fg = colors.base1, bg = colors.base04 },
@@ -193,390 +1776,233 @@ lazy.setup({
                     PmenuSbar = { bg = colors.base04 },
                     PmenuThumb = { bg = colors.base1 },
 
-                    -- Diagnostic Severity Hierarchy (Unified 4-Tier Ladder)
-                    DiagnosticError = { fg = colors.red },
+                    -- Diagnostic Signs & Underlines (sp-only underline/undercurl without mutating syntax fg)
                     DiagnosticSignError = { fg = colors.red, bg = colors.base03 },
-                    DiagnosticFloatingError = { fg = colors.red },
-                    DiagnosticVirtualTextError = { fg = colors.red },
-                    DiagnosticWarn = { fg = colors.yellow },
                     DiagnosticSignWarn = { fg = colors.yellow, bg = colors.base03 },
-                    DiagnosticFloatingWarn = { fg = colors.yellow },
-                    DiagnosticVirtualTextWarn = { fg = colors.yellow },
-                    DiagnosticInfo = { fg = colors.blue },
                     DiagnosticSignInfo = { fg = colors.blue, bg = colors.base03 },
-                    DiagnosticFloatingInfo = { fg = colors.blue },
-                    DiagnosticVirtualTextInfo = { fg = colors.blue },
-                    DiagnosticHint = { fg = colors.cyan },
                     DiagnosticSignHint = { fg = colors.cyan, bg = colors.base03 },
-                    DiagnosticFloatingHint = { fg = colors.cyan },
-                    DiagnosticVirtualTextHint = { fg = colors.cyan },
-                    -- Canonical Syntax Highlights
-                    Comment = { fg = colors.base01, italic = false },
-                    Keyword = { fg = colors.green },
-                    Statement = { fg = colors.green },
-                    Conditional = { fg = colors.yellow },
-                    Repeat = { fg = colors.yellow },
-                    Type = { fg = colors.base0 },
-                    Structure = { fg = colors.base0 },
-                    StorageClass = { fg = colors.green },
-                    Function = { fg = colors.blue },
-                    Identifier = { fg = colors.base0 },
-                    Parameter = { fg = colors.base0, italic = false },
-                    String = { fg = colors.cyan },
-                    Character = { fg = colors.cyan },
-                    Constant = { fg = colors.magenta },
-                    Number = { fg = colors.magenta },
-                    Boolean = { fg = colors.magenta },
-                    Float = { fg = colors.magenta },
-                    Operator = { fg = colors.base0 },
-                    PreProc = { fg = colors.orange },
-                    Include = { fg = colors.orange },
-                    Define = { fg = colors.orange },
-                    Macro = { fg = colors.blue },
-                    Special = { fg = colors.violet },
-                    Delimiter = { fg = colors.base0 },
-                    -- Tree-sitter & LSP Semantic Token Overrides (Exact 1:1 Parity with Bat)
-                    ["@keyword"] = { fg = colors.green },
-                    ["@keyword.function"] = { fg = colors.green },
-                    ["@keyword.modifier"] = { fg = colors.green },
-                    ["@keyword.operator"] = { fg = colors.green },
-                    ["@keyword.conditional"] = { fg = colors.yellow },
-                    ["@keyword.repeat"] = { fg = colors.yellow },
-                    ["@keyword.return"] = { fg = colors.yellow },
-                    ["@keyword.coroutine"] = { fg = colors.yellow },
-                    ["@keyword.exception"] = { fg = colors.yellow },
-                    ["@keyword.conditional.ternary"] = { fg = colors.base0 },
-                    ["@keyword.directive"] = { fg = colors.orange },
-                    ["@keyword.directive.define"] = { fg = colors.orange },
-                    ["@keyword.import"] = { fg = colors.violet },
-                    ["@keyword.type"] = { fg = colors.green },
-                    ["@type"] = { fg = colors.base0 },
-                    ["@type.builtin"] = { fg = colors.green },
-                    ["@type.definition"] = { fg = colors.base0 },
-                    ["@type.qualifier"] = { fg = colors.base0 },
-                    ["@constructor"] = { fg = colors.base0 },
-                    ["@function"] = { fg = colors.blue },
-                    ["@function.call"] = { fg = colors.base0 },
-                    ["@function.method"] = { fg = colors.blue },
-                    ["@function.method.call"] = { fg = colors.base0 },
-                    ["@function.builtin"] = { fg = colors.base0 },
-                    ["@function.macro"] = { fg = colors.blue },
-                    ["@variable"] = { fg = colors.base0 },
-                    ["@variable.parameter"] = { fg = colors.base0, italic = false },
-                    ["@variable.parameter.builtin"] = { fg = colors.base0, italic = false },
-                    ["@variable.builtin"] = { fg = colors.magenta },
-                    ["@variable.member"] = { fg = colors.base0 },
-                    ["@property"] = { fg = colors.base0 },
-                    ["@module"] = { fg = colors.violet },
-                    ["@module.builtin"] = { fg = colors.violet },
-                    ["@string"] = { fg = colors.cyan },
-                    ["@string.documentation"] = { fg = colors.base01, italic = false },
-                    ["@string.special"] = { fg = colors.cyan },
-                    ["@string.special.path"] = { fg = colors.cyan },
-                    ["@string.special.url"] = { fg = colors.cyan },
-                    ["@string.special.symbol"] = { fg = colors.cyan },
-                    ["@string.escape"] = { fg = colors.cyan },
-                    ["@character"] = { fg = colors.cyan },
-                    ["@character.printf"] = { fg = colors.cyan },
-                    ["@character.special"] = { fg = colors.cyan },
-                    ["@comment"] = { fg = colors.base01, italic = false },
-                    ["@comment.documentation"] = { fg = colors.base01, italic = false },
-                    ["@spell"] = {},
-                    ["@label"] = { fg = colors.base01 },
-                    ["@constant"] = { fg = colors.magenta },
-                    ["@constant.builtin"] = { fg = colors.magenta },
-                    ["@constant.macro"] = { fg = colors.orange },
-                    ["@number"] = { fg = colors.magenta },
-                    ["@number.float"] = { fg = colors.magenta },
-                    ["@boolean"] = { fg = colors.magenta },
-                    ["@operator"] = { fg = colors.base0 },
-                    ["@punctuation.bracket"] = { fg = colors.base0 },
-                    ["@punctuation.delimiter"] = { fg = colors.base0 },
-                    ["@punctuation.special"] = { fg = colors.base0 },
-                    -- Tags & Markup Elements (HTML / XML / JSX / TSX)
-                    Tag = { fg = colors.blue },
-                    TagAttribute = { fg = colors.green },
-                    TagDelimiter = { fg = colors.base0 },
-                    ["@tag"] = { fg = colors.blue },
-                    ["@tag.attribute"] = { fg = colors.green },
-                    ["@tag.delimiter"] = { fg = colors.base0 },
-                    ["@tag.attribute.css"] = { fg = colors.base0 },
-                    ["@markup.raw.xml"] = { fg = colors.base0 },
-                    -- Diagnostic Underlines (sp-only underline/undercurl without mutating syntax fg)
                     DiagnosticUnderlineError = { fg = "NONE", sp = colors.red, undercurl = true, underline = true },
                     DiagnosticUnderlineWarn = { fg = "NONE", sp = colors.yellow, undercurl = true, underline = true },
                     DiagnosticUnderlineInfo = { fg = "NONE", sp = colors.blue, undercurl = true, underline = true },
                     DiagnosticUnderlineHint = { fg = "NONE", sp = colors.cyan, undercurl = true, underline = true },
-                    -- Markdown & Markup Overrides (Exact 1:1 Parity with Bat - First Principles Sequence)
-                    ["@markup.heading"] = { fg = colors.orange, bold = false },
-                    ["@markup.heading.1"] = { fg = colors.orange, bold = false },
-                    ["@markup.heading.2"] = { fg = colors.blue, bold = false },
-                    ["@markup.heading.3"] = { fg = colors.violet, bold = false },
-                    ["@markup.heading.4"] = { fg = colors.base1, bold = false },
-                    ["@markup.heading.5"] = { fg = colors.base0, bold = false },
-                    ["@markup.heading.6"] = { fg = colors.base0, bold = false },
-                    ["@markup.heading.delimiter"] = { fg = colors.base01, bold = false },
+
+                    -- Markup & Diff Special Composite Highlights
+                    ["@spell"] = {},
                     ["@markup.strong"] = { fg = colors.base1, bold = true },
                     ["@markup.italic"] = { fg = colors.base0, italic = true },
-                    ["@markup.raw"] = { fg = colors.cyan },
-                    ["@markup.raw.delimiter"] = { fg = colors.base01 },
-                    ["@markup.raw.block"] = { fg = colors.base0 },
-                    ["@markup.link"] = { fg = colors.base01 },
-                    ["@markup.link.label"] = { fg = colors.blue },
-                    ["@markup.link.url"] = { fg = colors.cyan, underline = true },
-                    ["@markup.quote"] = { fg = colors.base0, italic = false },
-                    ["@markup.quote.marker"] = { fg = colors.base01 },
-                    ["@markup.list"] = { fg = colors.green, bold = false },
-                    ["@markup.list.checked"] = { fg = colors.green, bold = false },
-                    ["@markup.list.unchecked"] = { fg = colors.base01, bold = false },
-                    ["@markup.table"] = { fg = colors.base01 },
-                    ["@markup.table.delimiter"] = { fg = colors.base01 },
-                    ["@markup.alert.note"] = { fg = colors.blue },
-                    ["@markup.alert.tip"] = { fg = colors.green },
-                    ["@markup.alert.important"] = { fg = colors.violet },
-                    ["@markup.alert.warning"] = { fg = colors.orange },
-                    ["@markup.alert.caution"] = { fg = colors.red },
-                    ["@attribute"] = { fg = colors.violet },
-                    ["@lsp.type.keyword"] = { fg = colors.green },
-                    ["@lsp.type.namespace"] = { fg = colors.violet },
-                    ["@lsp.type.type"] = { fg = colors.base0 },
-                    ["@lsp.type.class"] = { fg = colors.base0 },
-                    ["@lsp.type.struct"] = { fg = colors.base0 },
-                    ["@lsp.type.interface"] = { fg = colors.base0 },
-                    ["@lsp.type.enum"] = { fg = colors.base0 },
-                    ["@lsp.type.typeParameter"] = { fg = colors.base0 },
-                    ["@lsp.type.enumMember"] = { fg = colors.magenta },
-                    ["@lsp.type.function"] = { fg = colors.blue },
-                    ["@lsp.type.method"] = { fg = colors.blue },
-                    ["@lsp.type.variable"] = { fg = colors.base0 },
-                    ["@lsp.type.parameter"] = { fg = colors.base0, italic = false },
-                    ["@lsp.type.property"] = { fg = colors.base0 },
-                    ["@lsp.type.string"] = { fg = colors.cyan },
-                    ["@lsp.type.comment"] = { fg = colors.base01, italic = false },
-                    ["@lsp.typemod.variable.readonly"] = { fg = colors.base0 },
-                    -- Classic Vim Regex Fallbacks (Exact 1:1 Parity with Bat when Tree-sitter is offline)
-                    markdownH1 = { fg = colors.orange, bold = false },
-                    markdownH2 = { fg = colors.blue, bold = false },
-                    markdownH3 = { fg = colors.violet, bold = false },
-                    markdownH4 = { fg = colors.base1, bold = false },
-                    markdownH5 = { fg = colors.base0, bold = false },
-                    markdownH6 = { fg = colors.base0, bold = false },
-                    markdownHeadingDelimiter = { fg = colors.base01, bold = false },
+                    ["@markup.link"] = { fg = colors.base01, underline = false },
+                    ["@markup.link.label"] = { fg = colors.blue, underline = false },
+                    ["@markup.link.url"] = { fg = colors.cyan, underline = false },
+                    ["@string.special.url.html"] = { fg = colors.cyan, underline = false },
+                    RenderMarkdownCode = { fg = "NONE", bg = colors.base02 },
+                    RenderMarkdownCodeBorder = { fg = colors.base01, bg = colors.base02 },
+                    RenderMarkdownCodeInfo = { fg = colors.base01, bg = colors.base02, italic = false },
+                    RenderMarkdownCodeFallback = { fg = colors.base0, bg = colors.base02 },
+                    RenderMarkdownCodeInline = { fg = colors.cyan, bg = colors.base02 },
+                    RenderMarkdownSign = { fg = colors.base01, bg = "NONE" },
+                    RenderMarkdownIndent = { fg = colors.base02 },
+                    RenderMarkdownInlineHighlight = { fg = colors.base1, bg = colors.base02 },
+                    RenderMarkdownLink = { fg = colors.blue, bold = false, underline = false },
+                    RenderMarkdownWikiLink = { fg = colors.blue, bold = false, underline = false },
                     markdownBold = { fg = colors.base1, bold = true },
                     markdownItalic = { italic = true },
-                    markdownCode = { fg = colors.cyan },
-                    markdownCodeBlock = { fg = colors.base0 },
-                    markdownCodeDelimiter = { fg = colors.base01 },
-                    markdownBlockquote = { fg = colors.base0, italic = false },
-                    markdownListMarker = { fg = colors.green, bold = false },
-                    markdownOrderedListMarker = { fg = colors.green, bold = false },
-                    markdownRule = { fg = colors.base01, bold = false },
-                    markdownLinkText = { fg = colors.blue },
-                    markdownUrl = { fg = colors.cyan, underline = true },
-                    markdownId = { fg = colors.blue },
-                    markdownIdDeclaration = { fg = colors.cyan },
-                    goPredefinedIdentifiers = { fg = colors.magenta },
-                    goConstants = { fg = colors.magenta },
-                    goExtraType = { fg = colors.base0 },
-                    goType = { fg = colors.base0 },
-                    goSignedInts = { fg = colors.green },
-                    goUnsignedInts = { fg = colors.green },
-                    goFloats = { fg = colors.green },
-                    goComplexes = { fg = colors.green },
-                    goDecimalInt = { fg = colors.magenta },
-                    goHexadecimalInt = { fg = colors.magenta },
-                    goOctalInt = { fg = colors.magenta },
-                    goFloat = { fg = colors.magenta },
-                    goStatement = { fg = colors.yellow },
-                    goConditional = { fg = colors.yellow },
-                    goRepeat = { fg = colors.yellow },
-                    goDeclaration = { fg = colors.green },
-                    goDeclType = { fg = colors.green },
-                    goDirective = { fg = colors.violet },
-                    pythonDocstring = { fg = colors.base01, italic = false },
-                    pythonBuiltinType = { fg = colors.green },
-                    pythonDecorator = { fg = colors.violet },
-                    pythonDecoratorName = { fg = colors.violet },
-                    pythonConditional = { fg = colors.yellow },
-                    pythonRepeat = { fg = colors.yellow },
-                    pythonException = { fg = colors.yellow },
-                    pythonStatement = { fg = colors.yellow },
-                    rustCommentLineDoc = { fg = colors.base01, italic = false },
-                    rustAttribute = { fg = colors.violet },
-                    rustDerive = { fg = colors.violet },
-                    rustDeriveTrait = { fg = colors.base0 },
-                    rustConditional = { fg = colors.yellow },
-                    rustRepeat = { fg = colors.yellow },
-                    rustKeyword = { fg = colors.green },
-                    rustModPath = { fg = colors.violet },
-                    rustMacro = { fg = colors.blue },
-                    rustType = { fg = colors.base0 },
-                    cDefine = { fg = colors.orange },
-                    cInclude = { fg = colors.orange },
-                    cPreProc = { fg = colors.orange },
-                    cPreCondit = { fg = colors.orange },
-                    cType = { fg = colors.base0 },
-                    cStructure = { fg = colors.green },
-                    cStorageClass = { fg = colors.green },
-                    cConditional = { fg = colors.yellow },
-                    cRepeat = { fg = colors.yellow },
-                    cStatement = { fg = colors.yellow },
-                    cConstant = { fg = colors.magenta },
-                    cppAccess = { fg = colors.green },
-                    cppType = { fg = colors.base0 },
-                    cppStructure = { fg = colors.green },
-                    cppStorageClass = { fg = colors.green },
-                    cppModifier = { fg = colors.green },
-                    diffAdded = { fg = colors.green },
-                    diffRemoved = { fg = colors.red },
-                    diffChanged = { fg = colors.yellow },
-                    diffLine = { fg = colors.blue },
-                    diffFile = { fg = colors.orange },
-                    diffNewFile = { fg = colors.yellow },
-                    diffIndexLine = { fg = colors.base01 },
+                    markdownLinkText = { fg = colors.blue, underline = false },
+                    markdownUrl = { fg = colors.cyan, underline = false },
+                    Added = { fg = colors.green },
+                    Changed = { fg = colors.yellow },
+                    Removed = { fg = colors.red },
                     DiffAdd = { fg = colors.green, bg = colors.mix_green },
                     DiffDelete = { fg = colors.red, bg = colors.mix_red },
                     DiffChange = { fg = colors.yellow, bg = colors.mix_yellow },
                     DiffText = { fg = colors.blue, bg = colors.mix_blue, bold = true },
-                    ["@diff.plus"] = { fg = colors.green },
-                    ["@diff.minus"] = { fg = colors.red },
-                    ["@diff.delta"] = { fg = colors.yellow },
-                    ["@diff.line"] = { fg = colors.blue },
-                    -- Legacy Vim Regex Fallbacks (Shell and SQL)
-                    shOption = { fg = colors.base0 },
-                    shCommandSub = { fg = colors.orange },
-                    shConditional = { fg = colors.yellow },
-                    shRepeat = { fg = colors.yellow },
-                    shStatement = { fg = colors.yellow },
-                    shFunctionKey = { fg = colors.green },
-                    shFunction = { fg = colors.blue },
-                    sqlKeyword = { fg = colors.green },
-                    sqlSpecial = { fg = colors.magenta },
-                    -- Legacy XML Syntax Fallbacks
-                    xmlTagName = { fg = colors.blue },
-                    xmlTag = { fg = colors.base0 },
-                    xmlEndTag = { fg = colors.base0 },
-                    xmlAttrib = { fg = colors.green },
-                    xmlEqual = { fg = colors.base0 },
-                    xmlString = { fg = colors.cyan },
-                    xmlProcessing = { fg = colors.orange },
-                    xmlProcessingDelim = { fg = colors.base0 },
-                    xmlDocTypeDecl = { fg = colors.orange },
-                    xmlDocTypeKeyword = { fg = colors.orange },
-                    xmlEntity = { fg = colors.magenta },
-                    xmlEntityPunct = { fg = colors.magenta },
-                    xmlCdataStart = { fg = colors.violet },
-                    xmlCdataEnd = { fg = colors.violet },
-                    xmlCdata = { fg = colors.base0 },
-                    xmlCdataCdata = { fg = colors.violet },
-                    xmlComment = { fg = colors.base01, italic = false },
-                    xmlCommentPart = { fg = colors.base01, italic = false },
-                    xmlNamespace = { fg = colors.blue },
-                    -- Legacy HTML Syntax Fallbacks
-                    htmlTagName = { fg = colors.blue },
-                    htmlSpecialTagName = { fg = colors.blue },
-                    htmlTag = { fg = colors.base0 },
-                    htmlEndTag = { fg = colors.base0 },
-                    htmlArg = { fg = colors.green },
-                    htmlString = { fg = colors.cyan },
-                    htmlComment = { fg = colors.base01, italic = false },
-                    htmlCommentPart = { fg = colors.base01, italic = false },
-                    htmlSpecialChar = { fg = colors.magenta },
-                    htmlDoctype = { fg = colors.orange },
-                    htmlHead = { fg = colors.base0 },
-                    htmlTitle = { fg = colors.base0 },
-                    htmlH1 = { fg = colors.base0, bold = false },
-                    htmlH2 = { fg = colors.base0, bold = false },
-                    htmlH3 = { fg = colors.base0, bold = false },
-                    htmlH4 = { fg = colors.base0, bold = false },
-                    htmlH5 = { fg = colors.base0, bold = false },
-                    htmlH6 = { fg = colors.base0, bold = false },
-                    htmlBold = { fg = colors.base0, bold = false },
-                    htmlItalic = { fg = colors.base0, italic = false },
-                    htmlUnderline = { fg = colors.base0, underline = false },
-                    htmlLink = { fg = colors.base0, underline = false },
-                    -- Legacy CSS Syntax Fallbacks
-                    cssProp = { fg = colors.green },
-                    cssTagName = { fg = colors.blue },
-                    cssClassName = { fg = colors.blue },
-                    cssClassNameDot = { fg = colors.base0 },
-                    cssIdentifier = { fg = colors.blue },
-                    cssColor = { fg = colors.magenta },
-                    cssValueNumber = { fg = colors.magenta },
-                    cssValueLength = { fg = colors.magenta },
-                    cssUnitizers = { fg = colors.base0 },
-                    cssStringQ = { fg = colors.cyan },
-                    cssStringQQ = { fg = colors.cyan },
-                    cssPseudoClass = { fg = colors.violet },
-                    cssPseudoClassId = { fg = colors.violet },
-                    cssCustomProperty = { fg = colors.base0 },
-                    cssVar = { fg = colors.base0 },
-                    cssAtRule = { fg = colors.orange },
-                    -- Legacy Java Properties Syntax Fallbacks
-                    jpropertiesIdentifier = { fg = colors.green },
-                    jpropertiesAssignment = { fg = colors.base0 },
-                    jpropertiesString = { fg = colors.cyan },
-                    jpropertiesSpecialChar = { fg = colors.violet },
-                    jpropertiesComment = { fg = colors.base01, italic = false },
-
-                    -- Language-Specific Tree-sitter Semantic Specializations & Contextual Invariance
-                    -- Java (Principle 7 Operational Role Invariance & Module Directives)
-                    ["@keyword.directive.java"] = { fg = colors.base0 },
-                    ["@function.builtin.java"] = { fg = colors.green },
-                    ["@variable.builtin.java"] = { fg = colors.green },
-                    ["@module.java"] = { fg = colors.base0 },
-
-                    -- Go (Principle 12 Blank Identifier Sentinel)
-                    ["@variable.builtin.go"] = { fg = colors.magenta },
-
-                    -- SQL (Principle 29 Scaffolding Constraints)
-                    ["@attribute.sql"] = { fg = colors.green },
-
-                    -- Terraform / HCL (Principle 35 Calm Typename Declarations)
-                    ["@type.builtin.terraform"] = { fg = colors.base0 },
-                    ["@type.builtin.hcl"] = { fg = colors.base0 },
-
-                    -- HTML (Semantic Headings & Content Desensitization to calm Base0 Grey)
-                    ["@markup.heading.html"] = { fg = colors.base0 },
-                    ["@markup.heading.1.html"] = { fg = colors.base0 },
-                    ["@markup.heading.2.html"] = { fg = colors.base0 },
-                    ["@markup.heading.3.html"] = { fg = colors.base0 },
-                    ["@markup.heading.4.html"] = { fg = colors.base0 },
-                    ["@markup.heading.5.html"] = { fg = colors.base0 },
-                    ["@markup.heading.6.html"] = { fg = colors.base0 },
-                    ["@markup.link.label.html"] = { fg = colors.base0, underline = false },
-                    ["@markup.link.html"] = { fg = colors.base0, underline = false },
-                    ["@markup.strong.html"] = { fg = colors.base0, bold = false },
-                    ["@markup.italic.html"] = { fg = colors.base0, italic = false },
-                    ["@markup.underline.html"] = { fg = colors.base0, underline = false },
-                    ["@string.special.url.html"] = { fg = colors.cyan, underline = false },
-
-                    -- Declarative Configuration Continuum (Mapping Keys in Solarized Green)
-                    ["@property.json"] = { fg = colors.green },
-                    ["@property.yaml"] = { fg = colors.green },
-                    ["@property.toml"] = { fg = colors.green },
-                    ["@property.css"] = { fg = colors.green },
-                    ["@property.properties"] = { fg = colors.green },
-
-                    -- CSS (Universal Semantic Architecture: Selectors Blue, Properties Green, Custom Props Base0, Hex Magenta)
-                    ["@type.css"] = { fg = colors.blue },
-                    ["@tag.css"] = { fg = colors.blue },
-                    ["@variable.css"] = { fg = colors.base0 },
-                    ["@function.call.css"] = { fg = colors.base0 },
-                    ["@type.builtin.css"] = { fg = colors.base0 },
-                    ["@string.special.css"] = { fg = colors.magenta },
-                    ["@constant.css"] = { fg = colors.base0 },
-                    ["@keyword.modifier.css"] = { fg = colors.red },
-
-                    -- Java Properties (Variable Interpolation in Base0 Grey)
-                    ["@variable.properties"] = { fg = colors.base0 },
+                    protoTodo = { fg = colors.base01, bg = "NONE", bold = false },
+                    pbtxtTodo = { fg = colors.base01, bg = "NONE", bold = false },
                 }
+
+                local function set_hl(groups, spec)
+                    for _, g in ipairs(groups) do
+                        hl[g] = spec
+                    end
+                end
+
+                -- Calm Base0 Grey (#839496): Identifiers, Invocations, Custom Types, Operators, Punctuation & Neutralized Canvas
+                set_hl({
+                    "MiniFilesFile", "Type", "Structure", "Identifier", "Operator", "Delimiter", "TagDelimiter",
+                    "@keyword.conditional.ternary", "@type", "@type.definition", "@type.qualifier", "@constructor",
+                    "@function.call", "@function.method.call", "@function.builtin", "@variable", "@variable.member",
+                    "@property", "@operator", "@punctuation.bracket", "@punctuation.delimiter", "@punctuation.special",
+                    "@tag.delimiter", "@tag.attribute.css", "@markup.raw.xml", "@markup.raw.block",
+                    "@lsp.type.type", "@lsp.type.class", "@lsp.type.struct", "@lsp.type.interface", "@lsp.type.enum",
+                    "@lsp.type.typeParameter", "@lsp.type.variable", "@lsp.type.property", "@lsp.typemod.variable.readonly",
+                    "markdownCodeBlock", "goExtraType", "goType", "rustDeriveTrait", "rustType", "cType", "cppType",
+                    "shOption", "shCommandSub", "xmlTag", "xmlEndTag", "xmlEqual", "xmlProcessingDelim", "xmlCdata",
+                    "htmlTag", "htmlEndTag", "htmlHead", "htmlTitle", "cssClassNameDot", "cssUnitizers",
+                    "cssCustomProperty", "cssVar", "jpropertiesAssignment",
+                    "@keyword.directive.java", "@type.builtin.terraform", "@type.builtin.hcl",
+                    "@function.call.terraform", "@function.terraform", "@function.hcl",
+                    "@markup.heading.html", "@markup.heading.1.html", "@markup.heading.2.html",
+                    "@markup.heading.3.html", "@markup.heading.4.html", "@markup.heading.5.html", "@markup.heading.6.html",
+                    "@type.builtin.starlark", "@variable.css", "@function.call.css", "@type.builtin.css",
+                    "@constant.css", "@variable.properties",
+                }, { fg = colors.base0 })
+
+                set_hl({
+                    "Parameter", "@variable.parameter", "@variable.parameter.builtin", "@markup.quote",
+                    "@lsp.type.parameter", "markdownBlockquote", "htmlItalic", "@markup.italic.html",
+                }, { fg = colors.base0, italic = false })
+
+                set_hl({
+                    "@markup.heading.5", "@markup.heading.6", "RenderMarkdownH5", "RenderMarkdownH6",
+                    "markdownH5", "markdownH6", "htmlH1", "htmlH2", "htmlH3", "htmlH4", "htmlH5", "htmlH6",
+                    "htmlBold", "@markup.strong.html",
+                }, { fg = colors.base0, bold = false })
+
+                set_hl({
+                    "htmlUnderline", "htmlLink", "@markup.link.label.html", "@markup.link.html", "@markup.underline.html",
+                }, { fg = colors.base0, underline = false })
+
+                -- Calm Base01 Dim (#586E75): Comments, Documentation, Delimiters, Markers & Borders
+                set_hl({
+                    "@label", "@markup.raw.delimiter", "@markup.quote.marker", "@markup.table", "@markup.table.delimiter",
+                    "RenderMarkdownQuote", "RenderMarkdownQuote1", "RenderMarkdownQuote2", "RenderMarkdownQuote3",
+                    "RenderMarkdownQuote4", "RenderMarkdownQuote5", "RenderMarkdownQuote6", "RenderMarkdownDash",
+                    "markdownCodeDelimiter", "diffIndexLine",
+                }, { fg = colors.base01 })
+
+                set_hl({
+                    "Comment", "@string.documentation", "@comment", "@comment.documentation",
+                    "RenderMarkdownHtmlComment", "@lsp.type.comment", "pythonDocstring", "rustCommentLineDoc",
+                    "xmlComment", "xmlCommentPart", "htmlComment", "htmlCommentPart", "jpropertiesComment",
+                    "protoComment", "pbtxtComment",
+                }, { fg = colors.base01, italic = false })
+
+                set_hl({
+                    "@markup.heading.delimiter", "@markup.list.unchecked", "RenderMarkdownTableHead",
+                    "RenderMarkdownTableRow", "RenderMarkdownTableFill", "RenderMarkdownLinkTitle",
+                    "RenderMarkdownUnchecked", "markdownHeadingDelimiter", "markdownRule",
+                }, { fg = colors.base01, bold = false })
+
+                -- Base1 (#93A1A1) & Base02 (#073642) Markdown Headings / Backgrounds
+                set_hl({ "@markup.heading.4", "RenderMarkdownH4", "markdownH4" }, { fg = colors.base1, bold = false })
+                set_hl({
+                    "RenderMarkdownH1Bg", "RenderMarkdownH2Bg", "RenderMarkdownH3Bg",
+                    "RenderMarkdownH4Bg", "RenderMarkdownH5Bg", "RenderMarkdownH6Bg",
+                }, { fg = "NONE", bg = colors.base02, bold = false })
+
+                -- Solarized Green (#859900): Structural Scaffolding, Primitives, Mapping Keys & Diff Additions
+                set_hl({
+                    "Keyword", "Statement", "StorageClass", "TagAttribute",
+                    "@keyword", "@keyword.function", "@keyword.modifier", "@keyword.operator", "@keyword.type",
+                    "@type.builtin", "@tag.attribute", "@markup.alert.tip", "RenderMarkdownBullet", "@lsp.type.keyword",
+                    "goSignedInts", "goUnsignedInts", "goFloats", "goComplexes", "goDeclaration", "goDeclType",
+                    "pythonBuiltinType", "rustKeyword", "cStructure", "cStorageClass", "cppAccess", "cppStructure",
+                    "cppStorageClass", "cppModifier", "diffAdded", "@diff.plus", "shFunctionKey", "sqlKeyword",
+                    "xmlAttrib", "htmlArg", "cssProp", "jpropertiesIdentifier",
+                    "protoStructure", "protoRepeat", "protoDefault", "protoExtend", "protoRPC", "protoType",
+                    "protoTypedef", "pbtxtField", "@attribute.sql",
+                    "@property.json", "@property.yaml", "@property.toml", "@property.css",
+                    "@property.properties", "@property.textproto", "@property.pbtxt", "@property.graphql",
+                }, { fg = colors.green })
+
+                set_hl({
+                    "@markup.list", "@markup.list.checked", "RenderMarkdownChecked", "RenderMarkdownSuccess",
+                    "markdownListMarker", "markdownOrderedListMarker",
+                }, { fg = colors.green, bold = false })
+
+                -- Solarized Yellow (#B58900): Exclusive Imperative Control Flow & Diagnostics
+                set_hl({
+                    "DiagnosticWarn", "DiagnosticFloatingWarn", "DiagnosticVirtualTextWarn", "Conditional", "Repeat",
+                    "@keyword.conditional", "@keyword.repeat", "@keyword.return", "@keyword.coroutine", "@keyword.exception",
+                    "goStatement", "goConditional", "goRepeat", "pythonConditional", "pythonRepeat",
+                    "pythonException", "pythonStatement", "rustConditional", "rustRepeat",
+                    "cConditional", "cRepeat", "cStatement", "diffChanged", "@diff.delta",
+                    "shConditional", "shRepeat", "shStatement",
+                }, { fg = colors.yellow })
+
+                -- Solarized Blue (#268BD2): Routine Declarations, Tags, Selectors, H2 & Info
+                set_hl({
+                    "Directory", "MiniFilesDirectory", "DiagnosticInfo", "DiagnosticFloatingInfo", "DiagnosticVirtualTextInfo",
+                    "Function", "Macro", "Tag", "@function", "@function.method", "@function.macro", "@tag",
+                    "@markup.alert.note", "@lsp.type.function", "@lsp.type.method", "markdownId", "rustMacro",
+                    "diffLine", "@diff.line", "shFunction", "xmlTagName", "xmlNamespace", "htmlTagName",
+                    "htmlSpecialTagName", "cssTagName", "cssClassName", "cssIdentifier", "pbtxtMessage",
+                    "@type.css", "@tag.css",
+                }, { fg = colors.blue })
+
+                set_hl({
+                    "@markup.heading.2", "RenderMarkdownH2", "RenderMarkdownInfo", "markdownH2",
+                }, { fg = colors.blue, bold = false })
+
+                -- Solarized Violet (#6C71C4): Module Imports, Namespaces, Attributes, H3 & Hints
+                set_hl({
+                    "Include", "Special", "@keyword.import", "@module", "@module.builtin", "@markup.alert.important",
+                    "@attribute", "@lsp.type.namespace", "goDirective", "pythonDecorator", "pythonDecoratorName",
+                    "rustAttribute", "rustDerive", "rustModPath", "xmlCdataStart", "xmlCdataEnd", "xmlCdataCdata",
+                    "cssPseudoClass", "cssPseudoClassId", "protoSyntax",
+                }, { fg = colors.violet })
+
+                set_hl({
+                    "@markup.heading.3", "RenderMarkdownH3", "RenderMarkdownMath", "RenderMarkdownHint", "markdownH3",
+                }, { fg = colors.violet, bold = false })
+
+                -- Solarized Orange (#CB4B16): Preprocessor Directives, Macros, H1 & Warnings
+                set_hl({
+                    "PreProc", "Define", "@keyword.directive", "@keyword.directive.define", "@constant.macro",
+                    "@markup.alert.warning", "cDefine", "cInclude", "cPreProc", "cPreCondit",
+                    "xmlProcessing", "xmlDocTypeDecl", "xmlDocTypeKeyword", "htmlDoctype", "cssAtRule",
+                }, { fg = colors.orange })
+
+                set_hl({
+                    "@markup.heading", "@markup.heading.1", "RenderMarkdownH1", "RenderMarkdownTodo",
+                    "RenderMarkdownWarn", "markdownH1",
+                }, { fg = colors.orange, bold = false })
+
+                -- Solarized Magenta (#D33682): Constants, Numbers, Booleans, Regexes, Receivers & Symbols
+                set_hl({
+                    "Constant", "Number", "Boolean", "Float",
+                    "@variable.builtin", "@string.regexp", "@constant", "@constant.builtin", "@number",
+                    "@number.float", "@boolean", "@lsp.type.enumMember",
+                    "goPredefinedIdentifiers", "goConstants", "goDecimalInt", "goHexadecimalInt", "goOctalInt",
+                    "goFloat", "cConstant", "sqlSpecial", "xmlEntity", "xmlEntityPunct", "htmlSpecialChar",
+                    "cssColor", "cssValueNumber", "cssValueLength", "protoBool", "protoInt", "protoFloat",
+                    "pbtxtEnum", "pbtxtBool", "pbtxtInt", "pbtxtHex", "pbtxtFloat", "@variable.builtin.go",
+                    "@punctuation.delimiter.regex", "@punctuation.bracket.regex", "@operator.regex",
+                    "@string.escape.regex", "@character.special.regex", "@constant.regex", "@property.regex",
+                    "@string.special.css", "@string.special.symbol.elixir", "@string.special.symbol.clojure",
+                    "@string.special.symbol.ruby",
+                }, { fg = colors.magenta })
+
+                -- Solarized Cyan (#2AA198): Strings, Characters, Format Specifiers, Escape Sequences & Hints
+                set_hl({
+                    "DiagnosticHint", "DiagnosticFloatingHint", "DiagnosticVirtualTextHint", "String", "Character",
+                    "@string", "@string.special", "@string.special.path", "@string.special.url",
+                    "@string.special.symbol", "@string.escape", "@character", "@character.printf",
+                    "@character.special", "@markup.raw", "@lsp.type.string",
+                    "markdownCode", "markdownIdDeclaration", "diffFile", "diffNewFile", "xmlString", "htmlString",
+                    "cssStringQ", "cssStringQQ", "jpropertiesString", "jpropertiesSpecialChar",
+                    "protoString", "pbtxtString",
+                }, { fg = colors.cyan })
+
+                -- Solarized Red (#DC322F): Errors, Diff Deletions & Overrides
+                set_hl({
+                    "DiagnosticError", "DiagnosticFloatingError", "DiagnosticVirtualTextError",
+                    "@markup.alert.caution", "diffRemoved", "@diff.minus", "@keyword.modifier.css",
+                }, { fg = colors.red })
+
+                set_hl({ "RenderMarkdownError" }, { fg = colors.red, bold = false })
+
+                return hl
             end,
         },
         config = function(_, opts)
-            vim.o.background = "dark"
+            _G._hs_solarized_opts = opts
+            build_theme_highlights = opts.on_highlights
+            local p = resolve_active_theme_palette(nil)
+            vim.o.background = (vim.g.home_settings_theme_mode == "light") and "light" or "dark"
+            sync_solarized_plugin_palette(p)
             require("solarized").setup(opts)
             vim.cmd.colorscheme("solarized")
+            apply_terminal_ansi_palette(p)
         end,
     },
 
@@ -588,7 +2014,7 @@ lazy.setup({
         priority = 900,
         config = function()
             -- Ensure C/C++ compiler is discoverable and configured for Tree-sitter builds on Windows
-            if vim.fn.has("win32") == 1 then
+            if is_win32 then
                 if vim.fn.executable("gcc") == 0 then
                     local local_app_data = vim.fn.getenv("LOCALAPPDATA")
                     if local_app_data and local_app_data ~= vim.NIL then
@@ -616,25 +2042,43 @@ lazy.setup({
             end
 
             local parsers = {
-                "c", "cpp", "go", "java", "python", "rust", "typescript",
-                "javascript", "bash", "markdown", "markdown_inline",
+                "c", "cpp", "go", "java", "kotlin", "swift", "python", "rust",
+                "typescript", "javascript", "bash", "markdown", "markdown_inline",
                 "json", "yaml", "toml", "terraform", "sql", "lua",
                 "vim", "vimdoc", "diff", "printf", "xml", "html", "css",
-                "properties", "regex"
+                "properties", "proto", "textproto", "regex",
+                "elixir", "haskell", "ocaml", "clojure", "lean",
+                "zig", "c_sharp", "scala", "ruby",
+                "graphql", "starlark", "rego", "dockerfile", "make", "powershell"
             }
 
-            -- Pin tree-sitter-css to revision with Container Query support (PR #96)
+            -- Pin tree-sitter-css (Container Queries PR #96) and register tree-sitter-lean (Lean 4)
             local css_pinned_rev = "a93651c7bef1b73c47bdc7cd530ffa4ebffae032"
+            local lean_pinned_rev = "916c44f4d89c970f66dd34a49e7ce848f4d29e72"
+            local lean_parser_spec = {
+                install_info = {
+                    url = "https://github.com/Julian/tree-sitter-lean",
+                    revision = lean_pinned_rev,
+                    files = { "src/parser.c", "src/scanner.c" },
+                    location = "",
+                },
+                maintainers = { "@Julian" },
+                tier = 2,
+            }
             local function pin_parsers()
                 local parsers_meta_ok, parsers_meta = pcall(require, "nvim-treesitter.parsers")
                 if parsers_meta_ok then
                     if parsers_meta.css and parsers_meta.css.install_info then
                         parsers_meta.css.install_info.revision = css_pinned_rev
-                    elseif parsers_meta.get_parser_configs then
+                    end
+                    if not parsers_meta.get_parser_configs then
+                        parsers_meta.lean = vim.deepcopy(lean_parser_spec)
+                    else
                         local pconfigs = parsers_meta.get_parser_configs()
                         if pconfigs.css and pconfigs.css.install_info then
                             pconfigs.css.install_info.revision = css_pinned_rev
                         end
+                        pconfigs.lean = vim.deepcopy(lean_parser_spec)
                     end
                 end
             end
@@ -667,42 +2111,140 @@ lazy.setup({
                         install_dir = vim.fn.stdpath("data") .. "/site",
                     })
                 end)
-                local installed = {}
-                for _, p in ipairs(nts.get_installed()) do
-                    installed[p] = true
-                end
-                local css_rev_file = vim.fn.stdpath("data") .. "/site/parser-info/css.revision"
-                local current_css_rev = ""
-                if vim.fn.filereadable(css_rev_file) == 1 then
-                    local rev_lines = vim.fn.readfile(css_rev_file)
-                    if rev_lines and #rev_lines > 0 then
-                        current_css_rev = vim.trim(rev_lines[1])
+                if vim.env.NVIM_TS_SKIP_AUTO_INSTALL ~= "1" then
+                    local ok_inst, inst_list = pcall(nts.get_installed, "parsers")
+                    if not ok_inst or type(inst_list) ~= "table" then
+                        inst_list = nts.get_installed()
                     end
-                end
-                local need_css_install = (not installed["css"]) or (current_css_rev ~= css_pinned_rev)
-                local to_install = {}
-                for _, p in ipairs(parsers) do
-                    if not installed[p] and p ~= "css" then
-                        table.insert(to_install, p)
+                    local installed = {}
+                    for _, p in ipairs(inst_list) do
+                        installed[p] = true
                     end
-                end
-                if #to_install > 0 then
-                    pcall(function()
-                        nts.install(to_install)
-                    end)
-                end
-                if need_css_install and type(nts.install) == "function" then
-                    pcall(function()
-                        nts.install({ "css" }, { force = true }):pwait(60000)
-                    end)
+                    local function read_parser_rev(lang)
+                        local rev_file = vim.fn.stdpath("data") .. "/site/parser-info/" .. lang .. ".revision"
+                        if vim.fn.filereadable(rev_file) == 1 then
+                            local rev_lines = vim.fn.readfile(rev_file)
+                            if rev_lines and #rev_lines > 0 then
+                                return vim.trim(rev_lines[1])
+                            end
+                        end
+                        return ""
+                    end
+                    local need_css_install = (not installed["css"]) or (read_parser_rev("css") ~= css_pinned_rev)
+                    local need_lean_install = (not installed["lean"]) or (read_parser_rev("lean") ~= lean_pinned_rev)
+                    local to_install = {}
+                    for _, p in ipairs(parsers) do
+                        if not installed[p] and p ~= "css" and p ~= "lean" then
+                            table.insert(to_install, p)
+                        end
+                    end
+                    local pinned_to_install = {}
+                    if need_css_install then table.insert(pinned_to_install, "css") end
+                    if need_lean_install then table.insert(pinned_to_install, "lean") end
+
+                    if (#to_install > 0 or #pinned_to_install > 0) and type(nts.install) == "function" then
+                        local uv = vim.uv or vim.loop
+                        local guard_path = vim.fn.stdpath("data") .. "/ws-ts-auto-install.lock"
+                        local acquired_guard = false
+
+                        local existing_stat = uv.fs_stat(guard_path)
+                        if existing_stat then
+                            local age = os.time() - (existing_stat.mtime and existing_stat.mtime.sec or 0)
+                            local holder_alive = false
+                            if age < 300 and vim.fn.filereadable(guard_path) == 1 then
+                                local lines = vim.fn.readfile(guard_path)
+                                local holder_pid = lines and tonumber(lines[1] or "") or nil
+                                if holder_pid and holder_pid > 0 and uv.kill then
+                                    local ok_kill = pcall(uv.kill, holder_pid, 0)
+                                    holder_alive = ok_kill
+                                end
+                            end
+                            if not holder_alive then
+                                pcall(uv.fs_unlink, guard_path)
+                            end
+                        end
+
+                        local fd = uv.fs_open(guard_path, "wx", 384)
+                        if fd then
+                            acquired_guard = true
+                            pcall(uv.fs_write, fd, tostring(uv.os_getpid()) .. "\n", 0)
+                            pcall(uv.fs_close, fd)
+                            vim.api.nvim_create_autocmd("VimLeavePre", {
+                                once = true,
+                                callback = function()
+                                    pcall(uv.fs_unlink, guard_path)
+                                end,
+                            })
+                        end
+
+                        if acquired_guard then
+                            -- Reap orphaned tree-sitter CLI .lock files left by interrupted builds
+                            local ts_lock_dirs = {}
+                            if is_win32 and vim.env.LOCALAPPDATA and vim.env.LOCALAPPDATA ~= "" then
+                                table.insert(ts_lock_dirs, vim.env.LOCALAPPDATA .. "/tree-sitter/lock")
+                            end
+                            if vim.env.XDG_CACHE_HOME and vim.env.XDG_CACHE_HOME ~= "" then
+                                table.insert(ts_lock_dirs, vim.env.XDG_CACHE_HOME .. "/tree-sitter/lock")
+                            end
+                            table.insert(ts_lock_dirs, vim.fn.expand("$HOME/.cache/tree-sitter/lock"))
+                            table.insert(ts_lock_dirs, vim.fn.expand("$HOME/Library/Caches/tree-sitter/lock"))
+
+                            local checked_proc = false
+                            local ts_running = false
+                            for _, ldir in ipairs(ts_lock_dirs) do
+                                local locks = vim.fn.glob(ldir .. "/*.lock", true, true)
+                                if type(locks) == "table" and #locks > 0 then
+                                    if not checked_proc then
+                                        checked_proc = true
+                                        if is_win32 then
+                                            local out = vim.fn.system({ "tasklist", "/FI", "IMAGENAME eq tree-sitter.exe", "/NH" })
+                                            ts_running = (type(out) == "string" and out:lower():find("tree%-sitter%.exe") ~= nil)
+                                        else
+                                            vim.fn.system({ "pgrep", "-x", "tree-sitter" })
+                                            ts_running = (vim.v.shell_error == 0)
+                                        end
+                                    end
+                                    for _, lf in ipairs(locks) do
+                                        local lst = uv.fs_stat(lf)
+                                        local lage = lst and (os.time() - (lst.mtime and lst.mtime.sec or 0)) or 9999
+                                        if (not ts_running) or lage > 180 then
+                                            pcall(uv.fs_unlink, lf)
+                                        end
+                                    end
+                                end
+                            end
+
+                            local is_headless = (#vim.api.nvim_list_uis() == 0)
+                            if #to_install > 0 then
+                                pcall(function()
+                                    local task = nts.install(to_install, { max_jobs = 2 })
+                                    if is_headless and task and task.pwait then
+                                        task:pwait(120000)
+                                    end
+                                end)
+                            end
+                            if #pinned_to_install > 0 then
+                                pcall(function()
+                                    local task = nts.install(pinned_to_install, { force = true, max_jobs = 2 })
+                                    if is_headless and task and task.pwait then
+                                        task:pwait(120000)
+                                    end
+                                end)
+                            end
+                            if is_headless then
+                                pcall(uv.fs_unlink, guard_path)
+                            else
+                                vim.defer_fn(function()
+                                    pcall(uv.fs_unlink, guard_path)
+                                end, 90000)
+                            end
+                        end
+                    end
                 end
             end
 
             -- Ensure user config directory unconditionally takes precedence over site queries in runtimepath
             vim.opt.rtp:prepend(vim.fn.stdpath("config"))
-
-            -- Register Tree-sitter language aliases
-            pcall(vim.treesitter.language.register, "properties", { "jproperties", "properties" })
 
             -- Ensure compatibility with Neovim 0.12 directive handling (captures passed as TSNode[])
             if vim.treesitter.query.add_directive then
@@ -769,10 +2311,21 @@ lazy.setup({
             { "<leader>ff", "<cmd>Telescope find_files<CR>", desc = "Find Files" },
             { "<leader>fg", "<cmd>Telescope live_grep<CR>",  desc = "Live Grep" },
             { "<leader>fb", "<cmd>Telescope buffers<CR>",    desc = "Find Buffers" },
+            { "<leader>gs", "<cmd>Telescope git_status<CR>", desc = "Git Status (AI Modified Files)" },
         },
         opts = {
             defaults = {
                 layout_strategy = "horizontal",
+                mappings = {
+                    i = {
+                        ["<C-j>"] = "move_selection_next",
+                        ["<C-k>"] = "move_selection_previous",
+                    },
+                    n = {
+                        ["<C-j>"] = "move_selection_next",
+                        ["<C-k>"] = "move_selection_previous",
+                    },
+                },
             },
         },
     },
@@ -806,6 +2359,23 @@ lazy.setup({
         },
         config = function(_, opts)
             if #vim.api.nvim_list_uis() > 0 then
+                local ok_reg, registry = pcall(require, "mason-registry")
+                if ok_reg then
+                    local retried = {}
+                    registry:on("package:install:failed", function(pkg)
+                        if retried[pkg.name] then return end
+                        retried[pkg.name] = true
+                        local npm_exe = is_win32 and "npm.cmd" or "npm"
+                        if vim.fn.executable(npm_exe) == 1 then
+                            local npm_ver = vim.fn.system({ npm_exe, "view", pkg.name, "dist-tags.latest" }):gsub("%s+$", "")
+                            if vim.v.shell_error == 0 and npm_ver ~= "" then
+                                vim.schedule(function()
+                                    pkg:install({ version = npm_ver })
+                                end)
+                            end
+                        end
+                    end)
+                end
                 require("mason-lspconfig").setup(opts)
             end
 
@@ -815,9 +2385,7 @@ lazy.setup({
                 callback = function(ev)
                     local client = vim.lsp.get_client_by_id(ev.data.client_id)
                     if client then
-                        -- Disable LSP semantic token overrides so Treesitter handles syntax highlighting consistently without coloring parts of import strings
                         client.server_capabilities.semanticTokensProvider = nil
-                        -- Disable documentLinkProvider to eliminate rogue clickable hyperlink metadata and spurious link highlights
                         client.server_capabilities.documentLinkProvider = nil
                     end
 
@@ -886,11 +2454,14 @@ lazy.setup({
                         },
                     },
                 },
+                leanls = {
+                    cmd = { "lake", "serve", "--" },
+                    filetypes = { "lean" },
+                    root_markers = { "lakefile.toml", "lakefile.lean", "lean-toolchain", ".git" },
+                },
             }
 
-            -- Configure servers using modern vim.lsp.config (Neovim 0.11+) with legacy fallback
-            -- Note: jdtls is managed on-demand via ftplugin/java.lua with nvim-jdtls
-            local servers = { "clangd", "rust_analyzer", "gopls", "pyright", "lua_ls", "bashls", "terraformls", "yamlls", "jsonls" }
+            local servers = { "clangd", "rust_analyzer", "gopls", "pyright", "lua_ls", "bashls", "terraformls", "yamlls", "jsonls", "leanls" }
             local server_bins = {
                 clangd = "clangd",
                 rust_analyzer = "rust-analyzer",
@@ -901,8 +2472,9 @@ lazy.setup({
                 terraformls = "terraform-ls",
                 yamlls = "yaml-language-server",
                 jsonls = "vscode-json-language-server",
+                leanls = "lake",
             }
-            local path_sep = vim.fn.has("win32") == 1 and ";" or ":"
+            local path_sep = is_win32 and ";" or ":"
             local mason_bin_dir = vim.fn.stdpath("data") .. "/mason/bin"
             if not (vim.env.PATH or ""):find(mason_bin_dir, 1, true) then
                 vim.env.PATH = mason_bin_dir .. path_sep .. (vim.env.PATH or "")
@@ -953,6 +2525,162 @@ lazy.setup({
             require("mini.pairs").setup()
             require("mini.comment").setup()
             require("mini.surround").setup()
+            require("mini.icons").setup()
+            require("mini.files").setup({
+                windows = {
+                    max_number = 2,
+                    preview = true,
+                    width_focus = 35,
+                    width_nofocus = 15,
+                    width_preview = 25,
+                },
+            })
+            local mf = require("mini.files")
+            vim.api.nvim_create_autocmd("User", {
+                group = vim.api.nvim_create_augroup("SolarizedMiniFilesWindow", { clear = true }),
+                pattern = "MiniFilesWindowUpdate",
+                callback = function(args)
+                    local st = mf.get_explorer_state()
+                    if not st or not st.windows or #st.windows == 0 then
+                        return
+                    end
+                    local last_win = st.windows[#st.windows]
+                    if args.data.win_id == last_win.win_id and last_win.path ~= st.branch[st.depth_focus] then
+                        local cfg = vim.api.nvim_win_get_config(args.data.win_id)
+                        local col = type(cfg.col) == "table" and (cfg.col[false] or cfg.col[1] or 0) or (cfg.col or 0)
+                        local bw = (cfg.border == nil or cfg.border == "none") and 0 or 2
+                        local w = vim.o.columns - col - bw
+                        if w > cfg.width then
+                            cfg.width = w
+                            if last_win.path then
+                                local clean_path = last_win.path:gsub("%z", "")
+                                local name = (" " .. vim.fn.fnamemodify(clean_path, ":t") .. " "):gsub("\n", "<NL>")
+                                local nchars = vim.fn.strchars(name)
+                                cfg.title = nchars <= w and name or ("…" .. vim.fn.strcharpart(name, nchars - w + 1, w - 1))
+                            end
+                            vim.api.nvim_win_set_config(args.data.win_id, cfg)
+                        end
+                    end
+                end,
+            })
+            vim.api.nvim_create_autocmd("User", {
+                group = vim.api.nvim_create_augroup("SolarizedMiniFilesKeys", { clear = true }),
+                pattern = "MiniFilesBufferCreate",
+                callback = function(args)
+                    local buf_id = args.data.buf_id
+                    map("n", "<Left>", function()
+                        mf.go_out()
+                    end, { buffer = buf_id, nowait = true, desc = "Go out of directory" })
+                    map("n", "<S-Left>", function()
+                        mf.go_out()
+                        mf.trim_right()
+                    end, { buffer = buf_id, nowait = true, desc = "Go out of directory and trim right" })
+                    map("n", "<Right>", function()
+                        mf.go_in()
+                    end, { buffer = buf_id, nowait = true, desc = "Go in entry" })
+                    map("n", "<S-Right>", function()
+                        mf.go_in({ close_on_file = true })
+                    end, { buffer = buf_id, nowait = true, desc = "Go in entry and close on file" })
+                    map("n", "<CR>", function()
+                        mf.go_in({ close_on_file = true })
+                    end, { buffer = buf_id, nowait = true, desc = "Open file or enter directory" })
+                    map("n", "<2-LeftMouse>", function()
+                        local m = vim.fn.getmousepos()
+                        if m.winid > 0 and vim.api.nvim_win_is_valid(m.winid) then
+                            vim.api.nvim_set_current_win(m.winid)
+                            if m.line > 0 then
+                                local win_buf = vim.api.nvim_win_get_buf(m.winid)
+                                local line_cnt = vim.api.nvim_buf_line_count(win_buf)
+                                pcall(vim.api.nvim_win_set_cursor, m.winid, { math.min(m.line, line_cnt), math.max(0, m.column - 1) })
+                            end
+                        end
+                        mf.go_in({ close_on_file = true })
+                    end, { buffer = buf_id, nowait = true, silent = true, desc = "Open file or enter directory on double-click" })
+                end,
+            })
         end,
     },
+
+    -- In-Buffer Markdown Rendering (Universal Semantic Color Architecture)
+    {
+        "MeanderingProgrammer/render-markdown.nvim",
+        dependencies = { "nvim-treesitter/nvim-treesitter", "echasnovski/mini.nvim" },
+        ft = { "markdown" },
+        cmd = { "RenderMarkdown" },
+        keys = {
+            { "<leader>m", "<cmd>RenderMarkdown toggle<CR>", desc = "Toggle Markdown rendering" },
+        },
+        opts = {
+            file_types = { "markdown" },
+            render_modes = { "n", "v", "c", "t" },
+            anti_conceal = {
+                enabled = false,
+            },
+            win_options = {
+                concealcursor = {
+                    default = vim.o.concealcursor,
+                    rendered = "nvc",
+                },
+            },
+            heading = {
+                enabled = true,
+                sign = false,
+                position = "inline",
+                width = "block",
+                right_pad = 1,
+                icons = { "󰲡 ", "󰲣 ", "󰲥 ", "󰲧 ", "󰲩 ", "󰲫 " },
+            },
+            code = {
+                enabled = true,
+                sign = false,
+                style = "full",
+                position = "left",
+                width = "full",
+                border = "thin",
+                above = "▄",
+                below = "▀",
+                left_pad = 1,
+                right_pad = 1,
+                highlight_language = "RenderMarkdownCodeInfo",
+            },
+            dash = {
+                enabled = true,
+                icon = "─",
+                width = "full",
+            },
+            bullet = {
+                enabled = true,
+                icons = { "•", "◦", "▪", "▫" },
+            },
+            checkbox = {
+                enabled = true,
+                unchecked = { icon = "󰄱 ", highlight = "RenderMarkdownUnchecked" },
+                checked = { icon = "󰱒 ", highlight = "RenderMarkdownChecked" },
+            },
+            quote = {
+                enabled = true,
+                icon = "▋",
+                repeat_linebreak = true,
+            },
+            pipe_table = {
+                enabled = true,
+                preset = "round",
+                style = "full",
+                cell = "padded",
+                alignment_indicator = "━",
+            },
+            link = {
+                enabled = true,
+                footnote = { enabled = true, superscript = true },
+                image = "󰥶 ",
+                email = "󰀓 ",
+                hyperlink = "󰌹 ",
+            },
+            html = { enabled = false },
+            latex = { enabled = false },
+            yaml = { enabled = false },
+        },
+    },
+}, {
+    lockfile = lazy_lockfile,
 })
