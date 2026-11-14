@@ -16,6 +16,11 @@ param(
     [switch]$WithGUI,
     [switch]$IncludeGUI,
     [switch]$InstallPackages,
+    [string]$Theme = '',
+    [switch]$Uninstall,
+    [switch]$UninstallDotfiles,
+    [switch]$UninstallFonts,
+    [switch]$UninstallBin,
     [switch]$SkipPackages,
     [switch]$SkipFonts,
     [switch]$SkipTerminal,
@@ -66,7 +71,7 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "setup.ps1"))) {
         Write-Host "`n[2/3] [DryRun] Would update existing windows-settings at $targetDir via git pull..." -ForegroundColor DarkCyan
     } else {
         Write-Host "`n[2/3] Updating existing windows-settings at $targetDir..." -ForegroundColor Yellow
-        git -C $targetDir pull --rebase origin main
+        git -C $targetDir pull --rebase
     }
 }
 

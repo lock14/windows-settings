@@ -1,0 +1,68 @@
+// ============================================================================
+// windows-settings 3-Pane Inverted-T IDE Layout (ide-3pane.kdl)
+// ============================================================================
+// Top 1-line compact-bar on BASE02 shelf:
+//   Top 75%:    50% AI Agent (focused) | 50% Neovim Editor (Named Pipe RPC)
+//   Bottom 25%: Full-width Interactive PowerShell 7 Shell
+
+layout {
+    tab_template name="ide_ui" {
+        pane size=1 borderless=true {
+            plugin location="compact-bar"
+        }
+        children
+    }
+
+    ide_ui name="ide" focus=true {
+        pane size="75%" split_direction="vertical" {
+            pane size="50%" name="AI" focus=true command="ide.cmd" {
+                args "--pane-init" "ai"
+            }
+            pane size="50%" name="Editor" command="ide.cmd" {
+                args "--pane-init" "editor"
+            }
+        }
+        pane size="25%" name="Shell" command="ide.cmd" {
+            args "--pane-init" "term"
+        }
+    }
+
+    swap_tiled_layout name="inverted-t" {
+        ide_ui exact_panes=4 {
+            pane size="75%" split_direction="vertical" {
+                pane size="50%"
+                pane size="50%"
+            }
+            pane size="25%"
+        }
+        ide_ui max_panes=3 {
+            pane split_direction="vertical" {
+                pane size="50%"
+                pane size="50%"
+            }
+        }
+        ide_ui min_panes=5 {
+            pane size="75%" split_direction="vertical" {
+                pane size="50%"
+                pane size="50%" { children; }
+            }
+            pane size="25%"
+        }
+    }
+
+    swap_tiled_layout name="columns" {
+        ide_ui min_panes=2 {
+            pane split_direction="vertical" {
+                children
+            }
+        }
+    }
+
+    swap_tiled_layout name="stacked" {
+        ide_ui min_panes=3 {
+            pane stacked=true {
+                children
+            }
+        }
+    }
+}

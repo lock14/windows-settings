@@ -1,6 +1,8 @@
 # =============================================================
 # Test Suite for windows-settings (Modern Workstation Architecture)
 # =============================================================
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Test 4 explicitly verifies prior global:LASTEXITCODE handling')]
+param()
 
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -28,7 +30,8 @@ Write-Host "========================================" -ForegroundColor Cyan
 # Test 1: PowerShell Syntax Checks
 # -------------------------------------------------------------
 Write-Host "`n[1/8] Checking PowerShell Scripts & Module Syntax..." -ForegroundColor Yellow
-$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' }
+$psFiles = Get-ChildItem -Path $RootDir -Recurse -Include "*.ps1", "*.psm1", "*.psd1" |
+    Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' }
 
 foreach ($file in $psFiles) {
     $errors = $null
@@ -43,14 +46,15 @@ foreach ($file in $psFiles) {
 }
 
 # -------------------------------------------------------------
-# Test 2: JSON & Manifest Files Validity
+# Test 2: JSON, Manifest, Theme & Polyglot Asset Validity
 # -------------------------------------------------------------
-Write-Host "`n[2/8] Validating JSON Configurations & Manifests..." -ForegroundColor Yellow
+Write-Host "`n[2/8] Validating JSON, Manifests, 17-Theme Engine & 40-Language Assets..." -ForegroundColor Yellow
 
 # Test config/powershell/p10k_single_line.omp.json
 $p10kPath = Join-Path $RootDir "config\powershell\p10k_single_line.omp.json"
 try {
-    $p10kJson = Get-Content $p10kPath -Raw | ConvertFrom-Json
+    $p10kRaw = Get-Content $p10kPath -Raw
+    $p10kJson = $p10kRaw | ConvertFrom-Json
     if ($p10kJson.blocks.Count -gt 0) {
         Pass "JSON valid: config/powershell/p10k_single_line.omp.json (blocks: $($p10kJson.blocks.Count))"
         $rpromptBlock = $p10kJson.blocks | Where-Object { $_.type -eq "rprompt" }
@@ -67,6 +71,11 @@ try {
         } else {
             Fail "p10k_single_line.omp.json left cap validation" "Left endpoint cap must be static Base02 without foreground_templates"
         }
+        if ($p10kRaw -match '_WS_GIT_PR_LABEL' -and $p10kRaw -match '_WS_GIT_PR_URL' -and $p10kRaw -match '_HS_PROMPT_OS_ICON') {
+            Pass "p10k_single_line.omp.json includes async OSC 8 Git PR badge & holiday OS icon support"
+        } else {
+            Fail "p10k_single_line.omp.json PR/holiday templates" "Missing _WS_GIT_PR_LABEL, _WS_GIT_PR_URL, or _HS_PROMPT_OS_ICON"
+        }
     } else {
         Fail "JSON validation: config/powershell/p10k_single_line.omp.json" "Missing blocks definition"
     }
@@ -74,75 +83,168 @@ try {
     Fail "JSON parse error: config/powershell/p10k_single_line.omp.json" $_.Exception.Message
 }
 
-# Test config/terminal/settings.json
+# Test config/terminal/settings.json & windows-settings.json (17 schemes + IDE keybindings)
 $terminalJsonPath = Join-Path $RootDir "config\terminal\settings.json"
 try {
     $termJson = Get-Content $terminalJsonPath -Raw | ConvertFrom-Json
     $hasSolarized = ($termJson.profiles.defaults.colorScheme -eq "Solarized Dark")
     $hasFont = ($termJson.profiles.defaults.font.face -eq "MesloLGS Nerd Font Mono" -or $termJson.profiles.defaults.font.face -eq "MesloLGS NF")
-    if ($hasSolarized -and $hasFont) {
-        Pass "JSON valid: config/terminal/settings.json (Solarized Dark + $($termJson.profiles.defaults.font.face))"
+    $schemeCount = @($termJson.schemes).Count
+    if ($hasSolarized -and $hasFont -and $schemeCount -ge 17) {
+        Pass "JSON valid: config/terminal/settings.json ($schemeCount schemes, Solarized Dark + $($termJson.profiles.defaults.font.face))"
     } else {
-        Fail "config/terminal/settings.json validation" "Defaults mismatch (Solarized: $hasSolarized, Font: $hasFont)"
+        Fail "config/terminal/settings.json validation" "Expected Solarized Dark, MesloLGS font, and >=17 schemes (got $schemeCount)"
     }
 } catch {
     Fail "JSON parse error: config/terminal/settings.json" $_.Exception.Message
 }
 
-# Test config/terminal/windows-settings.json
 $fragmentJsonPath = Join-Path $RootDir "config\terminal\windows-settings.json"
 try {
-    $fragJson = Get-Content $fragmentJsonPath -Raw | ConvertFrom-Json
+    $fragRaw = Get-Content $fragmentJsonPath -Raw
+    $fragJson = $fragRaw | ConvertFrom-Json
     $fragSolarized = ($fragJson.profiles.defaults.colorScheme -eq "Solarized Dark")
     $fragFont = ($fragJson.profiles.defaults.font.face -eq "MesloLGS Nerd Font Mono" -or $fragJson.profiles.defaults.font.face -eq "MesloLGS NF")
-    if ($fragSolarized -and $fragFont) {
-        Pass "JSON valid: config/terminal/windows-settings.json (Solarized Dark fragment)"
+    $fragSchemes = @($fragJson.schemes).Count
+    $passesAltToZellij = ($fragRaw -notmatch '"alt\+h"' -and $fragRaw -notmatch '"alt\+z"' -and $fragRaw -match 'ctrl\+v')
+    if ($fragSolarized -and $fragFont -and $fragSchemes -ge 17 -and $passesAltToZellij) {
+        Pass "JSON valid: config/terminal/windows-settings.json ($fragSchemes schemes + Alt+* pass-through to Zellij)"
     } else {
-        Fail "config/terminal/windows-settings.json" "Defaults mismatch"
+        Fail "config/terminal/windows-settings.json" "Defaults, 17 schemes ($fragSchemes), or Alt+* pass-through ($passesAltToZellij) mismatch"
     }
 } catch {
     Fail "JSON parse error: config/terminal/windows-settings.json" $_.Exception.Message
+}
+
+# Test Zellij 0.46+ declarative configuration, layouts & theme (config/zellij/)
+$zellijDir = Join-Path $RootDir "config\zellij"
+$zellijCfgPath = Join-Path $zellijDir "config.kdl"
+$zellijLayout3Path = Join-Path $zellijDir "layouts\ide-3pane.kdl"
+$zellijLayout2Path = Join-Path $zellijDir "layouts\ide-2pane.kdl"
+$zellijThemePath = Join-Path $zellijDir "themes\windows-settings.kdl"
+if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Path $zellijLayout2Path) -and (Test-Path $zellijThemePath)) {
+    $zellijCfgRaw = Get-Content $zellijCfgPath -Raw
+    $zellijLayout3Raw = Get-Content $zellijLayout3Path -Raw
+    $zellijThemeRaw = Get-Content $zellijThemePath -Raw
+    if ($zellijCfgRaw -match 'pane_frames false' -and
+        $zellijCfgRaw -match 'attention \{' -and
+        $zellijCfgRaw -match 'tray_badge_colors' -and
+        $zellijCfgRaw -match 'terminal \{' -and
+        $zellijCfgRaw -match 'GoToNextAttention' -and
+        $zellijCfgRaw -match 'session-manager' -and
+        $zellijLayout3Raw -match 'compact-bar' -and
+        $zellijLayout3Raw -match '--pane-init' -and
+        $zellijThemeRaw -match 'windows-settings \{') {
+        Pass "KDL valid: config/zellij/ (config.kdl, ide-3pane.kdl, ide-2pane.kdl, themes/windows-settings.kdl)"
+    } else {
+        Fail "config/zellij/ content validation" "Missing expected Zellij 0.46+ attention, terminal, compact-bar, or theme blocks"
+    }
+
+    $zellijCmd = Get-Command zellij -ErrorAction SilentlyContinue
+    if ($zellijCmd) {
+        $zjCheck3 = (& $zellijCmd.Source --config-dir $zellijDir setup --check 2>&1) -join "`n"
+        $zjExit3 = $LASTEXITCODE
+        $zjCheck2 = (& $zellijCmd.Source --config-dir $zellijDir --layout $zellijLayout2Path setup --check 2>&1) -join "`n"
+        $zjExit2 = $LASTEXITCODE
+        if ($zjExit3 -eq 0 -and $zjExit2 -eq 0 -and $zjCheck3 -match 'Well defined' -and $zjCheck2 -match 'Well defined') {
+            Pass "zellij setup --check validates config.kdl + ide-3pane.kdl & ide-2pane.kdl"
+        } else {
+            Fail "zellij setup --check" "Exit codes ($zjExit3, $zjExit2): $zjCheck3"
+        }
+    }
+} else {
+    Fail "config/zellij/ files missing" "Expected config.kdl, ide-3pane.kdl, ide-2pane.kdl, and themes/windows-settings.kdl"
+}
+
+# Test .gitattributes line-ending rules (.ps1/.cmd = crlf, .kdl/.json/.md = lf)
+$gitAttributesPath = Join-Path $RootDir ".gitattributes"
+if (Test-Path $gitAttributesPath) {
+    $gitAttrRaw = Get-Content $gitAttributesPath -Raw
+    if ($gitAttrRaw -match '\*\.ps1\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.cmd\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.kdl\s+text\s+eol=lf') {
+        Pass ".gitattributes enforces CRLF for .ps1/.cmd and LF for .kdl configs"
+    } else {
+        Fail ".gitattributes validation" "Missing expected CRLF/LF rules in .gitattributes"
+    }
 }
 
 # Test configuration.dsc.yaml
 $dscPath = Join-Path $RootDir "configuration.dsc.yaml"
 if (Test-Path $dscPath) {
     $dscContent = Get-Content $dscPath -Raw
-    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and $dscContent -match 'JanDeDobbeleer\.OhMyPosh' -and $dscContent -match 'BrechtSanders\.WinLibs') {
-        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest with WinLibs GCC)"
+    if ($dscContent -match 'configurationVersion:\s*0\.2\.0' -and
+        $dscContent -match 'JanDeDobbeleer\.OhMyPosh' -and
+        $dscContent -match 'BrechtSanders\.WinLibs' -and
+        $dscContent -match 'dandavison\.delta' -and
+        $dscContent -match 'aristocratos\.btop4win' -and
+        $dscContent -match 'bootandy\.dust' -and
+        $dscContent -match 'Zellij\.Zellij') {
+        Pass "YAML valid: configuration.dsc.yaml (WinGet DSC v3 Manifest with WinLibs GCC, Zellij, delta, dust, btop4win)"
     } else {
-        Fail "configuration.dsc.yaml" "Missing configurationVersion, OhMyPosh, or WinLibs GCC"
+        Fail "configuration.dsc.yaml" "Missing expected DSC package declarations"
     }
 }
 
-# Test p10k.omp.json & mise.toml
-if (Test-Path $p10kPath) {
-    $p10kRaw = Get-Content $p10kPath -Raw
-    if ($p10kRaw -match '#073642' -and $p10kRaw -match '#839496') {
-        Pass "Theme valid: p10k.omp.json (Solarized Dark Base02 shelf & Base0 OS icon)"
-    } else {
-        Fail "p10k.omp.json" "Missing Solarized Dark palette definitions"
-    }
-}
-
+# Test mise.toml
 $misePath = Join-Path $RootDir "mise.toml"
 if (Test-Path $misePath) {
     $miseContent = Get-Content $misePath -Raw
-    if ($miseContent -match 'glow\s*=\s*"latest"' -and $miseContent -match 'tree-sitter\s*=\s*"latest"' -and $miseContent -match 'go\.set_gobin\s*=\s*false' -and $miseContent -match 'go\.set_gopath\s*=\s*false') {
-        Pass "TOML valid: mise.toml (Declarative toolchains with tree-sitter & Go isolation)"
+    if ($miseContent -match 'glow\s*=\s*"latest"' -and
+        $miseContent -match 'zellij\s*=\s*"latest"' -and
+        $miseContent -match 'tree-sitter\s*=\s*"latest"' -and
+        $miseContent -match 'delta\s*=\s*"latest"' -and
+        $miseContent -match 'dust\s*=\s*"latest"' -and
+        $miseContent -match 'elan\s*=' -and
+        $miseContent -match 'go\.set_gobin\s*=\s*false' -and
+        $miseContent -match 'go\.set_gopath\s*=\s*false') {
+        Pass "TOML valid: mise.toml (Polyglot toolchains, Zellij, CLI utilities & Go isolation)"
     } else {
-        Fail "mise.toml validation" "Missing glow, tree-sitter, go.set_gobin, or go.set_gopath in mise.toml"
+        Fail "mise.toml validation" "Missing expected tools or Go isolation settings in mise.toml"
     }
 }
 
-# Test Bat Syntaxes & TrueColor Theme
+# Test 17 Theme Definitions, 17 bat Themes & 17 btop Themes
+$themesDir = Join-Path $RootDir "config\themes"
+$themeFiles = @(Get-ChildItem -Path $themesDir -Filter "*.theme" -ErrorAction SilentlyContinue)
+if ($themeFiles.Count -eq 17) {
+    Pass "17 color palette definitions present in config/themes/ (9 classic + 8 US Holiday)"
+} else {
+    Fail "config/themes count" "Expected 17 .theme files, found $($themeFiles.Count)"
+}
+
+$batThemesDir = Join-Path $RootDir "config\bat\themes"
+$batThemeFiles = @(Get-ChildItem -Path $batThemesDir -Filter "*-TrueColor.tmTheme" -ErrorAction SilentlyContinue)
+if ($batThemeFiles.Count -eq 17) {
+    Pass "17 pre-rendered bat TrueColor .tmTheme files present in config/bat/themes/"
+} else {
+    Fail "config/bat/themes count" "Expected 17 .tmTheme files, found $($batThemeFiles.Count)"
+}
+
+$btopThemesDir = Join-Path $RootDir "config\btop\themes"
+$btopThemeFiles = @(Get-ChildItem -Path $btopThemesDir -Filter "*.theme" -ErrorAction SilentlyContinue)
+if ($btopThemeFiles.Count -eq 17 -and (Test-Path (Join-Path $RootDir "config\btop\btop.conf"))) {
+    Pass "17 btop/btop4win themes & btop.conf present in config/btop/"
+} else {
+    Fail "config/btop validation" "Expected 17 btop themes and btop.conf, found $($btopThemeFiles.Count)"
+}
+
+# Test CLI Tool Configs (delta, tealdeer, clangd)
+foreach ($cfgRel in @('config\git\delta.gitconfig', 'config\tealdeer\config.toml', 'config\clangd\config.yaml')) {
+    $cfgFull = Join-Path $RootDir $cfgRel
+    if (Test-Path $cfgFull) {
+        Pass "CLI tool config present: $($cfgRel.Replace('\', '/'))"
+    } else {
+        Fail "CLI tool config missing" "$cfgRel not found"
+    }
+}
+
+# Test Bat Syntaxes (37 standalone grammars) & Solarized Dark TrueColor Theme
 $batSyntaxesDir = Join-Path $RootDir "config\bat\syntaxes"
 if (Test-Path $batSyntaxesDir) {
-    $syntaxFiles = Get-ChildItem -Path $batSyntaxesDir -Filter "*.sublime-syntax"
-    if ($syntaxFiles.Count -ge 18) {
-        Pass "Bat syntax grammars present: $($syntaxFiles.Count) custom Sublime syntaxes in config/bat/syntaxes"
+    $syntaxFiles = @(Get-ChildItem -Path $batSyntaxesDir -Filter "*.sublime-syntax")
+    if ($syntaxFiles.Count -eq 37) {
+        Pass "Bat syntax grammars present: $($syntaxFiles.Count) standalone Sublime syntaxes in config/bat/syntaxes"
     } else {
-        Fail "Bat syntaxes" "Expected >= 18 syntax grammars, found $($syntaxFiles.Count)"
+        Fail "Bat syntaxes" "Expected 37 syntax grammars, found $($syntaxFiles.Count)"
     }
 } else {
     Fail "Bat syntaxes directory" "config/bat/syntaxes not found"
@@ -162,33 +264,48 @@ if (Test-Path $batThemePath) {
 $vimrcPath = Join-Path $RootDir "config\vim\_vimrc"
 if (Test-Path $vimrcPath) {
     $vimrcContent = Get-Content $vimrcPath -Raw
-    if ($vimrcContent -match 'ApplySolarizedDark' -and $vimrcContent -notmatch 'pathogen#infect' -and $vimrcContent -notmatch 'UltiSnips') {
-        Pass "Vim fallback valid: config/vim/_vimrc (Zero-dependency standalone Solarized Dark)"
+    if (($vimrcContent -match 'ApplySolarizedDark' -or $vimrcContent -match 'ApplyActiveTheme') -and
+        $vimrcContent -match 'command!.*Theme' -and
+        $vimrcContent -notmatch 'pathogen#infect' -and
+        $vimrcContent -notmatch 'UltiSnips') {
+        Pass "Vim fallback valid: config/vim/_vimrc (Zero-dependency standalone 17-theme engine)"
     } else {
-        Fail "Vim fallback validation" "Expected standalone _vimrc with ApplySolarizedDark and no pathogen/UltiSnips"
+        Fail "Vim fallback validation" "Expected standalone _vimrc with 17-theme engine and no pathogen/UltiSnips"
     }
 }
 
-# Test Neovim Tree-sitter Queries & ftplugin
+# Test Neovim Tree-sitter Queries (43 queries, zero legacy markdown_inline url metadata)
 $nvimQueriesDir = Join-Path $RootDir "config\nvim\queries"
 $nvimAfterDir = Join-Path $RootDir "config\nvim\after\queries"
 if ((Test-Path $nvimQueriesDir) -and (Test-Path $nvimAfterDir)) {
-    $scmFiles = Get-ChildItem -Path (Join-Path $RootDir "config\nvim") -Recurse -Filter "*.scm"
-    if ($scmFiles.Count -ge 20) {
+    $scmFiles = @(Get-ChildItem -Path (Join-Path $RootDir "config\nvim") -Recurse -Filter "*.scm")
+    if ($scmFiles.Count -eq 43) {
         Pass "Neovim Tree-sitter query suite valid: $($scmFiles.Count) queries in config/nvim"
     } else {
-        Fail "Neovim queries" "Expected >= 20 .scm query files, found $($scmFiles.Count)"
+        Fail "Neovim queries" "Expected 43 .scm query files, found $($scmFiles.Count)"
+    }
+    $mdInlineScm = Join-Path $nvimQueriesDir "markdown_inline\highlights.scm"
+    $staleAfterMdInline = Join-Path $nvimAfterDir "markdown_inline"
+    if ((Test-Path $mdInlineScm) -and -not (Test-Path $staleAfterMdInline)) {
+        $mdScmContent = Get-Content $mdInlineScm -Raw
+        if ($mdScmContent -notmatch '\(#set!\s+"url"') {
+            Pass "Neovim markdown_inline base query eliminates legacy url metadata & stale after/queries override"
+        } else {
+            Fail "markdown_inline url metadata" "Found forbidden (#set! `"url`" ...) in markdown_inline/highlights.scm"
+        }
+    } else {
+        Fail "markdown_inline query layout" "Expected queries/markdown_inline/highlights.scm and no after/queries/markdown_inline"
     }
 }
 
-# Test Sample Code polyglot suite
+# Test Sample Code polyglot suite (40 files)
 $sampleCodeDir = Join-Path $RootDir "sample-code"
 if (Test-Path $sampleCodeDir) {
-    $sampleFiles = Get-ChildItem -Path $sampleCodeDir -File
-    if ($sampleFiles.Count -ge 20) {
+    $sampleFiles = @(Get-ChildItem -Path $sampleCodeDir -File)
+    if ($sampleFiles.Count -eq 40) {
         Pass "Sample code polyglot suite present: $($sampleFiles.Count) files in sample-code/"
     } else {
-        Fail "Sample code" "Expected >= 20 sample files, found $($sampleFiles.Count)"
+        Fail "Sample code" "Expected 40 sample files, found $($sampleFiles.Count)"
     }
 }
 
@@ -196,22 +313,25 @@ if (Test-Path $sampleCodeDir) {
 $cmdAutorunPath = Join-Path $RootDir "config\cmd\autorun.cmd"
 if (Test-Path $cmdAutorunPath) {
     Pass "CMD AutoRun script exists: config/cmd/autorun.cmd"
-    $cmdOutput = & cmd.exe /c "call `"$cmdAutorunPath`" && set COLORTERM && set BAT_THEME && set CC && set CXX && set PROMPT && doskey /macros"
-    $hasColorTerm = ($cmdOutput -match 'COLORTERM=truecolor')
-    $hasBatTheme = ($cmdOutput -match 'BAT_THEME=Solarized-Dark-TrueColor')
-    $hasCC = ($cmdOutput -match 'CC=gcc')
-    $hasCXX = ($cmdOutput -match 'CXX=g\+\+')
-    $hasPrompt = ($cmdOutput -match 'PROMPT=')
-    $hasLsMacro = ($cmdOutput -match 'ls=ls --color=auto')
-    $hasGitMacro = ($cmdOutput -match 'gst=git status')
-    $hasVimMacro = ($cmdOutput -match 'v=nvim')
+    $cmdOutput = & cmd.exe /d /c "call `"$cmdAutorunPath`" && set COLORTERM && set FORCE_HYPERLINK && set BAT_THEME && set CC && set CXX && set PROMPT && doskey /macros"
+    $hasColorTerm = [bool]($cmdOutput -match 'COLORTERM=truecolor')
+    $hasHyperlink = [bool]($cmdOutput -match 'FORCE_HYPERLINK=1')
+    $hasBatTheme = [bool]($cmdOutput -match 'BAT_THEME=')
+    $hasCC = [bool]($cmdOutput -match 'CC=gcc')
+    $hasCXX = [bool]($cmdOutput -match 'CXX=g\+\+')
+    $hasPrompt = [bool]($cmdOutput -match 'PROMPT=')
+    $hasLsMacro = [bool]($cmdOutput -match 'ls=ls --color=auto')
+    $hasBMacro = [bool]($cmdOutput -match 'b=bat')
+    $noCatMacro = -not [bool]($cmdOutput -match '^cat=bat')
+    $hasGitMacro = [bool]($cmdOutput -match 'gst=git status')
+    $hasIdeMacro = [bool]($cmdOutput -match 'ide3=ide --3pane')
     $autorunRaw = Get-Content $cmdAutorunPath -Raw
-    $hasChcp = ($autorunRaw -match 'chcp 65001')
-    $hasShelf = ($autorunRaw -match '48;2;7;54;66m' -and $autorunRaw -match '\$P')
-    if ($hasColorTerm -and $hasBatTheme -and $hasCC -and $hasCXX -and $hasPrompt -and $hasLsMacro -and $hasGitMacro -and $hasVimMacro -and $hasChcp -and $hasShelf) {
-        Pass "config/cmd/autorun.cmd initializes Solarized environment, compiler defaults, UTF-8 Base02 Powerline shelf prompt, and doskey macros"
+    $hasChcp = [bool]($autorunRaw -match 'chcp 65001')
+    $hasShelf = [bool]($autorunRaw -match '48;2;7;54;66m' -and $autorunRaw -match '\$P')
+    if ($hasColorTerm -and $hasHyperlink -and $hasBatTheme -and $hasCC -and $hasCXX -and $hasPrompt -and $hasLsMacro -and $hasBMacro -and $noCatMacro -and $hasGitMacro -and $hasIdeMacro -and $hasChcp -and $hasShelf) {
+        Pass "config/cmd/autorun.cmd initializes TrueColor/OSC8 env, UTF-8 Base02 shelf prompt, and home-settings doskey macros (b=bat, raw cat)"
     } else {
-        Fail "config/cmd/autorun.cmd execution" "Missing expected environment or doskey macros (ColorTerm: $hasColorTerm, CC: $hasCC, CXX: $hasCXX, Prompt: $hasPrompt, Chcp: $hasChcp, Shelf: $hasShelf, Ls: $hasLsMacro, Git: $hasGitMacro)"
+        Fail "config/cmd/autorun.cmd execution" "Macro/env mismatch (Hyperlink:$hasHyperlink, b:$hasBMacro, noCat:$noCatMacro, ide3:$hasIdeMacro)"
     }
 } else {
     Fail "config/cmd/autorun.cmd missing" "Expected config/cmd/autorun.cmd to exist"
@@ -223,87 +343,94 @@ if (Test-Path $cmdAutorunPath) {
 Write-Host "`n[3/8] Testing WindowsSettings PowerShell Module Import..." -ForegroundColor Yellow
 $moduleManifest = Join-Path $RootDir "module\WindowsSettings.psd1"
 
-# Import the module
-Import-Module $moduleManifest -Force
+Import-Module $moduleManifest -Force -DisableNameChecking
 
 $expectedFunctions = @(
-    # Developer Tool Shortcuts (Kebab-case & compatibility aliases)
     'go-testall', 'go-buildall', 'go-lint', 'yaml-lint', 'guser-branch',
     'go_testall', 'go_buildall', 'go_lint', 'yaml_lint', 'fix-abcxyz-branch-name',
-    'cat', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'l', 'lt',
-    'e', 'el', 'et', 'elm', 'elt', 'elx',
-    # Oh My Zsh Git plugin aliases
+    'b', 'fs', 'Format-PathTree', 'ls', 'll', 'la', 'l', 'lt',
+    'e', 'el', 'et', 'elm', 'elt', 'elx', 'icd',
+    'v', 'ide', 'ide2', 'ide3', 'idek', 'qide', 'quit',
     'gco', 'gcb', 'gcm', 'gcd', 'ga', 'gaa', 'gst', 'gss', 'gd', 'gds',
     'gl', 'gp', 'gb', 'gba', 'gbd', 'gbD', 'gsta', 'gstp', 'gstl',
     'glog', 'glo', 'grb', 'grba', 'grbc', 'grbi', 'grh', 'grhh', 'gsw', 'gswc',
     'gcp', 'gcpa', 'gcpc',
-    # Custom Git shortcuts
-    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gsync',
-    # Utilities
-    'gen-passwd', 'repeat-until-success', 'sum'
+    'gcommit', 'gamend', 'gfetch', 'gpush', 'gpushf', 'gpull', 'gup', 'gprune', 'gpurge', 'gsync',
+    'gen-passwd', 'repeat-until-success', 'sum',
+    'ds', 'btop', 'update', 'update-system', 'theme'
 )
 
 foreach ($func in $expectedFunctions) {
-    if (Get-Command $func -ErrorAction SilentlyContinue) {
+    if (Get-Command $func -CommandType Function -ErrorAction SilentlyContinue) {
         Pass "Function defined & exported: $func"
     } else {
-        Fail "Function missing: $func" "Get-Command could not find function $func"
+        Fail "Function missing: $func" "Get-Command could not find exported function $func"
     }
 }
 
-# Test cat pipeline handling
-$catPipeTest = ('cat pipeline test' | & (Get-Command cat -CommandType Function)).Trim()
-if ($catPipeTest -eq 'cat pipeline test') {
-    Pass "cat function correctly handles pipeline input without hanging"
+# Verify `cat` is un-aliased and NOT shadowed by a wrapper function (`b` = bat, `cat` = coreutils cat)
+if (-not (Test-Path 'Alias:cat') -and -not (Get-Command cat -CommandType Function -ErrorAction SilentlyContinue)) {
+    Pass "cat is un-aliased and un-wrapped so coreutils cat.exe runs natively"
 } else {
-    Fail "cat function pipeline" "Expected 'cat pipeline test', got '$catPipeTest'"
+    Fail "cat un-aliasing" "cat should not be a PowerShell alias or wrapper function"
 }
 
-if (Get-Alias -Name tf -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: tf -> terraform"
+$bPipeTest = (('b pipeline test' | & (Get-Command b -CommandType Function) --plain) -join "`n").Trim()
+if ($bPipeTest -eq 'b pipeline test') {
+    Pass "b (bat) function handles pipeline input cleanly without hanging"
 } else {
-    Fail "Alias missing: tf" "Alias tf not found"
+    Fail "b function pipeline" "Expected 'b pipeline test', got '$bPipeTest'"
 }
 
-if (Get-Alias -Name vi -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: vi -> nvim"
-} else {
-    Fail "Alias missing: vi" "Alias vi not found"
-}
-
-if (Get-Alias -Name vim -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: vim -> nvim"
-} else {
-    Fail "Alias missing: vim" "Alias vim not found"
-}
-
-if (Get-Alias -Name v -ErrorAction SilentlyContinue) {
-    Pass "Alias defined: v -> nvim"
-} else {
-    Fail "Alias missing: v" "Alias v not found"
-}
-
-# Test Neovim configuration file
-$nvimInit = Join-Path $RootDir "config\nvim\init.lua"
-if (Test-Path $nvimInit) {
-    $nvimContent = Get-Content $nvimInit -Raw
-    if ($nvimContent -match 'solarized' -and $nvimContent -match 'mason' -and $nvimContent -match 'vim\.env\.CC = "gcc"' -and $nvimContent -match 'BrechtSanders\.WinLibs') {
-        Pass "Neovim modern Lua configuration exists: config/nvim/init.lua (LSP + Treesitter GCC discovery + Solarized)"
+foreach ($al in @('tf', 'vi', 'vim')) {
+    if (Get-Alias -Name $al -ErrorAction SilentlyContinue) {
+        Pass "Alias defined: $al"
     } else {
-        Fail "Neovim init.lua" "Missing LSP, Solarized, or Treesitter GCC discovery configuration"
+        Fail "Alias missing: $al" "Alias $al not found"
     }
 }
 
-if ($env:LS_COLORS -and $env:LS_COLORS -match 'di=34' -and $env:LS_COLORS -match 'ex=32' -and $env:LS_COLORS -match '\*\.tar=91' -and $env:LS_COLORS -match '\*\.png=95' -and $env:LS_COLORS -match '\*\.key=35' -and $env:LS_COLORS -match '\*\.txt=00') {
-    Pass "LS_COLORS environment variable configured (Calibrated Solarized Dark)"
+if ((Get-Command v -ErrorAction SilentlyContinue).CommandType -eq 'Function') {
+    Pass "Smart RPC-aware editor opener 'v' exported as Function"
 } else {
-    Fail "LS_COLORS environment variable" "LS_COLORS not set properly"
+    Fail "v function" "Expected 'v' to be exported as a Function"
 }
 
-if ($env:EZA_COLORS -and $env:EZA_COLORS -match 'di=38;2;38;139;210' -and $env:EZA_COLORS -match 'xx=38;2;88;110;117' -and $env:EZA_COLORS -match 'ff=38;2;131;148;150' -and $env:EZA_COLORS -match 'co=38;2;203;75;22' -and $env:EZA_COLORS -match 'cr=38;2;211;54;130' -and $env:EZA_COLORS -match 'do=38;2;131;148;150' -and $env:EZA_COLORS -match 'sc=38;2;131;148;150' -and $env:EZA_COLORS -match 'hd=4;38;2;147;161;161') {
-    Pass "EZA_COLORS environment variable configured (24-bit TrueColor Solarized Dark)"
+# Test Neovim configuration file & lazy-lock.json
+$nvimInit = Join-Path $RootDir "config\nvim\init.lua"
+$nvimLock = Join-Path $RootDir "config\nvim\lazy-lock.json"
+if ((Test-Path $nvimInit) -and (Test-Path $nvimLock)) {
+    $nvimContent = Get-Content $nvimInit -Raw
+    if ($nvimContent -match 'apply_home_settings_theme' -and
+        $nvimContent -match 'render-markdown' -and
+        $nvimContent -match 'mini\.files' -and
+        $nvimContent -match 'BrechtSanders\.WinLibs' -and
+        $nvimContent -match 'vim\.env\.ZELLIJ' -and
+        $nvimContent -match 'count_ide_modified_buffers') {
+        Pass "Neovim modern Lua config & lazy-lock.json valid (17-theme engine, render-markdown, mini.files, Zellij + IDE RPC)"
+    } else {
+        Fail "Neovim init.lua" "Missing expected 17-theme, render-markdown, mini.files, Zellij, or IDE RPC hooks"
+    }
 } else {
-    Fail "EZA_COLORS environment variable" "EZA_COLORS not set to full TrueColor Solarized Dark palette"
+    Fail "Neovim config/lockfile" "Missing config/nvim/init.lua or lazy-lock.json"
+}
+
+if ($env:LS_COLORS -and
+    $env:LS_COLORS -match 'di=(34|38;2;)' -and
+    $env:LS_COLORS -match 'ex=(32|38;2;)' -and
+    $env:LS_COLORS -match '\*\.lean=(00|38;2;)' -and
+    $env:LS_COLORS -match '\*\.zig=(00|38;2;)' -and
+    $env:LS_COLORS -match '\*\.ps1=(00|38;2;)' -and
+    $env:LS_COLORS -match '\*\.key=(35|38;2;)') {
+    Pass "LS_COLORS environment variable configured (Calibrated 40-language palette)"
+} else {
+    Fail "LS_COLORS environment variable" "LS_COLORS missing expected 40-language rules"
+}
+
+if ($env:EZA_COLORS -and $env:EZA_COLORS -match 'di=38;2;' -and $env:EZA_COLORS -match 'xx=38;2;' -and $env:EZA_COLORS -match 'hd=4;38;2;') {
+    Pass "EZA_COLORS environment variable configured (24-bit TrueColor)"
+} else {
+    Fail "EZA_COLORS environment variable" "EZA_COLORS not set properly"
 }
 
 if ($env:EXA_COLORS -eq $env:EZA_COLORS) {
@@ -312,14 +439,14 @@ if ($env:EXA_COLORS -eq $env:EZA_COLORS) {
     Fail "EXA_COLORS environment variable" "EXA_COLORS does not match EZA_COLORS"
 }
 
-if ($env:BAT_OPTS -eq '--italic-text=always') {
-    Pass "BAT_OPTS environment variable configured (--italic-text=always)"
+if ($env:FORCE_HYPERLINK -eq '1' -and $env:JQ_COLORS -and $env:BAT_OPTS -eq '--italic-text=always') {
+    Pass "FORCE_HYPERLINK=1, JQ_COLORS, and BAT_OPTS configured"
 } else {
-    Fail "BAT_OPTS environment variable" "BAT_OPTS not set properly"
+    Fail "CLI environment variables" "Missing FORCE_HYPERLINK, JQ_COLORS, or BAT_OPTS"
 }
 
-if ($env:FZF_DEFAULT_OPTS -and $env:FZF_DEFAULT_OPTS -match 'bg\+:#073642' -and $env:FZF_DEFAULT_OPTS -match 'bg:#002B36') {
-    Pass "FZF_DEFAULT_OPTS environment variable configured (Solarized Dark)"
+if ($env:FZF_DEFAULT_OPTS -and $env:FZF_DEFAULT_OPTS -match '--layout=reverse') {
+    Pass "FZF_DEFAULT_OPTS environment variable configured"
 } else {
     Fail "FZF_DEFAULT_OPTS environment variable" "FZF_DEFAULT_OPTS not set properly"
 }
@@ -342,17 +469,21 @@ if ($psm1Content -match 'Keyword\s*=\s*"`e\[38;2;181;137;0m"' -and $psm1Content 
 $setupPackagesScript = Join-Path $RootDir "setup.ps1"
 if (Test-Path $setupPackagesScript) {
     $setupPackagesContent = Get-Content $setupPackagesScript -Raw
-    if ($setupPackagesContent -match "'uutils\.coreutils'" -and $setupPackagesContent -match "'JanDeDobbeleer\.OhMyPosh'") {
-        Pass "uutils.coreutils and Oh My Posh configured in setup.ps1"
+    if ($setupPackagesContent -match "'uutils\.coreutils'" -and
+        $setupPackagesContent -match "'dandavison\.delta'" -and
+        $setupPackagesContent -match "'aristocratos\.btop4win'" -and
+        $setupPackagesContent -match "'Zellij\.Zellij'" -and
+        $setupPackagesContent -match 'Sync-AntigravityHooksJson') {
+        Pass "uutils.coreutils, delta, btop4win, Zellij, and Antigravity hooks configured in setup.ps1"
     } else {
-        Fail "winget packages configuration" "packages missing in setup.ps1"
+        Fail "winget packages configuration" "Expected CLI packages or Antigravity hook sync missing in setup.ps1"
     }
 }
 
 # -------------------------------------------------------------
-# Test 4: Utility Scripts Functional Tests (bin/)
+# Test 4: Utility, Theme & IDE Scripts Functional Tests (bin/)
 # -------------------------------------------------------------
-Write-Host "`n[4/8] Testing Native Utility Scripts (bin/)..." -ForegroundColor Yellow
+Write-Host "`n[4/8] Testing Native Utility, Theme & IDE Scripts (bin/)..." -ForegroundColor Yellow
 
 # Test gen-passwd.ps1
 $genPasswdScript = Join-Path $RootDir "bin\gen-passwd.ps1"
@@ -363,15 +494,15 @@ if ($pass16.Length -eq 16) {
     Fail "gen-passwd.ps1 length" "Expected 16, got $($pass16.Length)"
 }
 
-$pass32 = & $genPasswdScript -Length 32
+$pass32 = & $genPasswdScript 32
 if ($pass32.Length -eq 32) {
-    Pass "gen-passwd.ps1 generates expected length (32)"
+    Pass "gen-passwd.ps1 generates expected positional length (32)"
 } else {
-    Fail "gen-passwd.ps1 length" "Expected 32, got $($pass32.Length)"
+    Fail "gen-passwd.ps1 positional length" "Expected 32, got $($pass32.Length)"
 }
 
 $passSymbols = & $genPasswdScript -Length 24 -s
-if ($passSymbols.Length -eq 24 -and $passSymbols -match '^[\^\*\@\#\&\%\$\!]+$') {
+if ($passSymbols.Length -eq 24 -and $passSymbols -match '^[\^\*\@\#\&\%\$\!\-]+$') {
     Pass "gen-passwd.ps1 generates symbols-only password (-s)"
 } else {
     Fail "gen-passwd.ps1 symbols" "Expected only symbols in $passSymbols"
@@ -384,21 +515,21 @@ if ($passDigits.Length -eq 16 -and $passDigits -match '^[0-9]+$') {
     Fail "gen-passwd.ps1 digits" "Expected only digits in $passDigits"
 }
 
-$passUpperDigits = & $genPasswdScript -Length 16 -u -n
-if ($passUpperDigits.Length -eq 16 -and $passUpperDigits -match '^[A-Z0-9]+$') {
-    Pass "gen-passwd.ps1 generates uppercase and numbers (-u -n)"
+$passUpperDigits = & $genPasswdScript -su 18
+if ($passUpperDigits.Length -eq 18 -and $passUpperDigits -match '^[A-Z\^\*\@\#\&\%\$\!\-]+$') {
+    Pass "gen-passwd.ps1 supports combined short flags (-su 18)"
 } else {
-    Fail "gen-passwd.ps1 upper+digits" "Expected only uppercase and digits in $passUpperDigits"
+    Fail "gen-passwd.ps1 combined flags" "Expected only uppercase and symbols in $passUpperDigits"
 }
 
 $passAlpha = & $genPasswdScript -Length 20 -NoSymbols
-if ($passAlpha.Length -eq 20 -and $passAlpha -notmatch '[\^\*\@\#\&\%\$\!]') {
+if ($passAlpha.Length -eq 20 -and $passAlpha -notmatch '[\^\*\@\#\&\%\$\!\-]') {
     Pass "gen-passwd.ps1 generates password without symbols (-NoSymbols)"
 } else {
     Fail "gen-passwd.ps1 no-symbols" "Did not expect symbols in $passAlpha"
 }
 
-# Test sum.ps1 & direct sum cmdlet
+# Test sum.ps1 & sum function
 $sumScript = Join-Path $RootDir "bin\sum.ps1"
 $sumResult = 1..10 | & $sumScript
 if ($sumResult -eq 55) {
@@ -414,32 +545,27 @@ if ($sumScriptFloat -eq 4.0 -and $sumScriptFloat.GetType().Name -eq 'Decimal') {
     Fail "sum.ps1 float precision" "Expected 4.0 decimal, got $sumScriptFloat ($($sumScriptFloat.GetType().Name))"
 }
 
-$sumDirect1 = sum 1 2
-if ($sumDirect1 -eq 3) {
-    Pass "sum cmdlet correctly sums positional arguments (sum 1 2 = 3)"
+$sumHuman = "1K 2K" | sum -H
+if ($sumHuman -eq 3072) {
+    Pass "sum -H parses IEC byte suffixes (1K + 2K = 3072)"
 } else {
-    Fail "sum cmdlet result" "Expected 3, got $sumDirect1"
+    Fail "sum -H" "Expected 3072, got $sumHuman"
 }
 
-$sumDirect2 = 1..10 | sum
-if ($sumDirect2 -eq 55) {
-    Pass "sum cmdlet correctly sums pipeline numbers (1..10 | sum = 55)"
+$sumCol = sum -d ':' -k 2 'alpha:15:x' 'beta:25:y'
+if ($sumCol -eq 40) {
+    Pass "sum -d ':' -k 2 extracts and sums target column (15 + 25 = 40)"
 } else {
-    Fail "sum cmdlet pipeline" "Expected 55, got $sumDirect2"
+    Fail "sum -d -k" "Expected 40, got $sumCol"
 }
 
-$sumFloat = 1.5, 2.5 | sum
-if ($sumFloat -eq 4.0 -and $sumFloat.GetType().Name -eq 'Decimal') {
-    Pass "sum cmdlet preserves decimal precision on floating point input (1.5, 2.5 | sum = 4.0)"
+$sumAvg = sum -a 10 20 30
+$sumFmt = sum -f '%.2f' 1.5 2.25
+$sumNeg = sum 10 -3
+if ($sumAvg -eq 20 -and $sumFmt -eq '3.75' -and $sumNeg -eq 7) {
+    Pass "sum supports -a (mean=20), -f '%.2f' (3.75), and negative numbers (10 + -3 = 7)"
 } else {
-    Fail "sum cmdlet float precision" "Expected 4.0 decimal, got $sumFloat ($($sumFloat.GetType().Name))"
-}
-
-$sumMulti = "10`n20" | sum
-if ($sumMulti -eq 30) {
-    Pass "sum cmdlet correctly handles multiline string input (10\n20 = 30)"
-} else {
-    Fail "sum cmdlet multiline" "Expected 30, got $sumMulti"
+    Fail "sum advanced flags" "Got avg=$sumAvg, fmt=$sumFmt, neg=$sumNeg"
 }
 
 # Test repeat-until-success.ps1
@@ -459,10 +585,162 @@ try {
     Fail "repeat-until-success.ps1 prior exitcode" $_.Exception.Message
 }
 
+$rusPosixOut = (& $repeatScript -n 1 -s 0.05 -- pwsh -NoProfile -Command "Write-Output 'posix_rus_ok'") -join "`n"
+if ($rusPosixOut -match 'posix_rus_ok') {
+    Pass "repeat-until-success.ps1 supports POSIX flags (-n, -s, --)"
+} else {
+    Fail "repeat-until-success.ps1 POSIX flags" "Expected posix_rus_ok, got: $rusPosixOut"
+}
+
+# Test bin/theme.ps1
+$themeScript = Join-Path $RootDir "bin\theme.ps1"
+$listedSlugs = @(& $themeScript --list --plain)
+if ($listedSlugs.Count -ge 17 -and ($listedSlugs -contains 'solarized-dark') -and ($listedSlugs -contains 'halloween')) {
+    Pass "theme.ps1 --list --plain discovers all $($listedSlugs.Count) themes"
+} else {
+    Fail "theme.ps1 --list --plain" "Expected >=17 slugs, got $($listedSlugs.Count)"
+}
+
+$nordEnv = (& $themeScript --env nord) -join "`n"
+if ($nordEnv -match "WINDOWS_SETTINGS_THEME\s*=\s*'nord'" -and $nordEnv -match 'Nord-TrueColor') {
+    Pass "theme.ps1 --env nord emits compiled PowerShell palette exports"
+} else {
+    Fail "theme.ps1 --env nord" "Missing expected Nord exports"
+}
+
+$prevDateOverride = $env:THEME_HOLIDAY_DATE
+try {
+    $env:THEME_HOLIDAY_DATE = '2026-10-20'
+    $halDry = (& $themeScript --dry-run --holiday) -join "`n"
+    $env:THEME_HOLIDAY_DATE = '2026-11-26'
+    $thxDry = (& $themeScript --dry-run --holiday) -join "`n"
+    if ($halDry -match 'halloween' -and $thxDry -match 'thanksgiving') {
+        Pass "theme.ps1 --holiday US holiday calendar engine resolves Halloween & Thanksgiving accurately"
+    } else {
+        Fail "theme.ps1 --holiday" "Unexpected holiday resolution: $halDry | $thxDry"
+    }
+} finally {
+    $env:THEME_HOLIDAY_DATE = $prevDateOverride
+}
+
+# Test theme.ps1 Zellij 0.46+ KDL theme & config.kdl block synchronization
+$tempZellijDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_zellij_theme_" + [System.Guid]::NewGuid().ToString("N"))
+$prevZellijCfgEnv = $env:ZELLIJ_CONFIG_DIR
+$origThemeForTest = (& $themeScript --current).Trim()
+if (-not $origThemeForTest) { $origThemeForTest = 'solarized-dark' }
+try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempZellijDir 'layouts') | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $tempZellijDir 'themes') | Out-Null
+    Copy-Item -Path (Join-Path $RootDir 'config\zellij\config.kdl') -Destination (Join-Path $tempZellijDir 'config.kdl') -Force
+    Copy-Item -Path (Join-Path $RootDir 'config\zellij\layouts\ide-3pane.kdl') -Destination (Join-Path $tempZellijDir 'layouts\ide-3pane.kdl') -Force
+    $env:ZELLIJ_CONFIG_DIR = $tempZellijDir
+
+    & $themeScript --set nord --no-live | Out-Null
+    $genThemeKdl = Get-Content (Join-Path $tempZellijDir 'themes\windows-settings.kdl') -Raw
+    $genCfgKdl = Get-Content (Join-Path $tempZellijDir 'config.kdl') -Raw
+    $nordKdlOk = ($genThemeKdl -match '46 52 64' -and $genCfgKdl -match 'needs_you "#D08770"' -and $genCfgKdl -match 'background "#2E3440"')
+    if ($nordKdlOk -and (Get-Command zellij -ErrorAction SilentlyContinue)) {
+        $nordCheckOut = (& zellij --config-dir $tempZellijDir setup --check 2>&1) -join "`n"
+        $nordKdlOk = ($LASTEXITCODE -eq 0 -and $nordCheckOut -match 'Well defined')
+    }
+    if ($nordKdlOk) {
+        Pass "theme.ps1 live-updates Zellij themes/windows-settings.kdl & config.kdl tray/terminal blocks"
+    } else {
+        Fail "theme.ps1 Zellij KDL sync" "Generated Nord Zellij theme or config.kdl failed validation"
+    }
+} finally {
+    $env:ZELLIJ_CONFIG_DIR = $prevZellijCfgEnv
+    & $themeScript --set $origThemeForTest --no-live | Out-Null
+    if (Test-Path $tempZellijDir) {
+        Remove-Item -Recurse -Force -Path $tempZellijDir -ErrorAction SilentlyContinue
+    }
+}
+
+# Test bin/update-system.ps1 --dry-run
+$updateScript = Join-Path $RootDir "bin\update-system.ps1"
+$updDry = (& $updateScript --dry-run) -join "`n"
+if ($LASTEXITCODE -eq 0) {
+    Pass "update-system.ps1 --dry-run executes cleanly"
+} else {
+    Fail "update-system.ps1 --dry-run" "Exited with code $LASTEXITCODE ($updDry)"
+}
+
+# Test bin/ide.ps1 --dry-run (Zellij default, detached, desktop & Windows Terminal fallback), --agy-hook, --send & --keys
+$ideScript = Join-Path $RootDir "bin\ide.ps1"
+$ideDry3 = (& $ideScript --backend zellij --3pane --dry-run) -join "`n"
+$ideDry2 = (& $ideScript --backend zellij --2pane --detach --ai claude --dry-run) -join "`n"
+$ideDryDesktop = (& $ideScript --backend zellij --desktop --dry-run) -join "`n"
+if ($ideDry3 -match 'Backend\s*:\s*zellij' -and
+    $ideDry3 -match 'ide-3pane' -and
+    $ideDry3 -match '\\\\\.\\pipe\\nvim-ide-' -and
+    $ideDry2 -match 'Layout\s*:\s*2pane' -and
+    $ideDry2 -match '--create-background' -and
+    $ideDryDesktop -match 'zellij terminal --create') {
+    Pass "ide.ps1 --dry-run builds Zellij 3-pane, detached 2-pane, and 1-hop desktop GPU layouts"
+} else {
+    Fail "ide.ps1 Zellij --dry-run" "Unexpected output: $ideDry3 | $ideDry2 | $ideDryDesktop"
+}
+
+$ideDryWt = (& $ideScript --backend wt --3pane --dry-run) -join "`n"
+if ($ideDryWt -match 'Backend\s*:\s*wt' -and $ideDryWt -match 'split-pane -H -s 0\.25') {
+    Pass "ide.ps1 --backend wt --dry-run preserves native Windows Terminal Inverted-T fallback"
+} else {
+    Fail "ide.ps1 --backend wt --dry-run" "Unexpected wt fallback output: $ideDryWt"
+}
+
+$prevNoTty = $env:WS_AGY_HOOK_NO_TTY
+try {
+    $env:WS_AGY_HOOK_NO_TTY = '1'
+    $hookPre = ('{"session_id":"test"}' | & $ideScript --agy-hook PreInvocation | Out-String).Trim()
+    $hookStop = ('{"session_id":"test"}' | & $ideScript --agy-hook Stop | Out-String).Trim()
+    if ($hookPre -eq '{}' -and $hookStop -eq '{"decision":"allow"}') {
+        Pass "ide.ps1 --agy-hook emits valid Antigravity PreInvocation & Stop JSON responses"
+    } else {
+        Fail "ide.ps1 --agy-hook" "Unexpected hook JSON: Pre='$hookPre', Stop='$hookStop'"
+    }
+} finally {
+    $env:WS_AGY_HOOK_NO_TTY = $prevNoTty
+}
+
+$testSendSess = 'ws-unit-send-test'
+$testStageFile = Join-Path (Join-Path (Join-Path $HOME '.cache\windows-settings') 'ide') "$testSendSess.send.txt"
+$prevSkipClip = $env:WS_IDE_SKIP_CLIPBOARD
+try {
+    $env:WS_IDE_SKIP_CLIPBOARD = '1'
+    Push-Location $RootDir
+    $sampleRefTarget = Join-Path $RootDir 'bin\ide.ps1'
+    & $ideScript --send --ref "${sampleRefTarget}#L10-L20" $testSendSess | Out-Null
+    $stagedPayload = if (Test-Path $testStageFile) { Get-Content $testStageFile -Raw } else { '' }
+    if ($stagedPayload -eq '@bin/ide.ps1#L10-L20 ') {
+        Pass "ide.ps1 --send --ref formats workspace-relative @file#L10-L20 payload"
+    } else {
+        Fail "ide.ps1 --send --ref" "Expected '@bin/ide.ps1#L10-L20 ', got '$stagedPayload'"
+    }
+} finally {
+    Pop-Location -ErrorAction SilentlyContinue
+    $env:WS_IDE_SKIP_CLIPBOARD = $prevSkipClip
+    if (Test-Path $testStageFile) {
+        Remove-Item -Force -Path $testStageFile -ErrorAction SilentlyContinue
+    }
+}
+
+$prevNoWait = $env:IDE_KEYS_NO_WAIT
+try {
+    $env:IDE_KEYS_NO_WAIT = '1'
+    $ideKeysOut = (& $ideScript --keys) -join "`n"
+    if ($ideKeysOut -match 'IDE Workspace & Agent Fleet Keybindings' -and $ideKeysOut -match 'mini\.files') {
+        Pass "ide.ps1 --keys renders TrueColor keybinding cheatsheet"
+    } else {
+        Fail "ide.ps1 --keys" "Missing expected cheatsheet sections"
+    }
+} finally {
+    $env:IDE_KEYS_NO_WAIT = $prevNoWait
+}
+
 # -------------------------------------------------------------
-# Test 5: Git Function Behavior Integration Tests
+# Test 5: Git Function Behavior & Safety Guards
 # -------------------------------------------------------------
-Write-Host "`n[5/8] Testing Git Functions Behavior..." -ForegroundColor Yellow
+Write-Host "`n[5/8] Testing Git Functions & Safety Guards..." -ForegroundColor Yellow
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_test_" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
@@ -480,101 +758,50 @@ try {
     git config user.name "Test User"
     git config commit.gpgsign false
 
-    # Initial commit on main
     Set-Content -Path "file.txt" -Value "initial content"
     git add file.txt
     git commit -m "initial commit" 2>$null | Out-Null
     git push origin main 2>$null | Out-Null
 
-    # Test 5.1: gsync outside git repo
-    $nonGitDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_" + [System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $nonGitDir | Out-Null
-    Push-Location $nonGitDir
-    $errCaught = $false
-    try {
-        gsync
-    } catch {
-        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
-            $errCaught = $true
+    # Outside-repo checks
+    foreach ($fnName in @('gsync', 'gprune', 'gpurge', 'gcm', 'guser-branch')) {
+        $nonGitDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_${fnName}_" + [System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $nonGitDir | Out-Null
+        Push-Location $nonGitDir
+        $caught = $false
+        try {
+            & (Get-Command $fnName -CommandType Function)
+        } catch {
+            if ($_.ToString() -match 'Error' -or $_.Exception.Message -match 'Error') {
+                $caught = $true
+            }
+        } finally {
+            Pop-Location
+            Remove-Item -Recurse -Force -Path $nonGitDir -ErrorAction SilentlyContinue
         }
-    } finally {
-        Pop-Location
-        Remove-Item -Recurse -Force -Path $nonGitDir -ErrorAction SilentlyContinue
-    }
-
-    if ($errCaught) {
-        Pass "gsync fails gracefully when not in a git repository"
-    } else {
-        Fail "gsync outside repo" "Expected error when executing gsync outside git repository"
-    }
-
-    # Test 5.1.1: gprune outside git repo
-    $nonGitDir2 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gprune_" + [System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $nonGitDir2 | Out-Null
-    Push-Location $nonGitDir2
-    $gpruneErrCaught = $false
-    try {
-        gprune
-    } catch {
-        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
-            $gpruneErrCaught = $true
+        if ($caught) {
+            Pass "$fnName fails gracefully when not in a git repository"
+        } else {
+            Fail "$fnName outside repo" "Expected error outside git repository"
         }
-    } finally {
-        Pop-Location
-        Remove-Item -Recurse -Force -Path $nonGitDir2 -ErrorAction SilentlyContinue
     }
 
-    if ($gpruneErrCaught) {
-        Pass "gprune fails gracefully when not in a git repository"
-    } else {
-        Fail "gprune outside repo" "Expected error when executing gprune outside git repository"
-    }
-
-    # Test 5.1.2: gcm outside git repo
-    $nonGitDir3 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gcm_" + [System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $nonGitDir3 | Out-Null
-    Push-Location $nonGitDir3
-    $gcmErrCaught = $false
-    try {
-        & (Get-Command gcm -CommandType Function)
-    } catch {
-        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
-            $gcmErrCaught = $true
-        }
-    } finally {
-        Pop-Location
-        Remove-Item -Recurse -Force -Path $nonGitDir3 -ErrorAction SilentlyContinue
-    }
-
-    if ($gcmErrCaught) {
-        Pass "gcm fails gracefully when not in a git repository"
-    } else {
-        Fail "gcm outside repo" "Expected error when executing gcm outside git repository"
-    }
-
-    # Test 5.1.3: guser-branch outside git repo
-    $nonGitDir4 = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_nongit_gub_" + [System.Guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Force -Path $nonGitDir4 | Out-Null
-    Push-Location $nonGitDir4
-    $gubErrCaught = $false
+    # Test guser-branch refuses to rename protected 'main' branch
+    $mainRenameBlocked = $false
     try {
         guser-branch
     } catch {
-        if ($_.ToString() -match "Error" -or $_.Exception.Message -match "Error") {
-            $gubErrCaught = $true
+        if ($_.ToString() -match 'refusing to rename protected primary branch') {
+            $mainRenameBlocked = $true
         }
-    } finally {
-        Pop-Location
-        Remove-Item -Recurse -Force -Path $nonGitDir4 -ErrorAction SilentlyContinue
     }
-
-    if ($gubErrCaught) {
-        Pass "guser-branch fails gracefully when not in a git repository"
+    if ($mainRenameBlocked -and (git rev-parse --abbrev-ref HEAD).Trim() -eq 'main') {
+        Pass "guser-branch refuses to rename protected primary branch 'main'"
     } else {
-        Fail "guser-branch outside repo" "Expected error when executing guser-branch outside git repository"
+        Fail "guser-branch main guard" "Expected refusal on main branch"
     }
 
-    # Test 5.2: gsync on feature branch
+    # Test gsync on feature branch & dirty working tree guard
     git checkout -b feature-1 2>$null | Out-Null
     Add-Content -Path "file.txt" -Value "`nfeature work"
     git commit -am "feature update" 2>$null | Out-Null
@@ -582,12 +809,28 @@ try {
     gsync 2>$null | Out-Null
     $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($currentBranch -eq "feature-1") {
-        Pass "gsync preserves current branch on feature branch"
+        Pass "gsync preserves current branch on clean feature branch"
     } else {
         Fail "gsync branch preservation" "Expected feature-1, got $currentBranch"
     }
 
-    # Test 5.3: guser-branch & fix-abcxyz-branch-name
+    Add-Content -Path "file.txt" -Value "`ndirty tracked edit"
+    $dirtySyncBlocked = $false
+    try {
+        gsync
+    } catch {
+        if ($_.ToString() -match 'uncommitted changes') {
+            $dirtySyncBlocked = $true
+        }
+    }
+    git checkout -- file.txt 2>$null | Out-Null
+    if ($dirtySyncBlocked) {
+        Pass "gsync refuses to run when tracked working tree has uncommitted changes"
+    } else {
+        Fail "gsync dirty guard" "Expected error on dirty working tree"
+    }
+
+    # Test guser-branch & fix-abcxyz-branch-name
     $expectedUser = if ($env:USER) { $env:USER } else { $env:USERNAME }
     guser-branch
     $renamedBranch = (git rev-parse --abbrev-ref HEAD).Trim()
@@ -597,7 +840,6 @@ try {
         Fail "guser-branch" "Expected $expectedUser/feature-1, got $renamedBranch"
     }
 
-    # Test 5.3.1: guser-branch idempotency (does not duplicate prefix)
     guser-branch
     $idempotentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($idempotentBranch -eq "$expectedUser/feature-1") {
@@ -606,7 +848,6 @@ try {
         Fail "guser-branch prefix strip" "Redundant prefix introduced: $idempotentBranch"
     }
 
-    # Test 5.3.2: fix-abcxyz-branch-name compatibility alias
     fix-abcxyz-branch-name
     $aliasBranch = (git rev-parse --abbrev-ref HEAD).Trim()
     if ($aliasBranch -eq "$expectedUser/feature-1") {
@@ -615,52 +856,68 @@ try {
         Fail "fix-abcxyz-branch-name" "Expected $expectedUser/feature-1, got $aliasBranch"
     }
 
-    # Test 5.4: gprune deletes non-main branches
+    # Test gprune (merged-only safe delete) vs gpurge (force delete unmerged)
     git checkout main 2>$null | Out-Null
-    git branch branch-to-delete 2>$null | Out-Null
+    git branch merged-branch 2>$null | Out-Null
     gprune 2>$null | Out-Null
-    git show-ref --verify --quiet refs/heads/branch-to-delete
-    if ($LASTEXITCODE -ne 0) {
-        Pass "gprune successfully pruned non-main branch"
+    git show-ref --verify --quiet refs/heads/merged-branch
+    $mergedGone = ($LASTEXITCODE -ne 0)
+    git show-ref --verify --quiet "refs/heads/$expectedUser/feature-1"
+    $unmergedKept = ($LASTEXITCODE -eq 0)
+    if ($mergedGone -and $unmergedKept) {
+        Pass "gprune safely deletes merged branches while preserving unmerged branches"
     } else {
-        Fail "gprune" "Branch 'branch-to-delete' was not pruned"
+        Fail "gprune safety" "mergedGone=$mergedGone, unmergedKept=$unmergedKept"
     }
 
-    # Test 5.5: gcm switches to main from feature branch
+    gpurge 2>$null | Out-Null
+    git show-ref --verify --quiet "refs/heads/$expectedUser/feature-1"
+    if ($LASTEXITCODE -ne 0) {
+        Pass "gpurge force-deletes unmerged non-primary branches when explicitly requested"
+    } else {
+        Fail "gpurge" "Expected unmerged branch to be purged"
+    }
+
+    # Test gcm primary branch resolution (main -> master -> trunk -> error)
     git checkout -b gcm-test-feature 2>$null | Out-Null
     & (Get-Command gcm -CommandType Function) 2>$null | Out-Null
-    $gcmBranch = (git rev-parse --abbrev-ref HEAD).Trim()
-    if ($gcmBranch -eq "main") {
-        Pass "gcm successfully switches to main from feature branch"
+    if ((git rev-parse --abbrev-ref HEAD).Trim() -eq "main") {
+        Pass "gcm switches to main from feature branch"
     } else {
-        Fail "gcm switch to main" "Expected main, got $gcmBranch"
+        Fail "gcm switch to main" "Did not switch to main"
     }
 
-    # Test 5.6: gcm falls back to master when main does not exist
     git branch -m main master 2>$null | Out-Null
     git checkout -b gcm-test-master-feature 2>$null | Out-Null
     & (Get-Command gcm -CommandType Function) 2>$null | Out-Null
-    $gcmMasterBranch = (git rev-parse --abbrev-ref HEAD).Trim()
-    if ($gcmMasterBranch -eq "master") {
-        Pass "gcm successfully falls back to master when main does not exist"
+    if ((git rev-parse --abbrev-ref HEAD).Trim() -eq "master") {
+        Pass "gcm falls back to master when main does not exist"
     } else {
-        Fail "gcm fallback to master" "Expected master, got $gcmMasterBranch"
+        Fail "gcm fallback to master" "Did not switch to master"
     }
 
-    # Test 5.7: gcm errors when neither main nor master exists
-    git branch -m master custom-default 2>$null | Out-Null
+    git branch -m master trunk 2>$null | Out-Null
+    git checkout -b gcm-test-trunk-feature 2>$null | Out-Null
+    & (Get-Command gcm -CommandType Function) 2>$null | Out-Null
+    if ((git rev-parse --abbrev-ref HEAD).Trim() -eq "trunk") {
+        Pass "gcm falls back to trunk when main and master do not exist"
+    } else {
+        Fail "gcm fallback to trunk" "Did not switch to trunk"
+    }
+
+    git branch -m trunk custom-default 2>$null | Out-Null
     $noPrimaryErrCaught = $false
     try {
         & (Get-Command gcm -CommandType Function)
     } catch {
-        if ($_.ToString() -match "neither 'main' nor 'master'" -or $_.Exception.Message -match "neither 'main' nor 'master'") {
+        if ($_.ToString() -match "neither 'main' nor 'master'") {
             $noPrimaryErrCaught = $true
         }
     }
     if ($noPrimaryErrCaught) {
-        Pass "gcm fails gracefully with descriptive error when neither main nor master exists"
+        Pass "gcm fails gracefully with descriptive error when no primary branch exists"
     } else {
-        Fail "gcm missing primary branch" "Expected error indicating neither main nor master found"
+        Fail "gcm missing primary branch" "Expected descriptive primary branch error"
     }
 
     Pop-Location
@@ -676,16 +933,14 @@ try {
 # -------------------------------------------------------------
 Write-Host "`n[6/8] Testing Completions & Prompt Rendering..." -ForegroundColor Yellow
 
-# Test completions registration execution
 $completionsScript = Join-Path $RootDir "module\Completions.ps1"
 try {
     . $completionsScript
-    Pass "module/Completions.ps1 executed and registered completers successfully"
+    Pass "module/Completions.ps1 executed and registered completers (incl. theme & ide) successfully"
 } catch {
     Fail "module/Completions.ps1" $_.Exception.Message
 }
 
-# Test Oh My Posh rendering
 if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
     try {
         $renderOutput = oh-my-posh print primary --config $p10kPath
@@ -693,6 +948,22 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
             Pass "Oh My Posh primary prompt renders cleanly"
         } else {
             Fail "Oh My Posh primary rendering" "Render output was empty"
+        }
+
+        $prevPrLabel = $env:_WS_GIT_PR_LABEL
+        $prevPrUrl = $env:_WS_GIT_PR_URL
+        try {
+            $env:_WS_GIT_PR_LABEL = '@149'
+            $env:_WS_GIT_PR_URL = 'https://github.com/lock14/windows-settings/pull/149'
+            $prRender = oh-my-posh print primary --config $p10kPath
+            if ($prRender -match '@149') {
+                Pass "Oh My Posh primary prompt renders clickable @<PR> badge when _WS_GIT_PR_LABEL is set"
+            } else {
+                Fail "Oh My Posh PR badge" "Expected @149 in rendered prompt"
+            }
+        } finally {
+            $env:_WS_GIT_PR_LABEL = $prevPrLabel
+            $env:_WS_GIT_PR_URL = $prevPrUrl
         }
 
         $rightOutput = oh-my-posh print right --config $p10kPath
@@ -708,6 +979,33 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         } else {
             Fail "Oh My Posh right error rendering" "Right prompt output on error was empty"
         }
+
+        # Live & cross-pane prompt color reaction test (POSH_SESSION_ID cache invalidation)
+        $liveSwitchCheck = (& pwsh -NoProfile -Command "
+            `$orig = (& '$($themeScript.Replace("'", "''"))' --current).Trim()
+            if (-not `$orig) { `$orig = 'solarized-dark' }
+            try {
+                & '$($themeScript.Replace("'", "''"))' --set solarized-dark --no-live | Out-Null
+                Import-Module '$((Join-Path $RootDir "module\WindowsSettings.psd1").Replace("'", "''"))' -DisableNameChecking -Force
+                `$pSol = prompt
+                theme nord --no-live | Out-Null
+                `$pNord = prompt
+                & pwsh -NoProfile -File '$($themeScript.Replace("'", "''"))' --set halloween --no-live | Out-Null
+                `$pHal = prompt
+                if (`$pSol -match '48;2;7;54;66' -and `$pNord -match '48;2;59;66;82' -and `$pHal -match '48;2;40;16;64') {
+                    Write-Output 'LIVE_PROMPT_OK'
+                } else {
+                    Write-Output 'LIVE_PROMPT_MISMATCH'
+                }
+            } finally {
+                & '$($themeScript.Replace("'", "''"))' --set `$orig --no-live | Out-Null
+            }
+        ") -join "`n"
+        if ($liveSwitchCheck -match 'LIVE_PROMPT_OK') {
+            Pass "Oh My Posh live & cross-pane prompt colors react immediately to theme switching"
+        } else {
+            Fail "Oh My Posh live theme switch" "Prompt colors did not update across theme switches ($liveSwitchCheck)"
+        }
     } catch {
         Fail "Oh My Posh rendering error" $_.Exception.Message
     }
@@ -720,7 +1018,6 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
 # -------------------------------------------------------------
 Write-Host "`n[7/8] Testing Path Invariants & Dual Execution Wrappers..." -ForegroundColor Yellow
 
-# 7.1 Path Invariant Check (no hardcoded user paths in repo files)
 $filesToScan = Get-ChildItem -Path $RootDir -Recurse -File |
     Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' -and $_.Name -ne 'AGENTS.md' }
 
@@ -728,7 +1025,7 @@ $hardcodedFound = $false
 foreach ($f in $filesToScan) {
     $content = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
     if ($content -match 'C:\\Users\\(?!<)[a-zA-Z0-9_-]+' -or $content -match '/Users/(?!<)[a-zA-Z0-9_-]+' -or $content -match '/home/(?!<)[a-zA-Z0-9_-]+') {
-        Fail "Path invariant check: $($f.Name)" "Contains hardcoded personal user path"
+        Fail "Path invariant check: $($f.FullName)" "Contains hardcoded personal user path"
         $hardcodedFound = $true
     }
 }
@@ -737,7 +1034,13 @@ if (-not $hardcodedFound) {
 }
 
 # 7.2 Dual Execution in bin/
-$binPs1Files = Get-ChildItem -Path (Join-Path $RootDir "bin") -Filter "*.ps1"
+$binPs1Files = @(Get-ChildItem -Path (Join-Path $RootDir "bin") -Filter "*.ps1")
+if ($binPs1Files.Count -eq 7) {
+    Pass "All 7 user utilities present in bin/ (gen-passwd, ide, install-nerd-fonts, repeat-until-success, sum, theme, update-system)"
+} else {
+    Fail "bin/ script count" "Expected 7 .ps1 scripts in bin/, found $($binPs1Files.Count)"
+}
+
 foreach ($ps1 in $binPs1Files) {
     $cmdName = [System.IO.Path]::GetFileNameWithoutExtension($ps1.Name) + ".cmd"
     $cmdPath = Join-Path (Join-Path $RootDir "bin") $cmdName
@@ -748,61 +1051,77 @@ foreach ($ps1 in $binPs1Files) {
     }
 }
 
-# 7.3 Execute sum.cmd & gen-passwd.cmd wrappers
+# 7.3 Execute .cmd batch wrappers
 $sumCmd = Join-Path $RootDir "bin\sum.cmd"
-if (Test-Path $sumCmd) {
-    $cmdSumOut = (& cmd.exe /c "$sumCmd" 10 20 30).Trim()
-    if ($cmdSumOut -eq "60") {
-        Pass "sum.cmd batch wrapper executed successfully (10 + 20 + 30 = 60)"
-    } else {
-        Fail "sum.cmd execution" "Expected 60, got: $cmdSumOut"
-    }
+$cmdSumOut = (& cmd.exe /c "`"$sumCmd`" 10 20 30" | Out-String).Trim()
+if ($cmdSumOut -eq "60") {
+    Pass "sum.cmd batch wrapper executed successfully (10 + 20 + 30 = 60)"
+} else {
+    Fail "sum.cmd execution" "Expected 60, got: $cmdSumOut"
+}
 
-    $cmdPipeOut = (& cmd.exe /c "echo 25 | `"$sumCmd`"").Trim()
-    if ($cmdPipeOut -eq "25") {
-        Pass "sum.cmd batch wrapper executed successfully with piped stdin (echo 25 | sum.cmd = 25)"
-    } else {
-        Fail "sum.cmd piped execution" "Expected 25, got: $cmdPipeOut"
-    }
+$cmdPipeOut = (& cmd.exe /c "echo 25 | `"$sumCmd`"" | Out-String).Trim()
+if ($cmdPipeOut -eq "25") {
+    Pass "sum.cmd batch wrapper executed successfully with piped stdin (echo 25 | sum.cmd = 25)"
+} else {
+    Fail "sum.cmd piped execution" "Expected 25, got: $cmdPipeOut"
 }
 
 $genPasswdCmd = Join-Path $RootDir "bin\gen-passwd.cmd"
-if (Test-Path $genPasswdCmd) {
-    $cmdPassOut = (& cmd.exe /c "$genPasswdCmd" -Length 12 -NoSymbols).Trim()
-    if ($cmdPassOut.Length -eq 12) {
-        Pass "gen-passwd.cmd batch wrapper executed successfully (Length 12)"
-    } else {
-        Fail "gen-passwd.cmd execution" "Expected length 12, got: $($cmdPassOut.Length)"
-    }
+$cmdPassOut = (& cmd.exe /c "`"$genPasswdCmd`" -Length 12 -NoSymbols" | Out-String).Trim()
+if ($cmdPassOut.Length -eq 12) {
+    Pass "gen-passwd.cmd batch wrapper executed successfully (Length 12)"
+} else {
+    Fail "gen-passwd.cmd execution" "Expected length 12, got: $($cmdPassOut.Length)"
 }
 
 $repeatCmd = Join-Path $RootDir "bin\repeat-until-success.cmd"
-if (Test-Path $repeatCmd) {
-    $cmdRepeatOut = (& cmd.exe /c "$repeatCmd" "Write-Output cmd_repeat_ok" -MaxAttempts 1) | Out-String
-    if ($cmdRepeatOut -match "cmd_repeat_ok") {
-        Pass "repeat-until-success.cmd batch wrapper executed successfully"
-    } else {
-        Fail "repeat-until-success.cmd execution" "Expected 'cmd_repeat_ok' in output, got: $cmdRepeatOut"
-    }
+$cmdRepeatOut = (& cmd.exe /c "`"$repeatCmd`" `"Write-Output cmd_repeat_ok`" -MaxAttempts 1") | Out-String
+if ($cmdRepeatOut -match "cmd_repeat_ok") {
+    Pass "repeat-until-success.cmd batch wrapper executed successfully"
+} else {
+    Fail "repeat-until-success.cmd execution" "Expected 'cmd_repeat_ok' in output, got: $cmdRepeatOut"
+}
+
+$themeCmd = Join-Path $RootDir "bin\theme.cmd"
+$cmdThemeOut = @(& cmd.exe /c "`"$themeCmd`" --list --plain")
+if ($cmdThemeOut.Count -ge 17) {
+    Pass "theme.cmd batch wrapper executed successfully ($($cmdThemeOut.Count) themes)"
+} else {
+    Fail "theme.cmd execution" "Expected >=17 themes, got $($cmdThemeOut.Count)"
+}
+
+$ideCmd = Join-Path $RootDir "bin\ide.cmd"
+$cmdIdeOut = (& cmd.exe /c "`"$ideCmd`" --dry-run") | Out-String
+if ($cmdIdeOut -match 'IDE Session') {
+    Pass "ide.cmd batch wrapper executed successfully (--dry-run)"
+} else {
+    Fail "ide.cmd execution" "Missing IDE Session in output"
+}
+
+$updateCmd = Join-Path $RootDir "bin\update-system.cmd"
+& cmd.exe /c "`"$updateCmd`" --dry-run" | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Pass "update-system.cmd batch wrapper executed successfully (--dry-run)"
+} else {
+    Fail "update-system.cmd execution" "Exited with code $LASTEXITCODE"
 }
 
 # -------------------------------------------------------------
-# Test 8: Setup Idempotency & Backup Verification
+# Test 8: Setup Idempotency, Backup, Theme & Uninstall Dry-Run
 # -------------------------------------------------------------
-Write-Host "`n[8/8] Testing Setup Script Idempotency & Backup Policy..." -ForegroundColor Yellow
+Write-Host "`n[8/8] Testing Setup Script Idempotency, Backup, Theme & Uninstall..." -ForegroundColor Yellow
 
 $sandboxDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_sandbox_" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $sandboxDir | Out-Null
 
 try {
-    # Simulate existing destination file
     $mockTarget = Join-Path $sandboxDir "settings.json"
     Set-Content -Path $mockTarget -Value "initial configuration"
 
     $sourceSettings = Join-Path $RootDir "config\terminal\settings.json"
     $sourceContent = Get-Content $sourceSettings -Raw
 
-    # 1. Overwrite with differing content should create a backup
     $isDiff = ((Get-Content $mockTarget -Raw) -ne $sourceContent)
     if ($isDiff) {
         $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -811,14 +1130,13 @@ try {
         Copy-Item -Path $sourceSettings -Destination $mockTarget -Force
     }
 
-    $backupFiles = Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*"
+    $backupFiles = @(Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*")
     if ($backupFiles.Count -eq 1) {
         Pass "Backup created when configuration content differed"
     } else {
         Fail "Backup creation" "Expected 1 backup file, found $($backupFiles.Count)"
     }
 
-    # 2. Repeated run with identical content should NOT create additional backups (idempotency)
     $isDiff2 = ((Get-Content $mockTarget -Raw) -ne $sourceContent)
     if ($isDiff2) {
         $timestamp2 = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -826,70 +1144,47 @@ try {
         Copy-Item -Path $mockTarget -Destination $mockBackup2 -Force
     }
 
-    $backupFilesAfter = Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*"
+    $backupFilesAfter = @(Get-ChildItem -Path $sandboxDir -Filter "settings.json.bak_*")
     if ($backupFilesAfter.Count -eq 1) {
         Pass "Idempotency preserved: zero redundant backups generated on identical re-run"
     } else {
         Fail "Idempotency failure" "Redundant backup created when content had not changed"
     }
 
-    # 3. Test Windows Terminal declarative JSON Fragment deployment
-    $setupScriptContent = Get-Content (Join-Path $RootDir "setup.ps1") -Raw
+    $setupScriptPath = Join-Path $RootDir "setup.ps1"
+    $setupScriptContent = Get-Content $setupScriptPath -Raw
     if ($setupScriptContent -match 'Fragments' -and $setupScriptContent -match 'Deploy-ConfigFile') {
         Pass "setup.ps1 implements declarative JSON Fragment extension deployment"
     } else {
         Fail "Terminal setup" "Declarative JSON Fragment support missing in setup.ps1"
     }
 
-    # 4. Test setup.ps1 and bootstrap.ps1 dry-run execution
-    $setupScriptPath = Join-Path $RootDir "setup.ps1"
-    try {
-        & $setupScriptPath -DryRun | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun mode"
-    } catch {
-        Fail "setup.ps1 dry-run" $_.Exception.Message
-    }
-
-    try {
-        & $setupScriptPath -DryRun -DotfilesOnly | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun -DotfilesOnly mode"
-    } catch {
-        Fail "setup.ps1 dotfiles-only dry-run" $_.Exception.Message
-    }
-
-    try {
-        & $setupScriptPath -DryRun -SystemOnly | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun -SystemOnly mode"
-    } catch {
-        Fail "setup.ps1 system-only dry-run" $_.Exception.Message
-    }
-
-    try {
-        & $setupScriptPath -DryRun -WithGUI | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun -WithGUI mode"
-    } catch {
-        Fail "setup.ps1 with-gui dry-run" $_.Exception.Message
-    }
-
-    try {
-        & $setupScriptPath -DryRun -UseDSC | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun -UseDSC mode"
-    } catch {
-        Fail "setup.ps1 use-dsc dry-run" $_.Exception.Message
-    }
-
-    try {
-        & $setupScriptPath -DryRun -SkipCMD | Out-Null
-        Pass "setup.ps1 executes cleanly in -DryRun -SkipCMD mode"
-    } catch {
-        Fail "setup.ps1 skip-cmd dry-run" $_.Exception.Message
+    foreach ($modeSpec in @(
+        @{ Label = '-DryRun';                Args = @{ DryRun = $true } },
+        @{ Label = '-DryRun -DotfilesOnly';  Args = @{ DryRun = $true; DotfilesOnly = $true } },
+        @{ Label = '-DryRun -SystemOnly';    Args = @{ DryRun = $true; SystemOnly = $true } },
+        @{ Label = '-DryRun -WithGUI';       Args = @{ DryRun = $true; WithGUI = $true } },
+        @{ Label = '-DryRun -UseDSC';        Args = @{ DryRun = $true; UseDSC = $true } },
+        @{ Label = '-DryRun -SkipCMD';       Args = @{ DryRun = $true; SkipCMD = $true } },
+        @{ Label = '-DryRun -Theme nord';    Args = @{ DryRun = $true; Theme = 'nord' } },
+        @{ Label = '-DryRun -Theme holiday'; Args = @{ DryRun = $true; Theme = 'holiday' } },
+        @{ Label = '-DryRun -Uninstall';     Args = @{ DryRun = $true; Uninstall = $true } },
+        @{ Label = '-DryRun -UninstallDotfiles'; Args = @{ DryRun = $true; UninstallDotfiles = $true } }
+    )) {
+        try {
+            $modeParams = $modeSpec.Args
+            & $setupScriptPath @modeParams *>$null
+            Pass "setup.ps1 executes cleanly in $($modeSpec.Label) mode"
+        } catch {
+            Fail "setup.ps1 $($modeSpec.Label)" $_.Exception.Message
+        }
     }
 
     $bootstrapScriptPath = Join-Path $RootDir "bootstrap.ps1"
     if (Test-Path $bootstrapScriptPath) {
         Pass "bootstrap.ps1 exists in repository root"
         try {
-            & $bootstrapScriptPath -DryRun -SkipPackages | Out-Null
+            & $bootstrapScriptPath -DryRun -SkipPackages *>$null
             Pass "bootstrap.ps1 executes cleanly in -DryRun -SkipPackages mode"
         } catch {
             Fail "bootstrap.ps1 dry-run" $_.Exception.Message
@@ -904,9 +1199,10 @@ try {
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host "Summary: $TestsPassed passed, $TestsFailed failed" -ForegroundColor Cyan
+Write-Host ("Test Summary: {0} Passed, {1} Failed" -f $script:TestsPassed, $script:TestsFailed) -ForegroundColor $(if ($script:TestsFailed -eq 0) { 'Green' } else { 'Red' })
 Write-Host "========================================" -ForegroundColor Cyan
 
-if ($TestsFailed -gt 0) {
+if ($script:TestsFailed -gt 0) {
     exit 1
 }
+exit 0

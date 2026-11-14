@@ -1,0 +1,39 @@
+# Git Delta TrueColor configuration (included via ~/.gitconfig [include])
+# Configures delta as the default diff and log pager with authentic Solarized Dark TrueColor styling
+
+[core]
+    pager = delta
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    light = false
+    syntax-theme = Solarized-Dark-TrueColor
+    line-numbers = true
+    side-by-side = false
+    commit-style = "#d33682"
+    file-style = "#2aa198"
+    file-decoration-style = "#586e75" ul
+    hunk-header-style = line-number syntax
+    hunk-header-line-number-style = "#268bd2"
+    hunk-header-decoration-style = "#586e75" box
+    plus-style = syntax "#0d3834"
+    plus-emph-style = syntax "#274c25"
+    plus-empty-line-marker-style = normal "#0d3834"
+    minus-style = syntax "#2d222a"
+    minus-emph-style = syntax "#422d33"
+    minus-empty-line-marker-style = normal "#2d222a"
+    line-numbers-plus-style = "#859900"
+    line-numbers-minus-style = "#dc322f"
+    line-numbers-left-style = "#586e75"
+    line-numbers-right-style = "#586e75"
+    line-numbers-zero-style = "#586e75"
+    whitespace-error-style = "#dc322f" reverse
+
+[merge]
+    conflictstyle = zdiff3
+
+[diff]
+    colorMoved = default

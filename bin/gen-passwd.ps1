@@ -1,90 +1,139 @@
 <#
 .SYNOPSIS
-    Generates a cryptographically secure random password.
+    Generates a cryptographically secure random password without modulo bias.
 .DESCRIPTION
-    Ported from home-settings/common-bin/gen-passwd with exact flag and composability parity.
-.PARAMETER Length
-    Length of the generated password (default: 16).
-.PARAMETER Symbols
-    Include special symbols in custom subset, or select symbols only (-s).
-.PARAMETER Numbers
-    Include numbers in custom subset, or select numbers only (-n).
-.PARAMETER Upper
-    Include uppercase letters in custom subset, or select uppercase only (-u).
-.PARAMETER Lower
-    Include lowercase letters in custom subset, or select lowercase only (-l).
-.PARAMETER NoSymbols
-    Exclude symbols from default character set.
-.PARAMETER NoNumbers
-    Exclude numbers from default character set.
-.EXAMPLE
-    gen-passwd 20
-    gen-passwd -n 16
-    gen-passwd -u -n 16
-    gen-passwd -u -l -n 16
-    gen-passwd -NoSymbols 24
+    Ported from home-settings/bin/gen-passwd with exact flag and composability parity,
+    rejection sampling via RandomNumberGenerator.GetInt32, and PowerShell parameter support.
 #>
-[CmdletBinding()]
-param(
-    [Parameter(Position = 0)]
-    [ValidateRange(1, 1024)]
-    [int]$Length = 16,
 
-    [Alias('s', 'SymbolsOnly', 'IncludeSymbols')]
-    [switch]$Symbols,
+$ErrorActionPreference = 'Stop'
 
-    [Alias('n', 'NumbersOnly', 'IncludeNumbers')]
-    [switch]$Numbers,
+$script:UsageText = @"
+usage: gen-passwd [-s] [-n] [-u] [-l] [-NoSymbols] [-NoNumbers] [length]
 
-    [Alias('u', 'UpperOnly')]
-    [switch]$Upper,
+Generate a cryptographically secure random password (default length: 16).
 
-    [Alias('l', 'LowerOnly')]
-    [switch]$Lower,
+Options:
+  -s, -Symbols     Include special symbols (^*@#&%`$!-) in custom subset
+  -n, -Numbers     Include digits (0-9) in custom subset
+  -u, -Upper       Include uppercase letters (A-Z) in custom subset
+  -l, -Lower       Include lowercase letters (a-z) in custom subset
+  -NoSymbols       Exclude symbols from default full character set
+  -NoNumbers       Exclude digits from default full character set
+  -h, --help       Show this help message
+"@
 
-    [switch]$NoSymbols,
-    [switch]$NoNumbers
-)
+$length = 16
+$hasLength = $false
+$useSymbols = $false
+$useNumbers = $false
+$useUpper = $false
+$useLower = $false
+$noSymbols = $false
+$noNumbers = $false
+$endOfOpts = $false
+
+:ParseLoop for ($i = 0; $i -lt $args.Count; $i++) {
+    $arg = [string]$args[$i]
+    if (-not $endOfOpts -and $arg -eq '--') {
+        $endOfOpts = $true
+        continue ParseLoop
+    }
+    if (-not $endOfOpts -and $arg.StartsWith('-') -and $arg.Length -gt 1) {
+        switch -Regex ($arg) {
+            '^(-h|--help|-Help|-\?)$' {
+                Write-Output $script:UsageText
+                exit 0
+            }
+            '^(-Length|--length)$' {
+                if ($i + 1 -ge $args.Count) {
+                    [Console]::Error.WriteLine('gen-passwd: -Length requires a positive integer')
+                    exit 1
+                }
+                $arg = [string]$args[++$i]
+                break
+            }
+            '^(-s|-Symbols|-SymbolsOnly|-IncludeSymbols|--symbols)$' {
+                $useSymbols = $true
+                continue ParseLoop
+            }
+            '^(-n|-Numbers|-NumbersOnly|-IncludeNumbers|--numbers)$' {
+                $useNumbers = $true
+                continue ParseLoop
+            }
+            '^(-u|-Upper|-UpperOnly|--upper)$' {
+                $useUpper = $true
+                continue ParseLoop
+            }
+            '^(-l|-Lower|-LowerOnly|--lower)$' {
+                $useLower = $true
+                continue ParseLoop
+            }
+            '^(-NoSymbols|--no-symbols)$' {
+                $noSymbols = $true
+                continue ParseLoop
+            }
+            '^(-NoNumbers|--no-numbers)$' {
+                $noNumbers = $true
+                continue ParseLoop
+            }
+            '^-[snulh]+$' {
+                foreach ($ch in $arg.Substring(1).ToCharArray()) {
+                    switch ([string]$ch) {
+                        's' { $useSymbols = $true }
+                        'n' { $useNumbers = $true }
+                        'u' { $useUpper = $true }
+                        'l' { $useLower = $true }
+                        'h' {
+                            Write-Output $script:UsageText
+                            exit 0
+                        }
+                    }
+                }
+                continue ParseLoop
+            }
+            default {
+                [Console]::Error.WriteLine("gen-passwd: unknown option '$arg'")
+                exit 1
+            }
+        }
+    }
+
+    $parsedLen = 0
+    if ($hasLength -or $arg -notmatch '^[0-9]+$' -or -not [int]::TryParse($arg, [ref]$parsedLen) -or $parsedLen -lt 1 -or $parsedLen -gt 4096) {
+        [Console]::Error.WriteLine("gen-passwd: invalid password length '$arg' (expected integer 1..4096)")
+        exit 1
+    }
+    $length = $parsedLen
+    $hasLength = $true
+}
 
 $upperChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 $lowerChars = 'abcdefghijklmnopqrstuvwxyz'
 $numberChars = '0123456789'
-$symbolChars = '^*@#&%$!'
+$symbolChars = '^*@#&%$!-'
 
 $charSet = ''
-
-# If any specific subset flag was provided, compose only the selected sets (exact home-settings parity)
-if ($Upper -or $Lower -or $Numbers -or $Symbols) {
-    if ($Upper) {
-        $charSet += $upperChars
-    }
-    if ($Lower) {
-        $charSet += $lowerChars
-    }
-    if ($Numbers) {
-        $charSet += $numberChars
-    }
-    if ($Symbols) {
-        $charSet += $symbolChars
-    }
+if ($useUpper -or $useLower -or $useNumbers -or $useSymbols) {
+    if ($useUpper) { $charSet += $upperChars }
+    if ($useLower) { $charSet += $lowerChars }
+    if ($useNumbers) { $charSet += $numberChars }
+    if ($useSymbols) { $charSet += $symbolChars }
 } else {
-    # Default is full set: uppercase + lowercase + numbers + symbols
     $charSet = $upperChars + $lowerChars
-    if (-not $NoNumbers) {
-        $charSet += $numberChars
-    }
-    if (-not $NoSymbols) {
-        $charSet += $symbolChars
-    }
+    if (-not $noNumbers) { $charSet += $numberChars }
+    if (-not $noSymbols) { $charSet += $symbolChars }
 }
 
-$bytes = [byte[]]::new($Length)
-$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-
-$chars = [char[]]::new($Length)
-for ($i = 0; $i -lt $Length; $i++) {
-    $chars[$i] = $charSet[$bytes[$i] % $charSet.Length]
+if (-not $charSet) {
+    [Console]::Error.WriteLine('gen-passwd: character set is empty')
+    exit 1
 }
 
--join $chars
+$chars = [char[]]::new($length)
+for ($idx = 0; $idx -lt $length; $idx++) {
+    $randIdx = [System.Security.Cryptography.RandomNumberGenerator]::GetInt32(0, $charSet.Length)
+    $chars[$idx] = $charSet[$randIdx]
+}
+
+Write-Output (-join $chars)

@@ -1,0 +1,49 @@
+// ============================================================================
+// windows-settings 2-Pane Side-by-Side IDE Layout (ide-2pane.kdl)
+// ============================================================================
+// Top 1-line compact-bar on BASE02 shelf:
+//   50% AI Agent (focused) | 50% Neovim Editor (Named Pipe RPC)
+
+layout {
+    tab_template name="ide_ui" {
+        pane size=1 borderless=true {
+            plugin location="compact-bar"
+        }
+        children
+    }
+
+    ide_ui name="ide" focus=true {
+        pane split_direction="vertical" {
+            pane size="50%" name="AI" focus=true command="ide.cmd" {
+                args "--pane-init" "ai"
+            }
+            pane size="50%" name="Editor" command="ide.cmd" {
+                args "--pane-init" "editor"
+            }
+        }
+    }
+
+    swap_tiled_layout name="side-by-side" {
+        ide_ui max_panes=3 {
+            pane split_direction="vertical" {
+                pane size="50%"
+                pane size="50%"
+            }
+        }
+        ide_ui min_panes=4 {
+            pane size="75%" split_direction="vertical" {
+                pane size="50%"
+                pane size="50%" { children; }
+            }
+            pane size="25%"
+        }
+    }
+
+    swap_tiled_layout name="stacked" {
+        ide_ui min_panes=3 {
+            pane stacked=true {
+                children
+            }
+        }
+    }
+}

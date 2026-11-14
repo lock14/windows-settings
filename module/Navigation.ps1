@@ -1,10 +1,12 @@
 # =============================================================
-# Navigation & Modern Directory Inspection (eza, zoxide, tree)
+# Navigation & Modern Directory Inspection (eza, bat, zoxide, tree)
 # =============================================================
 
-# Un-alias default PowerShell ls redirect
-if (Test-Path "Alias:ls") {
-    Remove-Item "Alias:ls" -Force -ErrorAction SilentlyContinue
+# Un-alias default PowerShell ls & cat redirects so coreutils run natively
+foreach ($legacyAlias in @('ls', 'cat')) {
+    if (Test-Path "Alias:$legacyAlias") {
+        Remove-Item "Alias:$legacyAlias" -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $programFiles = if ($env:ProgramFiles) { $env:ProgramFiles } else { Join-Path ($env:SystemDrive ?? 'C:') 'Program Files' }
@@ -56,7 +58,7 @@ function l {
     }
 }
 
-# Optional Modern Directory Listing (eza shortcuts matching home-settings)
+# Modern Directory Listing (eza shortcuts matching home-settings)
 function e {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
         & eza --icons=auto --group-directories-first @args
@@ -98,7 +100,7 @@ function lt { et @args }
 
 function elt {
     if (Get-Command eza -ErrorAction SilentlyContinue) {
-        & eza -la --tree --level=2 --icons=auto --git --group --time-style=long-iso @args
+        & eza -la --tree --level=2 --icons=auto --git --group --group-directories-first --time-style=long-iso @args
     } else {
         Format-PathTree @args
     }
@@ -116,32 +118,53 @@ function elx {
     }
 }
 
-# Modern Syntax-Highlighted File Inspection (bat / coreutils cat / Get-Content)
-function cat {
+# Modern Syntax-Highlighted File Inspection (`b` = bat, matching home-settings; `cat` stays raw coreutils cat)
+function b {
+    $batTheme = if ($env:BAT_THEME) { $env:BAT_THEME } else { 'Solarized-Dark-TrueColor' }
+    $fallbackArgs = @($args | Where-Object { "$_" -notmatch '^(-p|--plain|--paging(=.*)?|--style(=.*)?|--theme(=.*)?)$' })
     if ($MyInvocation.ExpectingInput) {
         if (Get-Command bat -ErrorAction SilentlyContinue) {
-            $input | & bat --theme="Solarized-Dark-TrueColor" --paging=never @args
+            $input | & bat --theme="$batTheme" --paging=never @args
         } elseif (Test-Path $coreutilsCat) {
-            $input | & $coreutilsCat @args
+            $input | & $coreutilsCat @fallbackArgs
         } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {
-            $input | & cat.exe @args
+            $input | & cat.exe @fallbackArgs
         } else {
             $input | Out-String -Stream
         }
     } else {
         if (Get-Command bat -ErrorAction SilentlyContinue) {
-            & bat --theme="Solarized-Dark-TrueColor" --paging=auto @args
+            & bat --theme="$batTheme" --paging=auto @args
         } elseif (Test-Path $coreutilsCat) {
-            & $coreutilsCat @args
+            & $coreutilsCat @fallbackArgs
         } elseif (Get-Command cat.exe -ErrorAction SilentlyContinue) {
-            & cat.exe @args
+            & cat.exe @fallbackArgs
         } else {
-            Get-Content @args
+            Get-Content @fallbackArgs
         }
     }
 }
 
-function Render-TreeNode($node, $prefix) {
+# Synchronized IDE Workspace Directory Dive (`icd [dir|--reset]`)
+function icd {
+    $ideScript = Resolve-WsBinScript 'ide'
+    if ($ideScript) {
+        $resolved = & $ideScript --cd @args
+        if ($LASTEXITCODE -eq 0 -and $resolved) {
+            $targetDir = ("$resolved").Trim()
+            if (Test-Path -LiteralPath $targetDir -PathType Container) {
+                $env:IDE_WORKDIR = $targetDir
+                Set-Location -LiteralPath $targetDir
+            }
+        }
+    } elseif ($args.Count -gt 0) {
+        Set-Location $args[0]
+    } else {
+        Set-Location $HOME
+    }
+}
+
+function Format-TreeNode($node, $prefix) {
     $keys = [string[]]$node.Keys
     for ($i = 0; $i -lt $keys.Count; $i++) {
         $key = $keys[$i]
@@ -168,7 +191,7 @@ function Render-TreeNode($node, $prefix) {
         Write-Host "$key" -ForegroundColor $color
 
         if ($isDir) {
-            Render-TreeNode $node[$key] "$prefix$childPrefix"
+            Format-TreeNode $node[$key] "$prefix$childPrefix"
         }
     }
 }
@@ -207,7 +230,7 @@ function Format-PathTree {
         }
 
         Write-Host '.' -ForegroundColor Cyan
-        Render-TreeNode $root ''
+        Format-TreeNode $root ''
     }
 }
 
@@ -221,16 +244,16 @@ function fs {
 }
 
 # Initialize Zoxide (Smart directory jumping with compiled cache)
-$zoxideCache = "$HOME\.cache\powershell\zoxide_init.ps1"
-if ((Test-Path $zoxideCache) -and (Get-Item $zoxideCache).Length -gt 0) {
+$zoxideCache = Join-Path $HOME '.cache\powershell\zoxide_init.ps1'
+if ([System.IO.File]::Exists($zoxideCache) -and ([System.IO.FileInfo]::new($zoxideCache)).Length -gt 0) {
     . $zoxideCache
 } elseif (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    $cacheDir = "$HOME\.cache\powershell"
-    if (-not (Test-Path $cacheDir)) {
+    $cacheDir = Join-Path $HOME '.cache\powershell'
+    if (-not [System.IO.Directory]::Exists($cacheDir)) {
         New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
     }
     zoxide init powershell | Out-File -FilePath $zoxideCache -Encoding utf8 -Force
-    if ((Test-Path $zoxideCache) -and (Get-Item $zoxideCache).Length -gt 0) {
+    if ([System.IO.File]::Exists($zoxideCache) -and ([System.IO.FileInfo]::new($zoxideCache)).Length -gt 0) {
         . $zoxideCache
     }
 }

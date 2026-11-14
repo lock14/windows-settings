@@ -23,13 +23,12 @@ function Get-GitCurrentBranch {
 }
 
 function Resolve-GitPrimaryBranch {
-    git show-ref --verify --quiet refs/heads/main
-    if ($LASTEXITCODE -eq 0) { return 'main' }
+    foreach ($candidate in @('main', 'master', 'trunk')) {
+        git show-ref --verify --quiet "refs/heads/$candidate"
+        if ($LASTEXITCODE -eq 0) { return $candidate }
+    }
 
-    git show-ref --verify --quiet refs/heads/master
-    if ($LASTEXITCODE -eq 0) { return 'master' }
-
-    Write-Error "Error: neither 'main' nor 'master' branch found locally."
+    Write-Error "Error: neither 'main' nor 'master' (or 'trunk') branch found locally."
     return $null
 }
 
@@ -78,12 +77,12 @@ function gcpa { git cherry-pick --abort @args }
 function gcpc { git cherry-pick --continue @args }
 
 # -------------------------------------------------------------
-# Repository Custom Workflow Helpers
+# Repository Custom Workflow Helpers (Synced with home-settings)
 # -------------------------------------------------------------
 function gcommit { git add -A && git commit @args }
 function gamend  { git add -A && git commit --amend --no-edit @args }
 function gfetch  { git fetch @args }
-function gpush   { git push origin HEAD @args }
+function gpush   { git push -u origin HEAD @args }
 function gpushf  {
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
     if ($branch -and $branch.Trim() -ne 'HEAD') {
@@ -92,8 +91,8 @@ function gpushf  {
         git push --force-with-lease origin HEAD @args
     }
 }
-function gpull   { git pull --rebase origin HEAD @args }
-function gup     { git fetch && git pull --rebase origin HEAD @args }
+function gpull   { git pull --rebase --autostash origin HEAD @args }
+function gup     { git fetch --prune && git pull --rebase --autostash origin HEAD @args }
 
 function gprune {
     $currentBranch = Get-GitCurrentBranch
@@ -108,7 +107,30 @@ function gprune {
         return
     }
 
-    $branches = git branch --format="%(refname:short)" | Where-Object { $_ -and $_ -notmatch '^(main|master)$' }
+    git fetch --prune 2>$null | Out-Null
+
+    $mergedBranches = git branch --merged $targetBranch --format="%(refname:short)" |
+        Where-Object { $_ -and $_ -notmatch '^(main|master|trunk|develop)$' -and $_ -ne $targetBranch }
+    if ($mergedBranches) {
+        $mergedBranches | ForEach-Object { git branch -d $_ }
+    }
+}
+
+function gpurge {
+    $currentBranch = Get-GitCurrentBranch
+    if (-not $currentBranch) { return }
+
+    $targetBranch = Resolve-GitPrimaryBranch
+    if (-not $targetBranch) { return }
+
+    git checkout $targetBranch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Error: failed to checkout $targetBranch"
+        return
+    }
+
+    $branches = git branch --format="%(refname:short)" |
+        Where-Object { $_ -and $_ -notmatch '^(main|master|trunk)$' -and $_ -ne $targetBranch }
     if ($branches) {
         $branches | ForEach-Object { git branch -D $_ }
     }
@@ -119,10 +141,17 @@ function guser-branch {
     $branch = Get-GitCurrentBranch
     if (-not $branch) { return }
 
-    if ($branch -ne 'HEAD') {
-        $cleanBranch = $branch -replace "^($([regex]::Escape($user))/)+", ""
-        git branch -m "$user/$cleanBranch"
+    if ($branch -eq 'HEAD') {
+        Write-Error "Error: cannot rename detached HEAD."
+        return
     }
+    if ($branch -in @('main', 'master', 'trunk')) {
+        Write-Error "Error: refusing to rename protected primary branch '$branch'."
+        return
+    }
+
+    $cleanBranch = $branch -replace "^($([regex]::Escape($user))/)+", ''
+    git branch -m "$user/$cleanBranch"
 }
 
 function fix-abcxyz-branch-name {
@@ -132,6 +161,12 @@ function fix-abcxyz-branch-name {
 function gsync {
     $currentBranch = Get-GitCurrentBranch
     if (-not $currentBranch) { return }
+
+    $dirty = git status --porcelain --untracked-files=no 2>$null
+    if ($dirty) {
+        Write-Error "Error: working tree has uncommitted changes; commit or stash before running gsync."
+        return
+    }
 
     $targetBranch = Resolve-GitPrimaryBranch
     if (-not $targetBranch) { return }

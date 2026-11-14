@@ -3,22 +3,39 @@
 # Managed via mise (https://mise.jdx.dev)
 # =============================================================
 
+[tool_alias]
+elan = "github:leanprover/elan"
+
 [tools]
-java = "lts"
-maven = "latest"
-go = "latest"
-python = "latest"
-node = "lts"
-terraform = "latest"
-rust = "latest"
-neovim = "latest"
-eza = "latest"
 bat = "latest"
+delta = "latest"
+dust = "latest"
+elan = { version = "latest", rename_exe = "elan-init" }
+eza = "latest"
+fd = "latest"
+fzf = "latest"
+gh = "latest"
 glow = "latest"
+go = "latest"
+java = "lts"
+jq = "latest"
+maven = "latest"
+neovim = "latest"
+node = "lts"
+python = "latest"
+ripgrep = "latest"
+rust = "latest"
+sd = "latest"
+tealdeer = "latest"
+terraform = "latest"
 tree-sitter = "latest"
+yq = "latest"
+zellij = "latest"
+zoxide = "latest"
 
 [settings]
 legacy_version_file = true
 experimental = true
+http_timeout = "120s"
 go.set_gobin = false
 go.set_gopath = false
