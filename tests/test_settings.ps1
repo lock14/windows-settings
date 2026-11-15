@@ -125,6 +125,7 @@ $zellijThemePath = Join-Path $zellijDir "themes\windows-settings.kdl"
 if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Path $zellijLayout2Path) -and (Test-Path $zellijThemePath)) {
     $zellijCfgRaw = Get-Content $zellijCfgPath -Raw
     $zellijLayout3Raw = Get-Content $zellijLayout3Path -Raw
+    $zellijLayout2Raw = Get-Content $zellijLayout2Path -Raw
     $zellijThemeRaw = Get-Content $zellijThemePath -Raw
     if ($zellijCfgRaw -match 'pane_frames false' -and
         $zellijCfgRaw -match 'context_menu \{' -and
@@ -132,12 +133,15 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
         $zellijCfgRaw -match 'Focus AI agent' -and
         $zellijCfgRaw -match 'Quit IDE workspace' -and
         $zellijCfgRaw -match 'attention \{' -and
+        $zellijCfgRaw -match 'track_commands false' -and
         $zellijCfgRaw -match 'tray_badge_colors' -and
         $zellijCfgRaw -match 'terminal \{' -and
         $zellijCfgRaw -match 'GoToNextAttention' -and
         $zellijCfgRaw -match 'session-manager' -and
         $zellijLayout3Raw -match 'compact-bar' -and
         $zellijLayout3Raw -match '--pane-init' -and
+        $zellijLayout3Raw -match 'attention_muted=true' -and
+        $zellijLayout2Raw -match 'attention_muted=true' -and
         $zellijThemeRaw -match 'windows-settings \{') {
         Pass "KDL valid: config/zellij/ (config.kdl + context_menu, ide-3pane.kdl, ide-2pane.kdl, themes/windows-settings.kdl)"
     } else {

@@ -164,7 +164,7 @@ attention {
     tray_icon true
     idle_rule "all"
     done_threshold_secs 10
-    track_commands true
+    track_commands false
     idle_activity_secs 10
     idle_silence_secs 3
     startup_card "attention"
