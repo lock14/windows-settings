@@ -77,9 +77,17 @@ if ($env:LOCALAPPDATA -and $env:WS_DISABLE_ASYNC_MISE_CACHE -ne '1') {
     if ([System.IO.Directory]::Exists($miseInstallsRoot)) {
         $needMiseRefresh = -not [System.IO.File]::Exists($misePathsCache)
         if (-not $needMiseRefresh) {
-            $instTicks = [System.IO.Directory]::GetLastWriteTimeUtc($miseInstallsRoot).Ticks
             $cacheTicks = [System.IO.File]::GetLastWriteTimeUtc($misePathsCache).Ticks
-            if ($instTicks -gt $cacheTicks) { $needMiseRefresh = $true }
+            $maxTicks = [System.IO.Directory]::GetLastWriteTimeUtc($miseInstallsRoot).Ticks
+            if ($miseShims -and [System.IO.Directory]::Exists($miseShims)) {
+                $shimTicks = [System.IO.Directory]::GetLastWriteTimeUtc($miseShims).Ticks
+                if ($shimTicks -gt $maxTicks) { $maxTicks = $shimTicks }
+            }
+            foreach ($toolDir in [System.IO.Directory]::GetDirectories($miseInstallsRoot)) {
+                $tdTicks = [System.IO.Directory]::GetLastWriteTimeUtc($toolDir).Ticks
+                if ($tdTicks -gt $maxTicks) { $maxTicks = $tdTicks }
+            }
+            if ($maxTicks -gt $cacheTicks) { $needMiseRefresh = $true }
         }
         $miseLockFile = Join-Path $psCacheDir 'mise_paths.lock'
         if ($needMiseRefresh -and [System.IO.File]::Exists($miseLockFile)) {
@@ -96,7 +104,7 @@ if ($env:LOCALAPPDATA -and $env:WS_DISABLE_ASYNC_MISE_CACHE -ne '1') {
                 if ($pwshExeMise) {
                     $cmdCacheTarget = Join-Path (Join-Path $env:LOCALAPPDATA 'cmd') 'mise_paths.cmd'
                     $bgMiseScript = @'
-param([string]$PsCache, [string]$CmdCache, [string]$LockFile)
+param([string]$PsCache, [string]$CmdCache, [string]$InstallsRoot, [string]$LockFile)
 try {
     $rawPaths = @(mise bin-paths 2>$null)
     $cleanDirs = [System.Collections.Generic.List[string]]::new()
@@ -108,31 +116,38 @@ try {
         }
     }
     if ($cleanDirs.Count -gt 0) {
-        $marker = $cleanDirs[0]
         $joined = ($cleanDirs -join ';')
-        $escMarker = $marker.Replace("'", "''")
+        $hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($joined.ToLowerInvariant()))
+        $stamp = [System.BitConverter]::ToString($hashBytes, 0, 4).Replace('-', '')
+        $escInstalls = $InstallsRoot.Replace("'", "''")
         $escJoined = $joined.Replace("'", "''")
         $psLines = @(
-            "`$script:_wsMiseMarker = '$escMarker'",
+            "`$script:_wsMiseInstallsDir = '$escInstalls'",
+            "`$script:_wsMiseStamp = '$stamp'",
             "`$script:_wsMisePathBlock = '$escJoined'",
-            'if ([System.IO.Directory]::Exists($script:_wsMiseMarker) -and -not $env:Path.Contains($script:_wsMiseMarker, [System.StringComparison]::OrdinalIgnoreCase)) {',
-            '    $env:Path = "$script:_wsMisePathBlock;$env:Path"',
+            'if ([System.IO.Directory]::Exists($script:_wsMiseInstallsDir)) {',
+            '    if (-not $env:Path.Contains($script:_wsMisePathBlock, [System.StringComparison]::OrdinalIgnoreCase)) {',
+            '        $cleanSegs = foreach ($seg in $env:Path.Split('';'', [System.StringSplitOptions]::RemoveEmptyEntries)) {',
+            '            if ($seg.IndexOf(''\mise\installs\'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and',
+            '                $seg.IndexOf(''/mise/installs/'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {',
+            '                $seg',
+            '            }',
+            '        }',
+            '        $restPath = $cleanSegs -join '';''',
+            '        $env:Path = if ($restPath) { "$script:_wsMisePathBlock;$restPath" } else { $script:_wsMisePathBlock }',
+            '    }',
+            '    $env:_WS_MISE_STAMP = $script:_wsMiseStamp',
             '}'
         )
         [System.IO.File]::WriteAllText($PsCache, ($psLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
         $cmdDir = Split-Path -Parent $CmdCache
         if (-not [System.IO.Directory]::Exists($cmdDir)) { [System.IO.Directory]::CreateDirectory($cmdDir) | Out-Null }
         $cmdLines = @(
-            "@if not exist `"$marker`" exit /b 0",
-            "@call :ws_mise_has `"$marker`"",
-            "@if errorlevel 1 set `"PATH=$joined;%PATH%`"",
-            '@exit /b 0',
-            ':ws_mise_has',
-            '@setlocal EnableDelayedExpansion',
-            '@set "_P=;!PATH!;"',
-            '@set "_T=!_P:*;%~1;=FOUND!"',
-            '@if "!_T:~0,5!"=="FOUND" (endlocal & exit /b 0)',
-            '@endlocal & exit /b 1'
+            "@if not exist `"$InstallsRoot`" exit /b 0",
+            "@if /i `"%_WS_MISE_STAMP%`"==`"$stamp`" exit /b 0",
+            "@set `"_WS_MISE_STAMP=$stamp`"",
+            "@set `"PATH=$joined;%PATH%`"",
+            '@exit /b 0'
         )
         [System.IO.File]::WriteAllText($CmdCache, ($cmdLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
     }
@@ -146,7 +161,7 @@ try {
                     $psiM.ArgumentList.Add('-NoProfile')
                     $psiM.ArgumentList.Add('-NonInteractive')
                     $psiM.ArgumentList.Add('-Command')
-                    $psiM.ArgumentList.Add("& { $bgMiseScript } -PsCache '$($misePathsCache.Replace("'", "''"))' -CmdCache '$($cmdCacheTarget.Replace("'", "''"))' -LockFile '$($miseLockFile.Replace("'", "''"))'")
+                    $psiM.ArgumentList.Add("& { $bgMiseScript } -PsCache '$($misePathsCache.Replace("'", "''"))' -CmdCache '$($cmdCacheTarget.Replace("'", "''"))' -InstallsRoot '$($miseInstallsRoot.Replace("'", "''"))' -LockFile '$($miseLockFile.Replace("'", "''"))'")
                     $psiM.CreateNoWindow = $true
                     $psiM.UseShellExecute = $false
                     [void][System.Diagnostics.Process]::Start($psiM)
@@ -159,17 +174,43 @@ try {
 }
 
 $script:_wsPathDirs = $env:Path.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries)
-function Test-WsExeOnPath([string]$ExeName) {
+function Resolve-WsExeOnPath([string]$ExeName) {
     foreach ($dir in $script:_wsPathDirs) {
         try {
-            if ([System.IO.File]::Exists((Join-Path $dir $ExeName))) {
-                return $true
+            $candidate = Join-Path $dir $ExeName
+            if ([System.IO.File]::Exists($candidate)) {
+                return $candidate
             }
         } catch {
             $null = $_
         }
     }
-    return $false
+    return $null
+}
+
+function Test-WsExeOnPath([string]$ExeName) {
+    return ($null -ne (Resolve-WsExeOnPath $ExeName))
+}
+
+function Get-WsBinaryTimestamp([string]$ExeName) {
+    $exePath = Resolve-WsExeOnPath $ExeName
+    if (-not $exePath) { return [long]0 }
+    try {
+        $ticks = [System.IO.File]::GetLastWriteTimeUtc($exePath).Ticks
+        if ($exePath.IndexOf('\mise\installs\', [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+            $exePath.IndexOf('\WinGet\Packages\', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            $exeDir = Split-Path -Parent $exePath
+            if ($exeDir) {
+                $dirTicks = [System.IO.Directory]::GetLastWriteTimeUtc($exeDir).Ticks
+                if ($dirTicks -gt $ticks) { $ticks = $dirTicks }
+            }
+        }
+        $nowTicks = [DateTime]::UtcNow.Ticks
+        if ($ticks -gt $nowTicks) { $ticks = $nowTicks }
+        return $ticks
+    } catch {
+        return [long]0
+    }
 }
 
 # Solarized Dark LS_COLORS (Calibrated 40-language unbolded GNU dircolors baseline)
@@ -377,9 +418,13 @@ function Initialize-WsOhMyPosh {
         function global:prompt {
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
-        if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
+        $ompBinTicks = Get-WsBinaryTimestamp 'oh-my-posh.exe'
+        $ompCacheValid = [System.IO.File]::Exists($ompInit) -and
+            ([System.IO.FileInfo]::new($ompInit)).Length -gt 0 -and
+            ($ompBinTicks -le 0 -or [System.IO.File]::GetLastWriteTimeUtc($ompInit).Ticks -ge $ompBinTicks)
+        if ($ompCacheValid) {
             . $ompInit
-        } elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+        } elseif ($ompBinTicks -gt 0 -or (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
             if ([System.IO.File]::Exists($themePath)) {
                 if (-not [System.IO.Directory]::Exists($psCacheDir)) {
                     New-Item -ItemType Directory -Force -Path $psCacheDir | Out-Null

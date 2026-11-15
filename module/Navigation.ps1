@@ -243,11 +243,15 @@ function fs {
     }
 }
 
-# Initialize Zoxide (Smart directory jumping with compiled cache)
+# Initialize Zoxide (Smart directory jumping with binary-mtime-validated compiled cache)
 $zoxideCache = Join-Path $HOME '.cache\powershell\zoxide_init.ps1'
-if ([System.IO.File]::Exists($zoxideCache) -and ([System.IO.FileInfo]::new($zoxideCache)).Length -gt 0) {
+$zoxideBinTicks = if ($null -ne ${function:Get-WsBinaryTimestamp}) { Get-WsBinaryTimestamp 'zoxide.exe' } else { [long]0 }
+$zoxideCacheValid = [System.IO.File]::Exists($zoxideCache) -and
+    ([System.IO.FileInfo]::new($zoxideCache)).Length -gt 0 -and
+    ($zoxideBinTicks -le 0 -or [System.IO.File]::GetLastWriteTimeUtc($zoxideCache).Ticks -ge $zoxideBinTicks)
+if ($zoxideCacheValid) {
     . $zoxideCache
-} elseif (Get-Command zoxide -ErrorAction SilentlyContinue) {
+} elseif ($zoxideBinTicks -gt 0 -or (Get-Command zoxide -ErrorAction SilentlyContinue)) {
     $cacheDir = Join-Path $HOME '.cache\powershell'
     if (-not [System.IO.Directory]::Exists($cacheDir)) {
         New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null

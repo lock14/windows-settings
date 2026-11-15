@@ -1053,13 +1053,64 @@ try {
     }
 }
 
-# Test bin/update-system.ps1 --dry-run
+# Test bin/update-system.ps1 --dry-run (default full update + --system-only)
 $updateScript = Join-Path $RootDir "bin\update-system.ps1"
 $updDry = (& $updateScript --dry-run) -join "`n"
-if ($LASTEXITCODE -eq 0) {
-    Pass "update-system.ps1 --dry-run executes cleanly"
+$updSysDry = (& $updateScript --system-only --dry-run) -join "`n"
+if ($LASTEXITCODE -eq 0 -and
+    $updDry -match 'Regenerate omp_init\.ps1, zoxide_init\.ps1, gh_completion\.ps1' -and
+    $updSysDry -notmatch 'Regenerate omp_init\.ps1') {
+    Pass "update-system.ps1 --dry-run updates packages, toolchains, and caches by default (--system-only scopes to WinGet)"
 } else {
-    Fail "update-system.ps1 --dry-run" "Exited with code $LASTEXITCODE ($updDry)"
+    Fail "update-system.ps1 --dry-run" "Unexpected output or exit code $LASTEXITCODE ($updDry)"
+}
+
+# Test upgrade-safe mise_paths.ps1 stale version pruning when a single tool upgrades
+$prevPathTest = $env:Path
+$prevMiseStamp = $env:_WS_MISE_STAMP
+$tempMiseDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ws_mise_test_" + [System.Guid]::NewGuid().ToString("N"))
+try {
+    $fakeInstalls = Join-Path $tempMiseDir 'mise\installs'
+    $batV1 = Join-Path $fakeInstalls 'bat\0.26.1'
+    $nvimV1 = Join-Path $fakeInstalls 'neovim\0.12.5\bin'
+    $nvimV2 = Join-Path $fakeInstalls 'neovim\0.12.6\bin'
+    New-Item -ItemType Directory -Force -Path $batV1, $nvimV1, $nvimV2 | Out-Null
+    $blockV2 = "$batV1;$nvimV2"
+    $fakeCachePs1 = Join-Path $tempMiseDir 'mise_paths.ps1'
+    $fakeLines = @(
+        "`$script:_wsMiseInstallsDir = '$($fakeInstalls.Replace("'", "''"))'",
+        "`$script:_wsMiseStamp = 'TESTCAFE'",
+        "`$script:_wsMisePathBlock = '$($blockV2.Replace("'", "''"))'",
+        'if ([System.IO.Directory]::Exists($script:_wsMiseInstallsDir)) {',
+        '    if (-not $env:Path.Contains($script:_wsMisePathBlock, [System.StringComparison]::OrdinalIgnoreCase)) {',
+        '        $cleanSegs = foreach ($seg in $env:Path.Split('';'', [System.StringSplitOptions]::RemoveEmptyEntries)) {',
+        '            if ($seg.IndexOf(''\mise\installs\'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and',
+        '                $seg.IndexOf(''/mise/installs/'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {',
+        '                $seg',
+        '            }',
+        '        }',
+        '        $restPath = $cleanSegs -join '';''',
+        '        $env:Path = if ($restPath) { "$script:_wsMisePathBlock;$restPath" } else { $script:_wsMisePathBlock }',
+        '    }',
+        '    $env:_WS_MISE_STAMP = $script:_wsMiseStamp',
+        '}'
+    )
+    [System.IO.File]::WriteAllText($fakeCachePs1, ($fakeLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+    $env:Path = "$batV1;$nvimV1;$prevPathTest"
+    . $fakeCachePs1
+    if ($env:Path.StartsWith("$blockV2;", [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not $env:Path.Contains($nvimV1, [System.StringComparison]::OrdinalIgnoreCase) -and
+        $env:_WS_MISE_STAMP -eq 'TESTCAFE') {
+        Pass "mise_paths.ps1 replaces stale single-tool version paths cleanly upon upgrade"
+    } else {
+        Fail "mise_paths.ps1 upgrade swap" "Expected $nvimV2 prepended and $nvimV1 pruned"
+    }
+} finally {
+    $env:Path = $prevPathTest
+    $env:_WS_MISE_STAMP = $prevMiseStamp
+    if (Test-Path -LiteralPath $tempMiseDir) {
+        Remove-Item -Recurse -Force -LiteralPath $tempMiseDir -ErrorAction SilentlyContinue
+    }
 }
 
 # Test bin/ide.ps1 --dry-run (Zellij default, detached, desktop & Windows Terminal fallback), --agy-hook, --send & --keys

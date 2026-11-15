@@ -296,16 +296,33 @@ function Sync-MisePathsCache([switch]$DryRun) {
         }
         if ($cleanDirs.Count -eq 0) { return }
 
-        $marker = $cleanDirs[0]
+        $installsRoot = if ($env:LOCALAPPDATA) {
+            Join-Path $env:LOCALAPPDATA 'mise\installs'
+        } else {
+            Split-Path -Parent (Split-Path -Parent $cleanDirs[0])
+        }
         $joined = ($cleanDirs -join ';')
-        $escMarker = $marker.Replace("'", "''")
+        $hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($joined.ToLowerInvariant()))
+        $stamp = [System.BitConverter]::ToString($hashBytes, 0, 4).Replace('-', '')
+        $escInstalls = $installsRoot.Replace("'", "''")
         $escJoined = $joined.Replace("'", "''")
 
         $psLines = @(
-            "`$script:_wsMiseMarker = '$escMarker'",
+            "`$script:_wsMiseInstallsDir = '$escInstalls'",
+            "`$script:_wsMiseStamp = '$stamp'",
             "`$script:_wsMisePathBlock = '$escJoined'",
-            'if ([System.IO.Directory]::Exists($script:_wsMiseMarker) -and -not $env:Path.Contains($script:_wsMiseMarker, [System.StringComparison]::OrdinalIgnoreCase)) {',
-            '    $env:Path = "$script:_wsMisePathBlock;$env:Path"',
+            'if ([System.IO.Directory]::Exists($script:_wsMiseInstallsDir)) {',
+            '    if (-not $env:Path.Contains($script:_wsMisePathBlock, [System.StringComparison]::OrdinalIgnoreCase)) {',
+            '        $cleanSegs = foreach ($seg in $env:Path.Split('';'', [System.StringSplitOptions]::RemoveEmptyEntries)) {',
+            '            if ($seg.IndexOf(''\mise\installs\'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and',
+            '                $seg.IndexOf(''/mise/installs/'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {',
+            '                $seg',
+            '            }',
+            '        }',
+            '        $restPath = $cleanSegs -join '';''',
+            '        $env:Path = if ($restPath) { "$script:_wsMisePathBlock;$restPath" } else { $script:_wsMisePathBlock }',
+            '    }',
+            '    $env:_WS_MISE_STAMP = $script:_wsMiseStamp',
             '}'
         )
         $psParent = Split-Path -Parent $psCacheFile
@@ -320,16 +337,11 @@ function Sync-MisePathsCache([switch]$DryRun) {
                 New-Item -ItemType Directory -Force -Path $cmdParent | Out-Null
             }
             $cmdLines = @(
-                "@if not exist `"$marker`" exit /b 0",
-                "@call :ws_mise_has `"$marker`"",
-                "@if errorlevel 1 set `"PATH=$joined;%PATH%`"",
-                '@exit /b 0',
-                ':ws_mise_has',
-                '@setlocal EnableDelayedExpansion',
-                '@set "_P=;!PATH!;"',
-                '@set "_T=!_P:*;%~1;=FOUND!"',
-                '@if "!_T:~0,5!"=="FOUND" (endlocal & exit /b 0)',
-                '@endlocal & exit /b 1'
+                "@if not exist `"$installsRoot`" exit /b 0",
+                "@if /i `"%_WS_MISE_STAMP%`"==`"$stamp`" exit /b 0",
+                "@set `"_WS_MISE_STAMP=$stamp`"",
+                "@set `"PATH=$joined;%PATH%`"",
+                '@exit /b 0'
             )
             [System.IO.File]::WriteAllText($cmdCacheFile, ($cmdLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
         }

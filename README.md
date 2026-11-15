@@ -295,7 +295,7 @@ Functions and aliases in `module/` (mirrored as `doskey` macros in `config/cmd/m
 | `vi` or `vim` | Launch `nvim` (falling back to standalone `vim` when `nvim` is absent) |
 | `ds` | Analyze directory disk usage via `dust` |
 | `btop` | Launch interactive TrueColor system monitor (`btop4win`) |
-| `update` | Update `winget`, `mise`, PowerShell modules, Neovim plugins, and `tldr` cache (`update-system`) |
+| `update` | Update `winget`, `mise`, PowerShell modules, toolchains, Neovim plugins, and tool caches (`update-system`) |
 | `ls`, `ll`, `la`, or `l` | Coreutils directory listings styled with TrueColor `LS_COLORS` |
 | `e`, `el`, `elm`, `et`, `elt`, or `elx` | `eza` listings with Nerd Font icons, Git status, ISO timestamps, and tree views |
 | `fs [pattern]` | Recursive directory tree search combining `fd` and `Format-PathTree` |
@@ -329,7 +329,7 @@ Every utility in `bin/` ships as a PowerShell script (`<name>.ps1`) paired with 
 | `repeat-until-success` | `-MaxAttempts <int>`, `-DelaySeconds <int>`, `<command>` | Re-run a command until it exits `0` or reaches `-MaxAttempts` |
 | `sum` | `[numbers...]`, pipeline `stdin` | Accumulate integers and floating-point numbers from arguments or piped input |
 | `theme` | `--list [--plain]`, `--current`, `--set <slug>`, `--holiday`, `--preview <slug>`, `--create <slug> [--from <base>]`, `--env`, `--path`, `--sync-assets`, `--no-live`, `--dry-run`, `[slug]` | Synchronize 17 built-in and custom 24-bit TrueColor themes across terminals, multiplexers, editors, prompts, and CLI tools |
-| `update-system` | `--dry-run`, `-SkipWinget`, `-SkipMise`, `-SkipModules`, `-SkipNvim` | Update `winget` packages, `mise` runtimes, PowerShell modules, Oh My Posh, Neovim plugins, and `tldr` cache |
+| `update-system` | `--system-only`, `--skip-winget`, `--skip-mise`, `--skip-modules`, `--skip-nvim`, `--dry-run` | Update `winget` packages, `mise` runtimes, PowerShell modules, `rustup` and `elan` toolchains, Neovim plugins, `tldr` and `bat` caches, and compiled shell startup caches |
 
 ## Development and testing
 

@@ -81,10 +81,31 @@ function btop {
 # Unified Workstation Updater (`update` / `update-system`)
 function update-system {
     $scriptPath = Resolve-WsBinScript 'update-system'
-    if ($scriptPath) {
-        & $scriptPath @args
-    } else {
+    if (-not $scriptPath) {
         Write-Error "Error: bin/update-system.ps1 was not found."
+        return
+    }
+    $global:LASTEXITCODE = 0
+    & $scriptPath @args
+    $rc = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+    if ($rc -eq 0) {
+        $isReadOnly = $false
+        foreach ($a in $args) {
+            if ("$a" -in @('-n', '--dry-run', '-DryRun', '-h', '--help', '-Help', '-?')) {
+                $isReadOnly = $true
+                break
+            }
+        }
+        if (-not $isReadOnly) {
+            $miseCachePs1 = Join-Path $HOME '.cache\powershell\mise_paths.ps1'
+            if ([System.IO.File]::Exists($miseCachePs1)) {
+                . $miseCachePs1
+                $script:_wsPathDirs = $env:Path.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries)
+            }
+            if ($null -ne ${function:Sync-OhMyPoshPromptCache}) {
+                Sync-OhMyPoshPromptCache
+            }
+        }
     }
 }
 

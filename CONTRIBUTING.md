@@ -8,7 +8,7 @@ All contributions must respect the repository invariants:
 
 * **Portability and zero personal paths**: Never commit personal user directories or machine-specific paths such as `C:\Users\<username>\`, `/Users/<username>/`, or `/home/<username>/`. Always use canonical PowerShell and Windows environment variables (`$HOME`, `$env:USERPROFILE`, `$env:LOCALAPPDATA`, `$env:APPDATA`, `$PROFILE`) and construct paths with `Join-Path` and `Split-Path`.
 * **Strict line-ending discipline**:
-  * `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a batch script uses `LF`.
+  * `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` files use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a batch script uses `LF`.
   * `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files use `LF` (`\n`) line endings.
 * **Non-destructive backups, idempotency, and dry-run support**:
   * Provisioning and uninstall flows (`setup.ps1`, `bootstrap.ps1`) create a timestamped `.bak_<timestamp>` backup before modifying existing user files and skip backup creation when file content is already identical.

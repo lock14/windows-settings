@@ -5,11 +5,15 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ArgumentCompleter signature requires 3 parameters')]
 param()
 
-# GitHub CLI (gh) - Cached on disk
+# GitHub CLI (gh) - Cached on disk with binary-mtime invalidation on upgrades
 $ghCache = Join-Path $HOME '.cache\powershell\gh_completion.ps1'
-if ([System.IO.File]::Exists($ghCache) -and ([System.IO.FileInfo]::new($ghCache)).Length -gt 0) {
+$ghBinTicks = if ($null -ne ${function:Get-WsBinaryTimestamp}) { Get-WsBinaryTimestamp 'gh.exe' } else { [long]0 }
+$ghCacheValid = [System.IO.File]::Exists($ghCache) -and
+    ([System.IO.FileInfo]::new($ghCache)).Length -gt 0 -and
+    ($ghBinTicks -le 0 -or [System.IO.File]::GetLastWriteTimeUtc($ghCache).Ticks -ge $ghBinTicks)
+if ($ghCacheValid) {
     . $ghCache
-} elseif (Get-Command gh -ErrorAction SilentlyContinue) {
+} elseif ($ghBinTicks -gt 0 -or (Get-Command gh -ErrorAction SilentlyContinue)) {
     $cacheDir = Join-Path $HOME '.cache\powershell'
     if (-not [System.IO.Directory]::Exists($cacheDir)) {
         New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
@@ -67,6 +71,18 @@ Register-ArgumentCompleter -CommandName ide -ScriptBlock {
         }
     }
     $candidates | Where-Object { $_ -like "$wordToComplete*" } |
+        ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+}
+
+# Unified Workstation Updater (update / update-system)
+Register-ArgumentCompleter -CommandName update, update-system -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $null = $commandAst; $null = $cursorPosition
+    $flags = @(
+        '--system-only', '--skip-winget', '--skip-mise', '--skip-modules',
+        '--skip-nvim', '--dry-run', '--help'
+    )
+    $flags | Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 
@@ -133,7 +149,7 @@ Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
 Register-ArgumentCompleter -Native -CommandName mise -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $null = $commandAst; $null = $cursorPosition
-    $commands = @('install', 'use', 'ls', 'current', 'run', 'env', 'exec', 'activate', 'settings', 'plugins')
+    $commands = @('install', 'upgrade', 'prune', 'use', 'ls', 'current', 'run', 'env', 'exec', 'activate', 'bin-paths', 'settings', 'plugins')
     $commands | Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
