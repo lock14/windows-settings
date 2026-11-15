@@ -206,6 +206,8 @@ Colors across the workstation fulfill invariant domain roles across all 40 suppo
 - **Identifier anti-shadowing and encoding discipline**:
   - Never use parameter or local variable names that shadow PowerShell automatic variables (`$args`, `$input`, `$Host`, `$HOME`, `$PID`, `$PROFILE`, `$Error`, `$Matches`, `$PSItem`).
   - Any `.ps1` file containing literal non-ASCII Unicode characters requires a UTF-8 BOM (or codepoint escapes via `[char]0x...` or `` "`u{...}" ``) to satisfy `PSUseBOMForUnicodeEncodedFile`.
+- **Strict CLI flag hygiene**:
+  - Do not retain undocumented no-op flags or legacy compatibility shims when refactoring internal CLI utilities unless explicitly requested; remove obsolete flags cleanly so unknown options fail fast.
 
 ## 8. Documentation roles, boundaries, and continuous learning
 

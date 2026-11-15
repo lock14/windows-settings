@@ -63,10 +63,6 @@ $skipNvim = $false
             $skipNvim = $true
             continue ArgLoop
         }
-        '^(--with-dev|--all|-All|-WithDev)$' {
-            # Full update is the default; keep legacy flags accepted as a no-op
-            continue ArgLoop
-        }
         default {
             [Console]::Error.WriteLine("update-system: unknown option '$arg' (try 'update-system --help')")
             exit 1
