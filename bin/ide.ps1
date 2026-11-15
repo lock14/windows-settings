@@ -1052,6 +1052,26 @@ function Invoke-PaneInit([string]$Role) {
     switch ($normRole) {
         'editor' {
             $Host.UI.RawUI.WindowTitle = "$sess [Editor]"
+            if ($env:ZELLIJ -and $env:ZELLIJ_PANE_ID) {
+                try {
+                    $zBin = Resolve-ZellijExecutable
+                    $edPid = ConvertTo-ZellijPaneId $env:ZELLIJ_PANE_ID
+                    if ($zBin -and $edPid) {
+                        $rawId = [int]($edPid -replace '^terminal_', '')
+                        $panesJson = (& $zBin action list-panes --all --json 2>$null) -join "`n"
+                        if ($panesJson) {
+                            $edEntry = ($panesJson | ConvertFrom-Json) |
+                                Where-Object { -not $_.is_plugin -and $_.id -eq $rawId } |
+                                Select-Object -First 1
+                            if ($edEntry -and $null -eq $edEntry.attention.muted) {
+                                & $zBin action mute-pane --pane-id $edPid *> $null
+                            }
+                        }
+                    }
+                } catch {
+                    Write-Verbose "Editor pane mute check skipped: $_"
+                }
+            }
             $nvimBin = Resolve-NvimExecutable
             if ($nvimBin) {
                 & $nvimBin --listen $pipePath

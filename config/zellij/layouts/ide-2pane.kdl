@@ -17,7 +17,7 @@ layout {
             pane size="50%" name="AI" focus=true command="ide.cmd" {
                 args "--pane-init" "ai"
             }
-            pane size="50%" name="Editor" command="ide.cmd" {
+            pane size="50%" name="Editor" attention_muted=true command="ide.cmd" {
                 args "--pane-init" "editor"
             }
         }
