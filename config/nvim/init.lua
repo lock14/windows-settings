@@ -405,9 +405,34 @@ map("n", "<leader>h", "<cmd>nohlsearch<CR>", { desc = "Clear search highlight" }
 -- Fast Save
 map("n", "<leader>w", "<cmd>w<CR>", { desc = "Save file" })
 
--- Smart Home: jump to first non-blank character of line (matching _vimrc)
-map({ "n", "v", "o" }, "<Home>", "^", { desc = "Move to first non-blank character of line" })
-map("i", "<Home>", "<Esc>^i", { desc = "Move to first non-blank character of line" })
+-- Smart Home: toggle between first non-blank character (^) and column 1 (0)
+local function smart_home_expr()
+    local line = vim.api.nvim_get_current_line()
+    local first_nonblank = line:find("%S") or 1
+    local col = vim.fn.col(".")
+    local in_select = vim.fn.mode():find("^[sS\19]") ~= nil
+    if col == first_nonblank and col > 1 then
+        return in_select and "<C-o>0" or "0"
+    end
+    return in_select and "<C-o>^" or "^"
+end
+for _, lhs in ipairs({ "<Home>", "<kHome>" }) do
+    map({ "n", "v", "o" }, lhs, smart_home_expr, {
+        expr = true,
+        replace_keycodes = true,
+        silent = true,
+        desc = "Smart Home: toggle first non-blank (^) and column 1 (0)",
+    })
+    map("i", lhs, function()
+        local row, col0 = unpack(vim.api.nvim_win_get_cursor(0))
+        local line = vim.api.nvim_get_current_line()
+        local target0 = (line:find("%S") or 1) - 1
+        if col0 == target0 and col0 > 0 then
+            target0 = 0
+        end
+        vim.api.nvim_win_set_cursor(0, { row, target0 })
+    end, { silent = true, desc = "Smart Home: toggle first non-blank and column 1" })
+end
 
 -- Layer 1 (Ctrl + hjkl in Normal mode): internal Neovim split navigation only (guarded against floating modals)
 local function internal_split_nav(dir)
@@ -869,6 +894,43 @@ map("n", "<leader>s", function()
     end
 end, { desc = "Open IDE Session Manager & Attention Inbox" })
 
+local function send_to_ai_pane(kind, payload, opts)
+    opts = opts or {}
+    if not payload or payload == "" then
+        return
+    end
+    local ide_bin = resolve_cli_bin("ide")
+    local target = vim.trim(opts.target or "")
+    if target == "" then
+        target = vim.env.IDE_SESSION or ""
+    end
+    if ide_bin ~= "" and (in_ide_workspace() or (opts.target and vim.trim(opts.target) ~= "")) then
+        local cmd = { ide_bin, "--send" }
+        if kind == "ref" then
+            table.insert(cmd, "--ref")
+            table.insert(cmd, payload)
+        else
+            table.insert(cmd, "--stdin")
+        end
+        if opts.mode_flag and opts.mode_flag ~= "" then
+            table.insert(cmd, opts.mode_flag)
+        end
+        if target ~= "" then
+            table.insert(cmd, target)
+        end
+        local jid = vim.fn.jobstart(cmd, { detach = true })
+        if kind ~= "ref" and type(jid) == "number" and jid > 0 then
+            pcall(vim.fn.chansend, jid, payload)
+            pcall(vim.fn.chanclose, jid, "stdin")
+        end
+        return
+    end
+    pcall(vim.fn.setreg, "+", payload)
+    if opts.fallback_msg then
+        vim.notify(opts.fallback_msg, vim.log.levels.INFO)
+    end
+end
+
 map("x", "<leader>a", function()
     local cur_mode = vim.fn.mode()
     local in_visual = (cur_mode == "v" or cur_mode == "V" or cur_mode == "\22")
@@ -906,21 +968,11 @@ map("x", "<leader>a", function()
     if is_file_buf then
         local buf_path = vim.fn.fnamemodify(buf_name, ":p")
         local ref = string.format("%s:%d-%d", buf_path, l1, l2)
-        pcall(vim.fn.setreg, "+", ref)
-        if in_ide_workspace() then
-            ide_job("--send", "--ref", ref)
-        else
-            vim.notify("Copied reference to clipboard: " .. ref, vim.log.levels.INFO)
-        end
+        send_to_ai_pane("ref", ref, { fallback_msg = "Copied reference to clipboard: " .. ref })
     elseif region_lines then
         local text = table.concat(region_lines, "\n")
         if text ~= "" then
-            pcall(vim.fn.setreg, "+", text)
-            if in_ide_workspace() then
-                ide_job("--send", "--text", text)
-            else
-                vim.notify("Copied selection to clipboard", vim.log.levels.INFO)
-            end
+            send_to_ai_pane("text", text, { fallback_msg = "Copied selection to clipboard" })
         end
     end
 end, { desc = "Send Visual Selection Reference to AI Agent" })
@@ -930,19 +982,11 @@ map("n", "<leader>il", function()
     if vim.bo.buftype == "" and buf_name ~= "" then
         local buf_path = vim.fn.fnamemodify(buf_name, ":p")
         local ref = string.format("%s:%d", buf_path, vim.fn.line("."))
-        pcall(vim.fn.setreg, "+", ref)
-        if in_ide_workspace() then
-            ide_job("--send", "--ref", ref)
-        else
-            vim.notify("Copied line reference to clipboard: " .. ref, vim.log.levels.INFO)
-        end
+        send_to_ai_pane("ref", ref, { fallback_msg = "Copied line reference to clipboard: " .. ref })
     else
         local line_text = vim.api.nvim_get_current_line()
         if line_text ~= "" then
-            pcall(vim.fn.setreg, "+", line_text)
-            if in_ide_workspace() then
-                ide_job("--send", "--text", line_text)
-            end
+            send_to_ai_pane("text", line_text)
         end
     end
 end, { desc = "Send Current Line Reference to AI Agent" })
@@ -974,12 +1018,7 @@ map("n", "<leader>id", function()
         table.insert(out, string.format("- [%s] L%d:%d: %s", sev, (d.lnum or 0) + 1, (d.col or 0) + 1, msg))
     end
     local payload = table.concat(out, "\n") .. "\n"
-    pcall(vim.fn.setreg, "+", payload)
-    if in_ide_workspace() then
-        ide_job("--send", "--text", payload)
-    else
-        vim.notify("Copied buffer diagnostics to clipboard", vim.log.levels.INFO)
-    end
+    send_to_ai_pane("text", payload, { fallback_msg = "Copied buffer diagnostics to clipboard" })
 end, { desc = "Send Buffer Diagnostics to AI Agent" })
 
 local function open_ide_keys_popup()
@@ -1178,11 +1217,6 @@ end, { nargs = "?", complete = "dir", desc = "Dive IDE Workspace (Editor & Shell
 map("n", "<leader>cd", "<cmd>IdeCd<CR>", { desc = "Dive IDE Workspace to Current Buffer Directory" })
 
 vim.api.nvim_create_user_command("IdeSend", function(opts)
-    local ide_bin = resolve_cli_bin("ide")
-    local target = vim.trim(opts.args or "")
-    if target == "" then
-        target = vim.env.IDE_SESSION or ""
-    end
     local mode_flag = opts.bang and "--switch" or "--no-focus"
     local l1 = math.min(opts.line1 or vim.fn.line("."), opts.line2 or vim.fn.line("."))
     local l2 = math.max(opts.line1 or vim.fn.line("."), opts.line2 or vim.fn.line("."))
@@ -1191,28 +1225,22 @@ vim.api.nvim_create_user_command("IdeSend", function(opts)
     if vim.bo.buftype == "" and buf_name ~= "" then
         local buf_path = vim.fn.fnamemodify(buf_name, ":p")
         local ref = has_range and string.format("%s:%d-%d", buf_path, l1, l2) or string.format("%s:%d", buf_path, l1)
-        pcall(vim.fn.setreg, "+", ref)
-        if in_ide_workspace() and ide_bin ~= "" then
-            local cmd = { ide_bin, "--send", "--ref", ref, mode_flag }
-            if target ~= "" then
-                table.insert(cmd, target)
-            end
-            vim.fn.jobstart(cmd, { detach = true })
-        end
+        send_to_ai_pane("ref", ref, {
+            target = opts.args,
+            mode_flag = mode_flag,
+            fallback_msg = "Copied reference to clipboard: " .. ref,
+        })
     else
         local lines = vim.api.nvim_buf_get_lines(0, math.max(0, l1 - 1), l2, false)
         local text = table.concat(lines, "\n")
         if text == "" then
             return
         end
-        pcall(vim.fn.setreg, "+", text)
-        if in_ide_workspace() and ide_bin ~= "" then
-            local cmd = { ide_bin, "--send", "--text", text, mode_flag }
-            if target ~= "" then
-                table.insert(cmd, target)
-            end
-            vim.fn.jobstart(cmd, { detach = true })
-        end
+        send_to_ai_pane("text", text, {
+            target = opts.args,
+            mode_flag = mode_flag,
+            fallback_msg = "Copied selection to clipboard",
+        })
     end
 end, { bang = true, range = true, nargs = "?", complete = complete_ide_sessions, desc = "Stage line or visual range into target IDE session AI prompt" })
 
@@ -2421,6 +2449,7 @@ lazy.setup({
                 "rust_analyzer",
                 "gopls",
                 "pyright",
+                "ts_ls",
                 "lua_ls",
                 "bashls",
                 "terraformls",
@@ -2452,6 +2481,88 @@ lazy.setup({
                     bufmap("<leader>d", vim.diagnostic.open_float, "Line Diagnostics")
                 end,
             })
+
+            local uv = vim.uv or vim.loop
+            local tsserver_fallback = (function()
+                local mise_data_dir = vim.env.MISE_DATA_DIR
+                if not mise_data_dir or mise_data_dir == "" then
+                    if is_win32 and vim.env.LOCALAPPDATA and vim.env.LOCALAPPDATA ~= "" then
+                        mise_data_dir = vim.env.LOCALAPPDATA .. "/mise"
+                    else
+                        local xdg_data = vim.env.XDG_DATA_HOME
+                        mise_data_dir = (xdg_data and xdg_data ~= "") and (xdg_data .. "/mise")
+                            or vim.fn.expand("$HOME/.local/share/mise")
+                    end
+                end
+                mise_data_dir = vim.fs.normalize(mise_data_dir)
+                local npm_ts_dir = mise_data_dir .. "/installs/npm-typescript"
+                local rels = { "/node_modules/typescript/lib/tsserver.js", "/lib/node_modules/typescript/lib/tsserver.js" }
+                local function probe_dir(base)
+                    for _, rel in ipairs(rels) do
+                        local st = uv.fs_stat(base .. rel)
+                        if st and st.type == "file" then
+                            return base .. rel
+                        end
+                    end
+                    return nil
+                end
+                for _, slot in ipairs({ "6", "5", "latest" }) do
+                    local found = probe_dir(npm_ts_dir .. "/" .. slot)
+                    if found then
+                        return found
+                    end
+                end
+                local scan = uv.fs_scandir(npm_ts_dir)
+                if scan then
+                    local vers = {}
+                    while true do
+                        local name = uv.fs_scandir_next(scan)
+                        if not name then
+                            break
+                        end
+                        if name:match("^%d") then
+                            vers[#vers + 1] = name
+                        end
+                    end
+                    table.sort(vers, function(a, b)
+                        local pa, pb = vim.split(a, ".", { plain = true }), vim.split(b, ".", { plain = true })
+                        for i = 1, math.max(#pa, #pb) do
+                            local na, nb = tonumber(pa[i]) or -1, tonumber(pb[i]) or -1
+                            if na ~= nb then
+                                return na > nb
+                            end
+                        end
+                        return a > b
+                    end)
+                    for _, v in ipairs(vers) do
+                        local found = probe_dir(npm_ts_dir .. "/" .. v)
+                        if found then
+                            return found
+                        end
+                    end
+                end
+                local mason_ts = probe_dir(vim.fs.normalize(vim.fn.stdpath("data")) .. "/mason/packages/typescript-language-server")
+                if mason_ts then
+                    return mason_ts
+                end
+                local ts_bin = vim.fn.exepath("tsserver")
+                if ts_bin ~= "" then
+                    local real_bin = uv.fs_realpath(ts_bin) or ts_bin
+                    local bin_dir = vim.fs.normalize(vim.fn.fnamemodify(real_bin, ":h"))
+                    local bin_parent = vim.fs.normalize(vim.fn.fnamemodify(real_bin, ":h:h"))
+                    for _, cand in ipairs({
+                        bin_dir .. "/node_modules/typescript/lib/tsserver.js",
+                        bin_parent .. "/lib/tsserver.js",
+                        bin_parent .. "/lib/node_modules/typescript/lib/tsserver.js",
+                    }) do
+                        local st = uv.fs_stat(cand)
+                        if st and st.type == "file" then
+                            return cand
+                        end
+                    end
+                end
+                return nil
+            end)()
 
             -- Server-specific configuration overrides (lazy runtime library resolution for lua_ls)
             local server_configs = {
@@ -2498,6 +2609,12 @@ lazy.setup({
                 },
                 gopls = {},
                 pyright = {},
+                ts_ls = {
+                    init_options = {
+                        hostInfo = "neovim",
+                        tsserver = tsserver_fallback and { fallbackPath = tsserver_fallback } or nil,
+                    },
+                },
                 bashls = {},
                 terraformls = {},
                 yamlls = {
@@ -2521,12 +2638,13 @@ lazy.setup({
                 },
             }
 
-            local servers = { "clangd", "rust_analyzer", "gopls", "pyright", "lua_ls", "bashls", "terraformls", "yamlls", "jsonls", "leanls" }
+            local servers = { "clangd", "rust_analyzer", "gopls", "pyright", "ts_ls", "lua_ls", "bashls", "terraformls", "yamlls", "jsonls", "leanls" }
             local server_bins = {
                 clangd = "clangd",
                 rust_analyzer = "rust-analyzer",
                 gopls = "gopls",
                 pyright = "pyright-langserver",
+                ts_ls = "typescript-language-server",
                 lua_ls = "lua-language-server",
                 bashls = "bash-language-server",
                 terraformls = "terraform-ls",
@@ -2534,7 +2652,6 @@ lazy.setup({
                 jsonls = "vscode-json-language-server",
                 leanls = "lake",
             }
-            local uv = vim.uv or vim.loop
             local path_sep = is_win32 and ";" or ":"
             local mason_bin_dir = vim.fn.stdpath("data") .. "/mason/bin"
             if not (vim.env.PATH or ""):find(mason_bin_dir, 1, true) then
@@ -2579,6 +2696,29 @@ lazy.setup({
             if #vim.api.nvim_list_uis() > 0 then
                 vim.schedule(function()
                     pcall(function()
+                        -- Keep background Mason status/error echoes within cmdheight=1 echospace so failed
+                        -- offline or mirror installs never trigger a modal "Press ENTER" prompt that freezes RPC.
+                        package.loaded["mason-lspconfig.notify"] = function(msg, level)
+                            vim.schedule(function()
+                                local m = vim.api.nvim_get_mode()
+                                if m.blocking or (m.mode ~= "n" and m.mode ~= "i") then
+                                    return
+                                end
+                                local hl = (level == vim.log.levels.ERROR) and "DiagnosticError"
+                                    or ((level == vim.log.levels.WARN) and "DiagnosticWarn" or "Comment")
+                                local line = tostring(msg or ""):gsub("[\r\n]+", " ")
+                                local max_w = math.max(1, (vim.v.echospace or (vim.o.columns - 12)) - 2)
+                                if vim.fn.strdisplaywidth(line) > max_w then
+                                    local n = max_w - 1
+                                    while n > 0 and vim.fn.strdisplaywidth(vim.fn.strcharpart(line, 0, n)) >= max_w do
+                                        n = n - 1
+                                    end
+                                    line = vim.fn.strcharpart(line, 0, n) .. "…"
+                                end
+                                vim.cmd("silent! redraw")
+                                pcall(vim.api.nvim_echo, { { line, hl } }, false, {})
+                            end)
+                        end
                         require("mason").setup()
                         local ok_reg, registry = pcall(require, "mason-registry")
                         if ok_reg then

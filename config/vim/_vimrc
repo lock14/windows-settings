@@ -5,11 +5,45 @@ set shiftwidth=4
 set expandtab
 set background=dark
 set t_RB=
-map <Home> ^
-imap <Home> <Esc>^i
+noremap <Home> ^
+inoremap <Home> <Esc>^i
 
 if 1
 filetype plugin indent on
+
+if has('eval')
+    function! s:SmartHome() abort
+        let l:line = getline('.')
+        let l:idx = match(l:line, '\S')
+        let l:first_nonblank = (l:idx >= 0 ? l:idx + 1 : 1)
+        let l:col = col('.')
+        let l:in_select = mode() =~# "^[sS\<C-s>]"
+        if l:col == l:first_nonblank && l:col > 1
+            return l:in_select ? "\<C-o>0" : '0'
+        endif
+        return l:in_select ? "\<C-o>^" : '^'
+    endfunction
+    function! s:SmartHomeInsert() abort
+        let l:line = getline('.')
+        let l:idx = match(l:line, '\S')
+        let l:target_col = (l:idx >= 0 ? l:idx + 1 : 1)
+        if col('.') == l:target_col && l:target_col > 1
+            let l:target_col = 1
+        endif
+        call cursor(line('.'), l:target_col)
+        return ''
+    endfunction
+    nnoremap <expr> <silent> <Home> <SID>SmartHome()
+    xnoremap <expr> <silent> <Home> <SID>SmartHome()
+    onoremap <expr> <silent> <Home> <SID>SmartHome()
+    snoremap <expr> <silent> <Home> <SID>SmartHome()
+    inoremap <silent> <Home> <C-r>=<SID>SmartHomeInsert()<CR>
+    nnoremap <expr> <silent> <kHome> <SID>SmartHome()
+    xnoremap <expr> <silent> <kHome> <SID>SmartHome()
+    onoremap <expr> <silent> <kHome> <SID>SmartHome()
+    snoremap <expr> <silent> <kHome> <SID>SmartHome()
+    inoremap <silent> <kHome> <C-r>=<SID>SmartHomeInsert()<CR>
+endif
 
 " TrueColor (24-bit) Terminal Support & Focus Events (Vim 8/9+ on Windows Terminal, ConPTY, Unix)
 if !has('nvim') && !has('gui_running') && (&term =~# '^\(tmux\|screen\|xterm\|rxvt\|alacritty\|wezterm\|foot\)' || !empty($WT_SESSION))

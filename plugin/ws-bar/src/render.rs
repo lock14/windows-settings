@@ -1,7 +1,7 @@
 use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::{AttentionStatus, GlobalAttention, InputMode, ModeInfo, TabInfo};
 
-use crate::palette::{Rgb, ThemePalette};
+use crate::palette::{holiday_emblem, Rgb, ThemePalette};
 use crate::roles::{IdeRole, RoleSlot, RoleStrip};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +94,8 @@ pub struct RenderContext<'a> {
     pub tabs: &'a [TabInfo],
     pub roles: &'a RoleStrip,
     pub global_attention: Option<&'a GlobalAttention>,
+    pub theme_slug: &'a str,
+    pub subdir_label: Option<&'a str>,
 }
 
 #[derive(Debug, Default)]
@@ -144,6 +146,7 @@ fn truncate_to_cols(text: &str, max_cols: usize) -> String {
 
 fn role_unfocused_color(slot: &RoleSlot, p: &ThemePalette) -> Rgb {
     match slot.attention {
+        AttentionStatus::NeedsYou if slot.quota => p.yellow,
         AttentionStatus::NeedsYou => p.orange,
         AttentionStatus::Failed => p.red,
         AttentionStatus::Done => p.green,
@@ -203,9 +206,12 @@ fn build_left_and_center(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Spa
             DetailLevel::CompactPills => 20,
             _ => 28,
         };
+        let sess_icon = holiday_emblem(ctx.theme_slug)
+            .map(|(ic, _)| ic)
+            .unwrap_or("\u{EBC8}");
         let sess = truncate_to_cols(&displayed_session_name(ctx.mode_info), max_sess);
         spans.push(Span::clickable(
-            format!(" \u{EBC8} {sess} "),
+            format!(" {sess_icon} {sess} "),
             p.blue,
             ClickTarget::SessionCard,
         ));
@@ -343,7 +349,7 @@ fn mode_overlay(mode: InputMode, p: &ThemePalette) -> Option<(&'static str, Rgb,
         InputMode::Tmux => Some((
             "\u{F0633} TMUX",
             p.orange,
-            "HJKL resize · |/- split · b bar · ? keys · Esc normal",
+            "HJKL resize · |/- split · r refresh · b bar · ? keys · Esc",
             "? keys · Esc",
         )),
         InputMode::Resize => Some((
@@ -441,6 +447,14 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
         ));
     }
 
+    if level != DetailLevel::Minimal {
+        if let Some(sub) = ctx.subdir_label.map(str::trim).filter(|s| !s.is_empty()) {
+            let short_sub = truncate_to_cols(sub, 18);
+            spans.push(Span::plain(" \u{E0B3} ", p.base00));
+            spans.push(Span::plain(format!("\u{F024B} {short_sub} "), p.blue));
+        }
+    }
+
     if let Some((attn_label, attn_fg)) = attention_summary(ctx.global_attention, p) {
         spans.push(Span::plain(" \u{E0B3} ", p.base00));
         spans.push(Span::clickable(
@@ -449,6 +463,9 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
             ClickTarget::NextAttention,
         ));
     }
+
+    let hol = holiday_emblem(ctx.theme_slug);
+    let sess_icon = hol.map(|(ic, _)| ic).unwrap_or("\u{EBC8}");
 
     let total_sessions = ctx
         .global_attention
@@ -468,7 +485,7 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
     match level {
         DetailLevel::Full | DetailLevel::NoMonitor => {
             spans.push(Span::clickable(
-                format!("\u{EBC8} {total_sessions} · "),
+                format!("{sess_icon} {total_sessions} · "),
                 p.base0,
                 ClickTarget::SessionManager,
             ));
@@ -486,7 +503,7 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
         }
         DetailLevel::NoKeyHints => {
             spans.push(Span::clickable(
-                format!("\u{EBC8} {total_sessions} · "),
+                format!("{sess_icon} {total_sessions} · "),
                 p.base0,
                 ClickTarget::SessionManager,
             ));
@@ -500,10 +517,17 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
         DetailLevel::CompactPills | DetailLevel::Minimal => {
             let fg = if working_sessions > 0 { p.cyan } else { p.base0 };
             spans.push(Span::clickable(
-                format!("\u{EBC8} {total_sessions} "),
+                format!("{sess_icon} {total_sessions} "),
                 fg,
                 ClickTarget::SessionManager,
             ));
+        }
+    }
+
+    if let Some((_, badge)) = hol {
+        if matches!(level, DetailLevel::Full | DetailLevel::NoMonitor) && ctx.cols >= 120 {
+            spans.push(Span::plain("\u{E0B3} ", p.base00));
+            spans.push(Span::plain(format!("{badge} "), p.yellow));
         }
     }
 
@@ -692,6 +716,7 @@ mod tests {
                 hidden: false,
                 label: "AI".to_owned(),
                 attention: AttentionStatus::Idle,
+                quota: false,
             }),
             editor: Some(RoleSlot {
                 role: IdeRole::Editor,
@@ -700,6 +725,7 @@ mod tests {
                 hidden: false,
                 label: "Editor".to_owned(),
                 attention: AttentionStatus::Idle,
+                quota: false,
             }),
             shell: Some(RoleSlot {
                 role: IdeRole::Shell,
@@ -708,7 +734,9 @@ mod tests {
                 hidden: false,
                 label: "Shell".to_owned(),
                 attention: AttentionStatus::Idle,
+                quota: false,
             }),
+            visible_tiled_count: 3,
         }
     }
 
@@ -741,6 +769,8 @@ mod tests {
                 tabs: &tabs,
                 roles: &roles,
                 global_attention: None,
+                theme_slug: "",
+                subdir_label: None,
             });
             let plain = strip_ansi(&bar.ansi);
             assert_eq!(display_width(&plain), cols, "width mismatch at cols={cols}");
@@ -798,6 +828,8 @@ mod tests {
             tabs: &tabs,
             roles: &roles,
             global_attention: Some(&global),
+            theme_slug: "",
+            subdir_label: None,
         });
         let plain = strip_ansi(&bar.ansi);
         assert!(plain.contains("windows-settings"));
@@ -840,10 +872,54 @@ mod tests {
             tabs: &tabs,
             roles: &roles,
             global_attention: None,
+            theme_slug: "",
+            subdir_label: None,
         });
         let plain = strip_ansi(&bar.ansi);
         assert!(plain.contains("TMUX"));
         assert!(plain.contains("HJKL resize"));
+        assert!(plain.contains("r refresh"));
         assert!(bar.regions.iter().any(|r| r.target == ClickTarget::NormalMode));
+    }
+
+    #[test]
+    fn renders_quota_yellow_subdir_pill_and_holiday_emblem() {
+        let palette = ThemePalette::default();
+        let mode = ModeInfo {
+            mode: InputMode::Normal,
+            session_name: Some("ws".to_owned()),
+            ..Default::default()
+        };
+        let tabs = vec![ide_tab(false)];
+        let mut roles = standard_roles();
+        if let Some(ai) = roles.ai.as_mut() {
+            ai.focused = false;
+            ai.attention = AttentionStatus::NeedsYou;
+            ai.quota = true;
+        }
+        if let Some(ed) = roles.editor.as_mut() {
+            ed.focused = true;
+        }
+        if let Some(sh) = roles.shell.as_mut() {
+            sh.hidden = true;
+        }
+
+        let bar = render_shelf(&RenderContext {
+            cols: 190,
+            palette: &palette,
+            mode_info: &mode,
+            tabs: &tabs,
+            roles: &roles,
+            global_attention: None,
+            theme_slug: "halloween",
+            subdir_label: Some("ws-bar"),
+        });
+        let plain = strip_ansi(&bar.ansi);
+        assert!(plain.contains("🎃 ws"));
+        assert!(plain.contains("🎃 👻 Halloween"));
+        assert!(plain.contains("\u{F024B} ws-bar"));
+        assert!(plain.contains("Shell [Alt+T]"));
+        let Rgb(yr, yg, yb) = palette.yellow;
+        assert!(bar.ansi.contains(&format!("38;2;{yr};{yg};{yb};")));
     }
 }

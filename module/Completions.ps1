@@ -25,7 +25,7 @@ if ($ghCacheValid) {
 }
 
 # Theme Engine (17 built-in palettes + custom user themes + flags)
-Register-ArgumentCompleter -CommandName theme -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName theme -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $null = $commandAst; $null = $cursorPosition
     $candidates = [System.Collections.Generic.List[string]]@(
@@ -51,31 +51,119 @@ Register-ArgumentCompleter -CommandName theme -ScriptBlock {
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 
-# IDE Workspace Launcher (flags + active/saved session names)
-Register-ArgumentCompleter -CommandName ide -ScriptBlock {
+# IDE Workspace & Fleet Shortcuts (ide, ide2, ide3, quit, qide, idek)
+Register-ArgumentCompleter -Native -CommandName ide, ide2, ide3, quit, qide, idek -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
-    $null = $commandAst; $null = $cursorPosition
-    $candidates = [System.Collections.Generic.List[string]]@(
-        '--3pane', '--2pane', '--detach', '--desktop', '--new-window', '--backend',
-        '--sessions', '--next-attention', '--toggle', '--focus-role',
-        '--ai', '--open', '--preview', '--open-or-edit',
-        '--cd', '--send', '--agent-state', '--ack-ai', '--open-pr',
-        '--monitor', '--keys', '--refresh', '--quit', '--force', '--kill',
-        '--list', '--plain', '--dry-run', '--help'
-    )
+    $null = $cursorPosition
+    $elements = @($commandAst.CommandElements | ForEach-Object { $_.Extent.Text })
+    $cmdName = if ($elements.Count -gt 0) { [System.IO.Path]::GetFileNameWithoutExtension($elements[0]).ToLowerInvariant() } else { 'ide' }
+    $hasPartial = [bool]($wordToComplete -and $wordToComplete.Length -gt 0)
+    $priorTokens = [System.Collections.Generic.List[string]]::new()
+    $endIdx = if ($hasPartial) { $elements.Count - 2 } else { $elements.Count - 1 }
+    for ($ti = 1; $ti -le $endIdx; $ti++) {
+        $priorTokens.Add("$($elements[$ti])")
+    }
+    $prevToken = if ($priorTokens.Count -gt 0) { $priorTokens[$priorTokens.Count - 1].ToLowerInvariant() } else { '' }
+
+    switch ($prevToken) {
+        { $_ -in @('--ai', '--agent') } {
+            return @('agy', 'claude', 'codex') | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+        '--agent-state' {
+            return @('running', 'approval', 'quota', 'done', 'idle') | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+        '--swap' {
+            return @('left', 'down', 'up', 'right') | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+        '--backend' {
+            return @('zellij', 'wt') | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+        '--focus-role' {
+            return @('ai', 'editor', 'shell') | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+        '--cd' {
+            $cdCands = [System.Collections.Generic.List[string]]@('--reset')
+            try {
+                foreach ($d in (Get-ChildItem -Directory -ErrorAction SilentlyContinue)) {
+                    $cdCands.Add($d.Name)
+                }
+            } catch {
+                $null = $_
+            }
+            return $cdCands | Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+        }
+    }
+
+    $sessions = [System.Collections.Generic.List[string]]::new()
     $ideStateDir = Join-Path $HOME '.cache\windows-settings\ide'
     if ([System.IO.Directory]::Exists($ideStateDir)) {
         foreach ($f in [System.IO.Directory]::GetFiles($ideStateDir, '*.json')) {
             $sName = [System.IO.Path]::GetFileNameWithoutExtension($f)
-            if (-not $candidates.Contains($sName)) { $candidates.Add($sName) }
+            if ($sName -and -not $sessions.Contains($sName)) { $sessions.Add($sName) }
         }
+    }
+    $zellijApp = Get-Command zellij.exe, zellij -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($zellijApp) {
+        try {
+            foreach ($zs in (& $zellijApp.Source list-sessions --short --no-formatting 2>$null)) {
+                $cleanZs = "$zs".Trim()
+                if ($cleanZs -and -not $sessions.Contains($cleanZs)) { $sessions.Add($cleanZs) }
+            }
+        } catch {
+            $null = $_
+        }
+    }
+
+    $isMultiTargetCmd = ($cmdName -in @('quit', 'qide', 'idek')) -or
+        [bool]($priorTokens | Where-Object { $_ -in @('--quit', '-q', '--kill', '-k', '--ack-ai') })
+
+    if ($isMultiTargetCmd) {
+        $candidates = [System.Collections.Generic.List[string]]::new()
+        foreach ($s in $sessions) {
+            if ($s -notin $priorTokens) { $candidates.Add($s) }
+        }
+        foreach ($fl in @('--force', '--dry-run', '--help')) {
+            if ($fl -notin $priorTokens -and $wordToComplete.StartsWith('-')) { $candidates.Add($fl) }
+        }
+        return $candidates | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    }
+
+    if ($priorTokens -contains '--send') {
+        $sendCands = [System.Collections.Generic.List[string]]@(
+            '--stdin', '--ref', '--text', '--no-focus', '--switch'
+        )
+        foreach ($s in $sessions) {
+            if (-not $sendCands.Contains($s)) { $sendCands.Add($s) }
+        }
+        return $sendCands | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    }
+
+    $candidates = [System.Collections.Generic.List[string]]@(
+        '--3pane', '--2pane', '--detach', '--desktop', '--new-window', '--backend',
+        '--sessions', '-s', '--next-attention', '--toggle', '--focus-role',
+        '--toggle-editor', '--toggle-term', '--toggle-ai', '--swap',
+        '--ai', '--agent', '--open', '--preview', '--open-or-edit',
+        '--cd', '--send', '--agent-state', '--ack-ai', '--open-pr',
+        '--monitor', '--keys', '--refresh', '--quit', '--force', '--kill',
+        '--list', '--plain', '--dry-run', '--help'
+    )
+    foreach ($s in $sessions) {
+        if (-not $candidates.Contains($s)) { $candidates.Add($s) }
     }
     $candidates | Where-Object { $_ -like "$wordToComplete*" } |
         ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
 }
 
 # Unified Workstation Updater (update / update-system)
-Register-ArgumentCompleter -CommandName update, update-system -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName update, update-system -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $null = $commandAst; $null = $cursorPosition
     $flags = @(

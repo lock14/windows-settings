@@ -86,6 +86,21 @@ impl ThemePalette {
     }
 }
 
+pub fn holiday_emblem(theme_slug: &str) -> Option<(&'static str, &'static str)> {
+    let norm = theme_slug.trim().to_ascii_lowercase().replace('_', "-");
+    match norm.as_str() {
+        "new-years" => Some(("🥂", "🥂 🎆 New Year's")),
+        "valentines" => Some(("💘", "💘 🌹 Valentine's")),
+        "st-patricks" => Some(("🍀", "🍀 🪙 St. Patrick's")),
+        "easter" => Some(("🐣", "🐣 🌷 Easter")),
+        "independence-day" => Some(("🎆", "🎆 🗽 4th of July")),
+        "halloween" => Some(("🎃", "🎃 👻 Halloween")),
+        "thanksgiving" => Some(("🦃", "🦃 🍂 Thanksgiving")),
+        "christmas" => Some(("🎄", "🎄 🎅 Christmas")),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,5 +158,13 @@ mod tests {
         assert_eq!(p.blue, Rgb(137, 180, 250));
         assert_eq!(p.cyan, Rgb(148, 226, 213));
         assert_eq!(p.green, Rgb(166, 227, 161));
+    }
+
+    #[test]
+    fn maps_all_eight_us_holiday_emblems() {
+        assert_eq!(holiday_emblem("halloween"), Some(("🎃", "🎃 👻 Halloween")));
+        assert_eq!(holiday_emblem("christmas"), Some(("🎄", "🎄 🎅 Christmas")));
+        assert_eq!(holiday_emblem("independence_day"), Some(("🎆", "🎆 🗽 4th of July")));
+        assert_eq!(holiday_emblem("solarized-dark"), None);
     }
 }

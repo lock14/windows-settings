@@ -171,7 +171,7 @@ windows-settings/
 ├── sample-code/                   # 40-language polyglot sample suite for syntax and AST query validation
 │
 └── tests/
-    └── test_settings.ps1          # 237+ automated tests across all 8 test modules
+    └── test_settings.ps1          # 256+ automated tests across all 8 test modules
 ```
 
 ## Integrated development environment and AI workspace
@@ -181,19 +181,19 @@ The repository provides a multi-session terminal IDE (`bin/ide.ps1` and `bin/ide
 - **Spatial window geometry and background sessions**:
   - **3-pane layout**: Launched by default via `ide`, `ide3`, or `ide --3pane` as a frameless Inverted-T workspace beneath a 1-line `BASE02` IDE top shelf (`windows-settings-bar`, falling back automatically to Zellij's built-in `compact-bar` when Rust is unavailable), placing the AI Agent (`agy`, `claude`, or `codex`) at top-left, the Neovim Editor at top-right (automatically opening `README.md` when present in the launch directory), and a full-width PowerShell terminal across the bottom.
   - **2-pane layout**: Launched via `ide2` or `ide --2pane` with side-by-side AI Agent and full-height Neovim Editor panes.
-  - **Interactive 1-line IDE top shelf**: Displays the session pill on the left, clickable intra-tab `AI`, `Editor`, and `Shell` role indicators plus active `ZOOM` and extra tab pills in the center, and cross-session attention, fleet count, `Monitor`, and `Help` pills on the right. Clicking an already-focused role pill bounces back to the previous pane, while entering any modal Zellij input mode such as `Tmux`, `Resize`, or `Scroll` replaces the right shelf with contextual key hints.
+  - **Interactive 1-line IDE top shelf**: Displays the session pill on the left (with automatic holiday icons during US Holiday themes and a workspace subdirectory pill when `icd` diverges from the session root), clickable intra-tab `AI`, `Editor`, and `Shell` role indicators plus active `ZOOM` and extra tab pills in the center, and cross-session attention, fleet count, `Monitor`, and `Help` pills on the right. Clicking an already-focused role pill bounces back to the previous pane, while entering any modal Zellij input mode such as `Tmux`, `Resize`, or `Scroll` replaces the right shelf with contextual key hints.
   - **Detached fleet and GPU desktop app**: `ide -d <dir>` (`--detach`) spawns background agent sessions (`zellij attach --create-background`), while `Ctrl+b d` detaches without stopping running processes. `ide --desktop [dir]` launches Zellij's 1-hop GPU desktop app (`zellij terminal`) with a native OS system tray badge and desktop notifications.
-- **Native Attention Inbox**:
-  - Tracks live `OSC 7501` agent lifecycle states (`working`, `needs_you`, `done`, `failed`) across Claude Code, Codex, and Antigravity (`agy` via `~/.gemini/config/hooks.json`).
-  - Press `Alt+s` or `Ctrl+b s` (or run `ide -s` or `ide --sessions`) to open Zellij's floating `session-manager` Attention Inbox across running workspaces, or press `Alt+Shift+S` or `Ctrl+b S` (`ide --next-attention`) to jump directly to the next agent waiting for input.
+- **Native Attention Inbox and external fleet manager**:
+  - Tracks live `OSC 7501` agent lifecycle states (`running`, `approval`, `quota`, `done`, `idle`) across Claude Code, Codex, and Antigravity (`agy` via `$HOME\.gemini\config\hooks.json`).
+  - Inside Zellij, press `Alt+s` or `Ctrl+b s` to open Zellij's native WASM `session-manager` Attention Inbox across running workspaces, or press `Alt+Shift+S` or `Ctrl+b S` (`ide --next-attention`) to jump directly to the next agent waiting for input. From an external shell, `ide -s` (`--sessions`) opens an urgency-ranked `fzf` fleet table displaying agent CLI, state age, `<branch>@<N>` pull request badges, and shared-worktree warnings, with hotkeys for `Alt+n` (`zoxide` directory launch), `Ctrl+o` (`--open-pr`), `Ctrl+y` (`--ack-ai`), `Ctrl+x` (`--quit`), and `Ctrl+a`, `Ctrl+e`, or `Ctrl+t` role focus.
 - **4-layer keybinding and RPC architecture**:
-  - **Layer 1 (app-local)**: Preserves standard `Ctrl` bindings inside shells, AI CLIs, and Neovim (`Ctrl+h/j/k/l` move across internal Neovim splits and `Ctrl+j/k` navigate Telescope results), while Windows Terminal forwards `Alt+*` chords cleanly to Zellij.
-  - **Layer 2 (workspace navigation)**: `Alt+h/j/k/l` move focus across panes, `Alt+a`, `Alt+e`, and `Alt+t` jump directly to the AI Agent, Editor, or Shell pane (`Alt+;` or normal-mode `Space a` bounces back), `Alt+Left/Down/Up/Right` resize panes, `Alt+z` toggles pane zoom, `Alt+m` opens the floating system monitor (`ide --monitor`), `Alt+?` opens the keybinding cheatsheet (`ide --keys`), and right-clicking the top bar, tab, or any pane opens a curated IDE workspace `context_menu` with auto-resolved shortcut hints.
-  - **Layer 3 (editor, file explorer, and RPC context dispatch)**: Inside the shell, `v [+line] <file>` opens files directly in the session's Neovim pane over Named Pipe RPC instead of nesting editors, and `icd [dir]` (or `:IdeCd [dir]` in Neovim) synchronizes the working directory across shell and editor. Inside Neovim, `-` or `Space e` opens `mini.files`, visual-mode `Space a` bracket-pastes `@file#L10-L25` line references into the AI Agent pane (`ide --send`), `Space m` toggles `render-markdown.nvim`, and `:Q`, `Alt+q`, `qide`, and `quit` (`ide --quit`) verify all Neovim buffers are saved before closing the session (`idek` or `ide --kill` force-closes).
+  - **Layer 1 (app-local)**: Preserves standard `Ctrl` bindings inside shells, AI CLIs, and Neovim (`Ctrl+h/j/k/l` move across internal Neovim splits, `Ctrl+j/k` navigate Telescope results, and `<Home>` toggles between first non-blank character `^` and column `0`), while Windows Terminal forwards `Alt+*` chords cleanly to Zellij.
+  - **Layer 2 (workspace navigation)**: `Alt+h/j/k/l` move focus across panes, `Alt+a`, `Alt+e`, and `Alt+t` focus or bounce the AI Agent, Editor, or Shell pane via the WASM role router, `Alt+Shift+E` and `Alt+Shift+T` park or restore the Editor or Shell pane (`--toggle-editor`, `--toggle-term`), `Alt+Left/Down/Up/Right` resize panes, `Alt+z` toggles pane zoom, `Ctrl+b r` refreshes all running IDE sessions (`ide --refresh`), `Alt+m` opens the floating system monitor (`ide --monitor`), `Alt+?` opens the keybinding cheatsheet (`ide --keys`), and right-clicking the top bar, tab, or any pane opens an IDE workspace `context_menu` with auto-resolved shortcut hints.
+  - **Layer 3 (editor, file explorer, and RPC context dispatch)**: Inside the shell, `v [+line|+cmd] [-c cmd] [--] <file>...` opens one or more files directly in the session's Neovim pane over Named Pipe RPC while healing stale working directories, and `icd [dir]` (or `:IdeCd [dir]` in Neovim) synchronizes the working directory across shell, editor, and top shelf. Inside Neovim, `-` or `Space e` opens `mini.files`, visual-mode `Space a`, normal-mode `Space il`, `Space id`, and `:IdeSend[!]` stage sanitized references or diagnostics directly into the AI Agent prompt (`ide --send`) without overwriting the system clipboard, `Space m` toggles `render-markdown.nvim`, and `:Q`, `Alt+q`, `qide`, and `quit` (`ide --quit`) verify all Neovim buffers are saved before closing the session (`idek` or `ide --kill` force-closes).
   - **Layer 4 (links, jumplist, and clipboard)**: `gx` and `Ctrl+Click` follow Markdown links, `#heading` anchors, relative paths, and URLs, falling back to LSP definition jumps, while mouse back and forward buttons (`<X1Mouse>` and `<X2Mouse>`) traverse the Neovim jumplist.
 - **LSP, Tree-sitter, and standalone Vim**:
-  - **Native LSP**: Configured in `config/nvim/init.lua` via `vim.lsp.config` and `vim.lsp.enable` for Go (`gopls`), Python (`pyright`), TypeScript (`ts_ls`), Rust (`rust_analyzer`), C and C++ (`clangd`), Terraform (`terraformls`), YAML (`yamlls`), Lean 4 (`leanls`), and Java (`ftplugin/java.lua`).
-  - **Tree-sitter and fallback Vim**: 43 custom `.scm` queries (`queries/` and `after/queries/`) align highlighting with `bat`, and `config/vim/_vimrc` provides a zero-dependency 17-theme `:Theme` fallback when Neovim is unavailable.
+  - **Native LSP**: Configured in `config/nvim/init.lua` via `vim.lsp.config` and `vim.lsp.enable` for Go (`gopls`), Python (`pyright`), TypeScript (`ts_ls` with automatic `tsserver.js` discovery), Rust (`rust_analyzer`), C and C++ (`clangd`), Bash (`bashls`), JSON (`jsonls`), Terraform (`terraformls`), YAML (`yamlls`), Lean 4 (`leanls`), and Java (`ftplugin/java.lua`), backed by declarative `npm:*` language server entries in `mise.toml` and non-blocking `cmdheight=1` Mason notification truncation.
+  - **Tree-sitter and fallback Vim**: 43 custom `.scm` queries (`queries/` and `after/queries/`) align highlighting with `bat`, and `config/vim/_vimrc` provides a zero-dependency 17-theme `:Theme` and Smart-Home fallback when Neovim is unavailable.
 
 ### IDE workspace keybindings and navigation
 
@@ -203,16 +203,19 @@ The following table indexes keyboard shortcuts, editor commands, shell wrappers,
 | :--- | :--- | :--- |
 | `Alt+h/j/k/l` | Universal | Move focus across Zellij panes and Neovim splits |
 | `Ctrl+h/j/k/l` | Neovim normal | Move focus across internal Neovim splits (`Ctrl+j/k` move through Telescope results) |
-| `Alt+a`, `Alt+e`, or `Alt+t` | Universal | Jump directly to the AI Agent, Editor, or Shell pane (`Alt+;` bounces back) |
-| `Alt+s` or `Ctrl+b s` | Universal | Open floating Zellij `session-manager` and `OSC 7501` Attention Inbox (`ide --sessions`) |
+| `Alt+a`, `Alt+e`, or `Alt+t` | Universal | Focus or bounce the AI Agent, Editor, or Shell pane via WASM role routing (`Alt+;` bounces back) |
+| `Alt+Shift+E` or `Alt+Shift+T` | Universal | Park or restore the Editor (`--toggle-editor`) or Shell (`--toggle-term`) pane |
+| `Alt+s` or `Ctrl+b s` | Universal | Open Zellij WASM `session-manager` Attention Inbox inside Zellij or `fzf` fleet manager externally (`ide -s`) |
 | `Alt+Shift+S` or `Ctrl+b S` | Universal | Jump to the next workspace waiting for AI attention (`ide --next-attention`) |
-| `Space a` | Neovim visual | Bracket-paste `@file#L1-L2` visual line reference into the AI Agent prompt (`ide --send`) |
+| `Space a`, `Space il`, or `Space id` | Neovim | Stage visual `@file#L1-L2` reference, current line, or buffer diagnostics into the AI Agent prompt (`ide --send`) |
+| `<Home>` | Neovim or Vim | Toggle cursor between first non-blank character (`^`) and column 1 (`0`) across normal, visual, select, and insert modes |
 | `Alt+Left/Down/Up/Right` | Zellij | Resize the active pane directionally |
 | `Alt+z` | Zellij | Toggle full-window zoom on the active pane |
+| `Ctrl+b r` | Zellij | Hot-reload active theme, cheatsheet cache, WASM top bar, and Neovim RPC state across live sessions (`ide --refresh`) |
 | `Alt+m` or `Ctrl+b m` | Universal | Toggle floating system monitor (`ide --monitor` using `btop4win` or built-in TUI fallback) |
 | `Alt+?` or `Ctrl+b ?` | Universal | Open TrueColor IDE keybinding cheatsheet (`ide --keys`) |
-| `Left-click` (top-bar pills) | Zellij | Focus or bounce `AI`, `Editor`, or `Shell` panes, toggle `ZOOM`, or open `Inbox`, `Monitor`, or `Help` |
-| `Right-click` (bar, tab, or pane) | Zellij | Open IDE workspace context menu (`Focus AI/Editor/Shell`, `Attention Inbox`, `Monitor`, `Keys`, `Quit`) |
+| `Left-click` (top-bar pills) | Zellij | Focus or bounce `AI`, `Editor`, or `Shell` panes, toggle `ZOOM`, or open `session-manager`, `Monitor`, or `Help` |
+| `Right-click` (bar, tab, or pane) | Zellij | Open IDE workspace context menu (`Focus AI/Editor/Shell`, `Attention Inbox`, `Refresh all sessions`, `Monitor`, `Keys`, `Quit`) |
 | `Ctrl+b d` | Zellij | Detach from the current workspace while keeping agents and Neovim running |
 | `-` or `Space e` | Neovim normal | Open `mini.files` explorer at the active buffer directory |
 | `Space ff` or `Space fg` | Neovim normal | Find files (`Space ff`) or live grep (`Space fg`) via Telescope |
@@ -220,15 +223,19 @@ The following table indexes keyboard shortcuts, editor commands, shell wrappers,
 | `gd`, `gr`, or `K` | Neovim LSP | Go to definition (`gd`), find references (`gr`), or show hover documentation (`K`) |
 | `gx` | Neovim normal | Follow Markdown link, `#heading` anchor, file path, or URL under cursor |
 | `<X1Mouse>` or `<X2Mouse>` | Neovim | Step backward or forward in the Editor jumplist |
-| `:IdeCd [dir]` or `icd [dir]` | Neovim or shell | Synchronize working directory across Editor and Shell (`icd ~` resets root) |
-| `v [+line] <file>` | Shell | Open file at optional line number in the active IDE Neovim pane over Named Pipe RPC |
+| `:IdeCd [dir]` or `icd [dir]` | Neovim or shell | Synchronize working directory across Editor, Shell, and top bar (`icd ~` resets root) |
+| `v [+line\|+cmd] [-c cmd] <file>...` | Shell | Open one or more files in the active IDE Neovim pane over Named Pipe RPC |
 | `:Q`, `Alt+q`, `qide`, or `quit` | Universal | Quit the IDE workspace after checking Neovim for unsaved buffers (`ide --quit`) |
 | `:Q!`, `idek`, or `ide --kill` | Neovim or shell | Force-close the active or named IDE workspace without checking unsaved buffers |
 | `ide [dir]`, `ide3`, or `ide2` | Shell | Launch or attach to a 3-pane Inverted-T (`--3pane`) or 2-pane (`--2pane`) workspace |
 | `ide -d <dir>` or `ide --detach <dir>` | Shell | Spawn a detached background IDE session for `<dir>` |
 | `ide --desktop [dir]` | Shell | Launch the workspace inside Zellij's native 1-hop GPU desktop app (`zellij terminal`) |
 | `ide --ai <agy\|claude\|codex>` | Shell | Select the AI coding agent CLI (overriding `$env:IDE_AI_CLI`) |
-| `ide --list [--plain]` | Shell | List active IDE sessions and states (`--plain` prints raw session names) |
+| `ide --open-pr [session]` | Shell | Open the session's active GitHub pull request or GitLab merge request in the default browser |
+| `ide --agent-state <state> [session]` | Shell or hook | Record lifecycle state (`running`, `approval`, `quota`, `done`, `idle`) and emit `OSC 7501` |
+| `ide --swap <left\|down\|up\|right>` | Shell | Swap the active pane directionally inside the workspace |
+| `ide --refresh [--dry-run]` | Shell | Re-apply active theme and synchronize live Zellij top bars and Neovim RPC sessions |
+| `ide --list [--plain]` | Shell | List active IDE sessions sorted by urgency with `<branch>@<N>` metadata (`--plain` prints session names) |
 | `ide --backend <zellij\|wt>` | Shell | Select Zellij multiplexer (default) or Windows Terminal split-pane backend |
 
 ## Interactive shells and prompts
@@ -281,6 +288,7 @@ Keep machine-local or private settings in untracked drop-in hooks so repository 
 - `$HOME\.config\windows-settings\cmd.d\*.cmd`: Local `cmd.exe` AutoRun drop-in scripts and `doskey` macros.
 - `$HOME\.config\windows-settings\themes\*.theme`: Custom user 24-bit TrueColor theme definitions.
 - `$HOME\.gemini\config\hooks.json`: Antigravity lifecycle hooks forwarding `SessionStart`, `PreInvocation`, and `Stop` events to `ide.cmd --agy-hook` for Zellij `OSC 7501` attention badges.
+- `$HOME\.claude\settings.json` and `$HOME\.codex\config.toml`: Optional external fleet hooks forwarding Claude Code JSON `stdin` (`ide.cmd --agent-state approval` on `Notification` and `ide.cmd --agent-state done` on `Stop`) or Codex trailing JSON notifications (`notify = ["ide.cmd", "--agent-state", "done"]`) into the session state cache.
 
 ## Git and shell shortcuts
 
@@ -294,7 +302,7 @@ Functions and aliases in `module/` (mirrored as `doskey` macros in `config/cmd/m
 | `cat <file>` | Concatenate files raw without paging or line numbers via `uutils-coreutils` `cat` |
 | `theme [slug]` | Open interactive `fzf` theme picker or switch all tools to `<slug>` |
 | `ide`, `ide3`, or `ide2` | Launch or attach to a 3-pane Inverted-T or 2-pane Zellij and Neovim IDE workspace |
-| `v [+line] <file>` | Open file in the active IDE Neovim pane over Named Pipe RPC (falls back to local `nvim`) |
+| `v [+line\|+cmd] [-c cmd] <file>...` | Open one or more files in the active IDE Neovim pane over Named Pipe RPC (falls back to local `nvim`) |
 | `icd [dir]` | Synchronize working directory across current shell and active IDE Neovim server |
 | `qide`, `quit`, or `idek` | Safely quit IDE workspace after checking unsaved buffers (`idek` force-kills) |
 | `vi` or `vim` | Launch `nvim` (falling back to standalone `vim` when `nvim` is absent) |
@@ -329,7 +337,7 @@ Every utility in `bin/` ships as a PowerShell script (`<name>.ps1`) paired with 
 | Utility | Key options and arguments | Description |
 | :--- | :--- | :--- |
 | `gen-passwd` | `-Length <int>`, `-Count <int>`, `-NoSymbols` | Generate cryptographically random passwords using `RandomNumberGenerator` |
-| `ide` | `--3pane`, `--2pane`, `--ai <cli>`, `-d, --detach`, `--desktop`, `-s, --sessions`, `--next-attention`, `--open [+line] <file>`, `--preview <file>`, `--cd <dir>`, `--send <text>`, `--monitor`, `--keys`, `--quit`, `--kill`, `--list [--plain]`, `--backend <zellij\|wt>`, `--dry-run`, `[dir]` | Launch and manage Zellij `0.46+` and Neovim Named Pipe RPC workspaces and AI coding agent sessions |
+| `ide` | `--3pane`, `--2pane`, `--ai <cli>`, `-d, --detach`, `--desktop`, `-s, --sessions`, `--next-attention`, `--toggle-editor`, `--toggle-term`, `--swap <dir>`, `--open [+line] <file>`, `--preview <file>`, `--cd <dir>`, `--send [--stdin\|--ref\|--text] [--switch]`, `--agent-state <state>`, `--open-pr`, `--refresh`, `--monitor`, `--keys`, `--quit`, `--kill`, `--list [--plain]`, `--backend <zellij\|wt>`, `--dry-run`, `[dir]` | Launch and manage Zellij `0.46+` and Neovim Named Pipe RPC workspaces and AI coding agent sessions |
 | `install-nerd-fonts` | `-FontName <name>`, `-DryRun` | Download and register MesloLGS Nerd Font Mono faces in user font settings |
 | `repeat-until-success` | `-MaxAttempts <int>`, `-DelaySeconds <int>`, `<command>` | Re-run a command until it exits `0` or reaches `-MaxAttempts` |
 | `sum` | `[numbers...]`, pipeline `stdin` | Accumulate integers and floating-point numbers from arguments or piped input |
@@ -345,7 +353,7 @@ Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
 $null | pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-The test suite executes 237+ automated checks across 8 modules:
+The test suite executes 256+ automated checks across 8 modules:
 
 1. PowerShell script and module AST syntax validation
 2. JSON, KDL, YAML, theme, Tree-sitter query, governance, documentation typography, and manifest validity

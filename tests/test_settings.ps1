@@ -603,11 +603,17 @@ if (Test-Path $misePath) {
         $miseContent -match 'delta\s*=\s*"latest"' -and
         $miseContent -match 'dust\s*=\s*"latest"' -and
         $miseContent -match 'elan\s*=' -and
+        $miseContent -match '"npm:bash-language-server"\s*=\s*"latest"' -and
+        $miseContent -match '"npm:pyright"\s*=\s*"latest"' -and
+        $miseContent -match '"npm:typescript"\s*=\s*"6"' -and
+        $miseContent -match '"npm:typescript-language-server"\s*=\s*"latest"' -and
+        $miseContent -match '"npm:vscode-langservers-extracted"\s*=\s*"latest"' -and
+        $miseContent -match '"npm:yaml-language-server"\s*=\s*"latest"' -and
         $miseContent -match 'go\.set_gobin\s*=\s*false' -and
         $miseContent -match 'go\.set_gopath\s*=\s*false') {
-        Pass "TOML valid: mise.toml (Polyglot toolchains, Zellij, CLI utilities & Go isolation)"
+        Pass "TOML valid: mise.toml (Polyglot toolchains, npm LSP servers, Zellij, CLI utilities & Go isolation)"
     } else {
-        Fail "mise.toml validation" "Missing expected tools or Go isolation settings in mise.toml"
+        Fail "mise.toml validation" "Missing expected tools, npm LSP servers, or Go isolation settings in mise.toml"
     }
 }
 
@@ -681,11 +687,13 @@ if (Test-Path $vimrcPath) {
     $vimrcContent = Get-Content $vimrcPath -Raw
     if (($vimrcContent -match 'ApplySolarizedDark' -or $vimrcContent -match 'ApplyActiveTheme') -and
         $vimrcContent -match 'command!.*Theme' -and
+        $vimrcContent -match 's:SmartHome\(\)' -and
+        $vimrcContent -match '<kHome>' -and
         $vimrcContent -notmatch 'pathogen#infect' -and
         $vimrcContent -notmatch 'UltiSnips') {
-        Pass "Vim fallback valid: config/vim/_vimrc (Zero-dependency standalone 17-theme engine)"
+        Pass "Vim fallback valid: config/vim/_vimrc (Zero-dependency standalone 17-theme engine & Smart-Home toggle)"
     } else {
-        Fail "Vim fallback validation" "Expected standalone _vimrc with 17-theme engine and no pathogen/UltiSnips"
+        Fail "Vim fallback validation" "Expected standalone _vimrc with 17-theme engine, Smart-Home, and no pathogen/UltiSnips"
     }
 }
 
@@ -816,16 +824,27 @@ if ((Get-Command v -ErrorAction SilentlyContinue).CommandType -eq 'Function') {
 $nvimInit = Join-Path $RootDir "config\nvim\init.lua"
 $nvimLock = Join-Path $RootDir "config\nvim\lazy-lock.json"
 if ((Test-Path $nvimInit) -and (Test-Path $nvimLock)) {
+    $devRaw = Get-Content (Join-Path $RootDir "module\Developer.ps1") -Raw
+    if ($devRaw -match 'p\.workdir' -and $devRaw -match 'p\.cmds' -and $devRaw -match '\$afterDoubleDash') {
+        Pass "Smart RPC-aware editor opener 'v' supports multi-file, +N/+cmd, -c cmd, --, and CWD healing"
+    } else {
+        Fail "v RPC multi-file & CWD healing" "Expected multi-file, +cmd/-c, --, and workdir healing in module/Developer.ps1"
+    }
+
     $nvimContent = Get-Content $nvimInit -Raw
     if ($nvimContent -match 'apply_home_settings_theme' -and
         $nvimContent -match 'render-markdown' -and
         $nvimContent -match 'mini\.files' -and
         $nvimContent -match 'BrechtSanders\.WinLibs' -and
         $nvimContent -match 'vim\.env\.ZELLIJ' -and
-        $nvimContent -match 'count_ide_modified_buffers') {
-        Pass "Neovim modern Lua config & lazy-lock.json valid (17-theme engine, render-markdown, mini.files, Zellij + IDE RPC)"
+        $nvimContent -match 'count_ide_modified_buffers' -and
+        $nvimContent -match 'tsserver_fallback' -and
+        $nvimContent -match 'mason-lspconfig\.notify' -and
+        $nvimContent -match 'smart_home_expr' -and
+        $nvimContent -match 'send_to_ai_pane') {
+        Pass "Neovim modern Lua config & lazy-lock.json valid (17-theme, ts_ls, Mason RPC guard, Smart-Home, clipboard-safe send)"
     } else {
-        Fail "Neovim init.lua" "Missing expected 17-theme, render-markdown, mini.files, Zellij, or IDE RPC hooks"
+        Fail "Neovim init.lua" "Missing expected 17-theme, ts_ls, Mason notify guard, Smart-Home, or IDE RPC hooks"
     }
 } else {
     Fail "Neovim config/lockfile" "Missing config/nvim/init.lua or lazy-lock.json"
@@ -1198,8 +1217,34 @@ try {
     } else {
         Fail "Alt+q fast background quit" "Expected :fast_quit_safe/:fast_quit_force in ide.cmd and background Run in config.kdl"
     }
+    if ($zellijCfgRaw -match 'name\s+"ws-ide-role"' -and
+        $zellijCfgRaw -match 'payload\s+"toggle:editor"' -and
+        $zellijCfgRaw -match 'payload\s+"toggle:shell"' -and
+        $zellijCfgRaw -match 'Run "cmd\.exe" "/d" "/c" "ide\.cmd" "--refresh"' -and
+        $zellijCfgRaw -match 'item "Refresh all sessions"') {
+        Pass "config.kdl binds MessagePlugin role focus/toggle, Ctrl+b r session refresh, and context_menu refresh"
+    } else {
+        Fail "config.kdl IDE role/refresh bindings" "Missing MessagePlugin ws-ide-role, Ctrl+b r --refresh, or context_menu refresh"
+    }
 } finally {
     $env:WS_AGY_HOOK_NO_TTY = $prevNoTty
+}
+
+$ideRefreshDry = (& $ideScript --refresh --dry-run) -join "`n"
+$ideRawForRefresh = Get-Content -LiteralPath $ideScript -Raw
+if ($LASTEXITCODE -eq 0 -and $ideRefreshDry -match 'Would re-apply active theme' -and $ideRawForRefresh -notmatch '--sync-assets') {
+    Pass "ide.ps1 --refresh --dry-run re-applies active theme and heals live sessions without --sync-assets mutation"
+} else {
+    Fail "ide.ps1 --refresh --dry-run" "Unexpected refresh output ($LASTEXITCODE): $ideRefreshDry"
+}
+
+$ideHelpOut = (& $ideScript --help) -join "`n"
+& $ideScript --swap sideways 2>$null
+$badSwapExit = $LASTEXITCODE
+if ($ideHelpOut -match '--toggle-editor' -and $ideHelpOut -match '--swap' -and $ideHelpOut -match '--agent-state' -and $ideHelpOut -match '--open-pr' -and $badSwapExit -ne 0) {
+    Pass "ide.ps1 --help exposes pane toggle/swap/fleet flags and --swap rejects invalid directions"
+} else {
+    Fail "ide.ps1 CLI flags & --swap validation" "Help or --swap validation mismatch (badSwapExit=$badSwapExit)"
 }
 
 $testSendSess = 'ws-unit-send-test'
@@ -1216,12 +1261,122 @@ try {
     } else {
         Fail "ide.ps1 --send --ref" "Expected '@bin/ide.ps1#L10-L20 ', got '$stagedPayload'"
     }
+
+    $escCh = [char]27
+    $nestedAttack = "safe ${escCh}[20${escCh}[200~0~middle ${escCh}[201~tail"
+    $nestedAttack | & $ideScript --send --stdin --no-focus $testSendSess | Out-Null
+    $sanitizedStage = if (Test-Path $testStageFile) { Get-Content $testStageFile -Raw } else { '' }
+    if ($sanitizedStage -eq 'safe middle tail' -and $sanitizedStage -notmatch '200~|201~') {
+        Pass "ide.ps1 --send --stdin recursively strips nested bracketed-paste escape sequences"
+    } else {
+        Fail "ide.ps1 --send escape sanitization" "Expected 'safe middle tail', got '$sanitizedStage'"
+    }
 } finally {
     Pop-Location -ErrorAction SilentlyContinue
     $env:WS_IDE_SKIP_CLIPBOARD = $prevSkipClip
     if (Test-Path $testStageFile) {
         Remove-Item -Force -Path $testStageFile -ErrorAction SilentlyContinue
     }
+}
+
+$mockFleetSess = "ws-unit-fleet-$PID"
+$ideStateDirForTest = Join-Path (Join-Path $HOME '.cache\windows-settings') 'ide'
+New-Item -ItemType Directory -Force -Path $ideStateDirForTest | Out-Null
+$mockFleetMeta = Join-Path $ideStateDirForTest "$mockFleetSess.json"
+$mockGitRepo = Join-Path ([System.IO.Path]::GetTempPath()) "ws-pr-test-$PID"
+$prCacheDirTest = Join-Path (Join-Path $HOME '.cache') 'git-pr-prompt'
+$prStateFileCreated = ''
+$prevNoTty2 = $env:WS_AGY_HOOK_NO_TTY
+$prevDryOpenPr = $env:WS_IDE_DRY_OPEN_PR
+$prevAgentStdin = $env:WS_AGENT_STATE_STDIN
+try {
+    $env:WS_AGY_HOOK_NO_TTY = '1'
+    New-Item -ItemType Directory -Force -Path (Join-Path $mockGitRepo '.git') | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $mockGitRepo '.git\HEAD'), "ref: refs/heads/feat/zellij-parity`n")
+    [System.IO.File]::WriteAllText((Join-Path $mockGitRepo '.git\config'), "[remote `"origin`"]`n`turl = git@github.com:lock14/windows-settings.git`n")
+    $resolvedMockRepo = (Resolve-Path -LiteralPath $mockGitRepo).ProviderPath
+
+    New-Item -ItemType Directory -Force -Path $prCacheDirTest | Out-Null
+    $prKeyBytes = [System.Text.Encoding]::UTF8.GetBytes("$resolvedMockRepo|feat/zellij-parity")
+    $prHash = [System.Security.Cryptography.SHA256]::HashData($prKeyBytes)
+    $prKey = [System.BitConverter]::ToString($prHash, 0, 8).Replace('-', '').ToLowerInvariant()
+    $prStateFileCreated = Join-Path $prCacheDirTest "$prKey.state"
+    [System.IO.File]::WriteAllText($prStateFileCreated, "@152`nhttps://github.com/lock14/windows-settings/pull/152`n")
+
+    $seedMeta = [ordered]@{
+        session       = $mockFleetSess
+        root          = $resolvedMockRepo
+        workdir       = $resolvedMockRepo
+        pipe          = "\\.\pipe\nvim-ide-$mockFleetSess"
+        layout        = '3pane'
+        backend       = 'zellij'
+        ai_cli        = 'claude'
+        agent_state   = 'idle'
+        agent_message = ''
+        state_ts      = 0
+        attn_ts       = 0
+    } | ConvertTo-Json -Depth 4
+    [System.IO.File]::WriteAllText($mockFleetMeta, $seedMeta)
+
+    & $ideScript --agent-state bogus-state $mockFleetSess 2>$null
+    $badStateExit = $LASTEXITCODE
+
+    $env:WS_AGENT_STATE_STDIN = '{"message":"Allow editing Cargo.toml?"}'
+    & $ideScript --agent-state approval $mockFleetSess
+    $afterApproval = Get-Content -LiteralPath $mockFleetMeta -Raw | ConvertFrom-Json
+
+    $env:WS_AGENT_STATE_STDIN = '{"notification_type":"idle_prompt","message":"waiting"}'
+    & $ideScript --agent-state approval $mockFleetSess
+    $afterIdlePrompt = Get-Content -LiteralPath $mockFleetMeta -Raw | ConvertFrom-Json
+    $env:WS_AGENT_STATE_STDIN = $null
+
+    & $ideScript --agent-state done $mockFleetSess '{"last-assistant-message":"All 14 WASM tests passed"}'
+    $afterCodexDone = Get-Content -LiteralPath $mockFleetMeta -Raw | ConvertFrom-Json
+
+    & $ideScript --agent-state quota --message 'API rate limit reached' $mockFleetSess
+    $afterQuota = Get-Content -LiteralPath $mockFleetMeta -Raw | ConvertFrom-Json
+
+    if ($badStateExit -ne 0 -and
+        $afterApproval.agent_state -eq 'approval' -and
+        $afterApproval.agent_message -eq 'Allow editing Cargo.toml?' -and
+        [long]$afterApproval.attn_ts -gt 0 -and
+        $afterIdlePrompt.agent_message -eq 'Allow editing Cargo.toml?' -and
+        $afterCodexDone.agent_state -eq 'done' -and
+        $afterCodexDone.agent_message -eq 'All 14 WASM tests passed' -and
+        $afterQuota.agent_state -eq 'quota' -and
+        $afterQuota.agent_message -eq 'API rate limit reached' -and
+        [long]$afterQuota.attn_ts -eq 0) {
+        Pass "ide.ps1 --agent-state validates states, parses Claude stdin & Codex JSON, filters idle_prompt, and tracks timestamps"
+    } else {
+        Fail "ide.ps1 --agent-state" "State/message mismatch across approval/idle_prompt/done/quota"
+    }
+
+    $env:WS_IDE_DRY_OPEN_PR = '1'
+    $resolvedPrUrl = (& $ideScript --open-pr $mockFleetSess | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $resolvedPrUrl -eq 'https://github.com/lock14/windows-settings/pull/152') {
+        Pass "ide.ps1 --open-pr resolves cached GitHub/GitLab PR URL via zero-fork .git/HEAD & state cache"
+    } else {
+        Fail "ide.ps1 --open-pr" "Expected cached PR URL, got '$resolvedPrUrl' (exit=$LASTEXITCODE)"
+    }
+
+    $listRich = (& $ideScript --list) -join "`n"
+    $listPlain = @(& $ideScript --list --plain)
+    if ($listRich -match [regex]::Escape($mockFleetSess) -and
+        $listRich -match 'feat/zellij-parity@152' -and
+        ($listPlain -contains $mockFleetSess)) {
+        Pass "ide.ps1 --list & --list --plain render urgency-sorted fleet table with <branch>@<PR> metadata"
+    } else {
+        Fail "ide.ps1 --list" "Expected $mockFleetSess and feat/zellij-parity@152 in --list output"
+    }
+} finally {
+    $env:WS_AGY_HOOK_NO_TTY = $prevNoTty2
+    $env:WS_IDE_DRY_OPEN_PR = $prevDryOpenPr
+    $env:WS_AGENT_STATE_STDIN = $prevAgentStdin
+    Remove-Item -LiteralPath $mockFleetMeta -Force -ErrorAction SilentlyContinue
+    if ($prStateFileCreated -and (Test-Path -LiteralPath $prStateFileCreated)) {
+        Remove-Item -LiteralPath $prStateFileCreated -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath $mockGitRepo -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $prevNoWait = $env:IDE_KEYS_NO_WAIT
@@ -1462,7 +1617,14 @@ Write-Host "`n[6/8] Testing Completions & Prompt Rendering..." -ForegroundColor 
 $completionsScript = Join-Path $RootDir "module\Completions.ps1"
 try {
     . $completionsScript
-    Pass "module/Completions.ps1 executed and registered completers (incl. theme & ide) successfully"
+    $stateComp = @(TabExpansion2 -inputScript 'ide --agent-state ' -cursorColumn 18).CompletionMatches.CompletionText
+    $swapComp = @(TabExpansion2 -inputScript 'ide --swap ' -cursorColumn 11).CompletionMatches.CompletionText
+    $qideComp = @(TabExpansion2 -inputScript 'qide --' -cursorColumn 7).CompletionMatches.CompletionText
+    if (($stateComp -contains 'quota') -and ($swapComp -contains 'right') -and ($qideComp -contains '--force') -and ($psm1Content -match 'glab mr view')) {
+        Pass "module/Completions.ps1 (ide/ide2/ide3/quit/qide/idek) & GitLab MR async prompt fallback registered"
+    } else {
+        Fail "Completions / GitLab MR fallback" "Expected quota/right/--force completions and glab mr view fallback"
+    }
 } catch {
     Fail "module/Completions.ps1" $_.Exception.Message
 }
@@ -1769,9 +1931,10 @@ try {
     Deploy-ZellijConfig -SourcePath $srcZellijConfig -DestinationPath $mockZellijConfig -UseWasmBar $true *>$null
     $cfgBackups2 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'config.kdl.bak_*')
     if (-not $cfgFallback.Contains("`r`n") -and $cfgFallback -match 'location="zellij:bars"' -and $cfgFallback -match 'role "compact-bar"' -and
-        -not $cfgWasm.Contains("`r`n") -and $cfgWasm -match 'location="file:windows-settings-bar"' -and
+        $cfgFallback -notmatch 'name\s+"ws-ide-role"' -and $cfgFallback -match 'bind "Alt a" \{ MoveFocus "Up"; MoveFocus "Left"; \}' -and
+        -not $cfgWasm.Contains("`r`n") -and $cfgWasm -match 'location="file:windows-settings-bar"' -and $cfgWasm -match 'name\s+"ws-ide-role"' -and
         $cfgBackups1.Count -eq 1 -and $cfgBackups2.Count -eq 1) {
-        Pass "Deploy-ZellijConfig switches cleanly between compact-bar fallback and WASM bar with idempotent LF writes"
+        Pass "Deploy-ZellijConfig switches cleanly between compact-bar MoveFocus fallback and WASM MessagePlugin bar with idempotent LF writes"
     } else {
         Fail "Deploy-ZellijConfig bar switching" "Fallback/WASM bar rewrite or backup idempotency check failed"
     }
