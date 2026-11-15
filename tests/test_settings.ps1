@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # Test Suite for windows-settings (Modern Workstation Architecture)
 # =============================================================
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Test 4 explicitly verifies prior global:LASTEXITCODE handling')]
@@ -156,14 +156,59 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
     Fail "config/zellij/ files missing" "Expected config.kdl, ide-3pane.kdl, ide-2pane.kdl, and themes/windows-settings.kdl"
 }
 
-# Test .gitattributes line-ending rules (.ps1/.cmd = crlf, .kdl/.json/.md = lf)
+# Test .gitattributes line-ending rules (.ps1/.cmd = crlf, .kdl/.json/.md/.yml = lf)
 $gitAttributesPath = Join-Path $RootDir ".gitattributes"
 if (Test-Path $gitAttributesPath) {
     $gitAttrRaw = Get-Content $gitAttributesPath -Raw
-    if ($gitAttrRaw -match '\*\.ps1\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.cmd\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.kdl\s+text\s+eol=lf') {
-        Pass ".gitattributes enforces CRLF for .ps1/.cmd and LF for .kdl configs"
+    if ($gitAttrRaw -match '\*\.ps1\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.cmd\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.kdl\s+text\s+eol=lf' -and $gitAttrRaw -match '\*\.yml\s+text\s+eol=lf') {
+        Pass ".gitattributes enforces CRLF for .ps1/.cmd and LF for .kdl/.yml/.md configs"
     } else {
         Fail ".gitattributes validation" "Missing expected CRLF/LF rules in .gitattributes"
+    }
+}
+
+# Test Repository Governance, LLM Index & GitHub Templates/Workflows
+$licensePath = Join-Path $RootDir "LICENSE"
+if ((Test-Path $licensePath) -and ((Get-Content $licensePath -Raw) -match 'Apache License\s+Version 2\.0')) {
+    Pass "Governance: Apache-2.0 LICENSE present at repository root"
+} else {
+    Fail "Governance: LICENSE" "Missing or invalid Apache-2.0 LICENSE at repository root"
+}
+
+foreach ($govDoc in @(
+    @{ Rel = 'AGENTS.md';       Pattern = 'Universal Semantic Color Contract' },
+    @{ Rel = 'CONTRIBUTING.md'; Pattern = 'Pre-Completion Verification Checklist' },
+    @{ Rel = 'SECURITY.md';     Pattern = 'Private Vulnerability Reporting' },
+    @{ Rel = 'llms.txt';        Pattern = '## Core Components' }
+)) {
+    $govFull = Join-Path $RootDir $govDoc.Rel
+    if ((Test-Path $govFull) -and ((Get-Content $govFull -Raw) -match $govDoc.Pattern)) {
+        Pass "Governance & LLM index valid: $($govDoc.Rel)"
+    } else {
+        Fail "Governance doc check: $($govDoc.Rel)" "Missing file or required section ($($govDoc.Pattern))"
+    }
+}
+
+if (-not (Test-Path (Join-Path $RootDir 'CLAUDE.md')) -and -not (Test-Path (Join-Path $RootDir '.agents\AGENTS.md'))) {
+    Pass "Single canonical AGENTS.md maintained (no duplicate CLAUDE.md or .agents/AGENTS.md)"
+} else {
+    Fail "Single AGENTS.md invariant" "Unexpected duplicate CLAUDE.md or .agents/AGENTS.md found"
+}
+
+foreach ($ghRel in @(
+    @{ Rel = '.github\PULL_REQUEST_TEMPLATE.md';           Pattern = 'Verification & Testing' },
+    @{ Rel = '.github\ISSUE_TEMPLATE\bug_report.yml';      Pattern = 'title:\s*"\[Bug\]: "' },
+    @{ Rel = '.github\ISSUE_TEMPLATE\feature_request.yml'; Pattern = 'title:\s*"\[Feature\]: "' },
+    @{ Rel = '.github\ISSUE_TEMPLATE\config.yml';          Pattern = 'blank_issues_enabled:\s*false' },
+    @{ Rel = '.github\dependabot.yml';                     Pattern = 'package-ecosystem:\s*github-actions' },
+    @{ Rel = '.github\workflows\ci.yml';                   Pattern = 'ci-gatekeeper:' },
+    @{ Rel = '.github\workflows\security.yml';             Pattern = 'secret-scan:' }
+)) {
+    $ghFull = Join-Path $RootDir $ghRel.Rel
+    if ((Test-Path $ghFull) -and ((Get-Content $ghFull -Raw) -match $ghRel.Pattern)) {
+        Pass "GitHub governance/workflow valid: $($ghRel.Rel.Replace('\', '/'))"
+    } else {
+        Fail "GitHub governance/workflow check: $($ghRel.Rel)" "Missing file or required pattern ($($ghRel.Pattern))"
     }
 }
 
@@ -1031,6 +1076,37 @@ foreach ($f in $filesToScan) {
 }
 if (-not $hardcodedFound) {
     Pass "Path invariants valid across all repo files (zero hardcoded personal paths)"
+}
+
+# 7.1b Byte-level CRLF / LF line-ending discipline & module startup hygiene
+$crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat')
+$lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
+$eolViolation = $false
+foreach ($f in (Get-ChildItem -Path $RootDir -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' })) {
+    $rawBytes = [System.IO.File]::ReadAllBytes($f.FullName)
+    if ($rawBytes.Length -eq 0) { continue }
+    $rawStr = [System.Text.Encoding]::UTF8.GetString($rawBytes)
+    if ($crlfExts -contains $f.Extension) {
+        if (($rawStr -replace "`r`n", "").Contains("`n")) {
+            Fail "Line-ending check (expected CRLF): $($f.FullName)" "Contains bare LF line endings"
+            $eolViolation = $true
+        }
+    } elseif ($lfExts -contains $f.Extension -or $f.Name -eq 'LICENSE') {
+        if ($rawStr.Contains("`r`n")) {
+            Fail "Line-ending check (expected LF): $($f.FullName)" "Contains CRLF line endings"
+            $eolViolation = $true
+        }
+    }
+}
+if (-not $eolViolation) {
+    Pass "Line-ending invariants valid across all repo files (CRLF scripts/batch, LF configs/docs)"
+}
+
+$psm1Raw = Get-Content (Join-Path $RootDir 'module\WindowsSettings.psm1') -Raw
+if ($psm1Raw -notmatch 'Get-ChildItem[^\r\n]*-Recurse') {
+    Pass "Module startup hygiene valid: zero recursive disk traversals in WindowsSettings.psm1"
+} else {
+    Fail "Module startup hygiene" "WindowsSettings.psm1 must not use Get-ChildItem -Recurse"
 }
 
 # 7.2 Dual Execution in bin/
