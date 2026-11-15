@@ -4,103 +4,34 @@
 [![Security](https://github.com/lock14/windows-settings/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/lock14/windows-settings/actions/workflows/security.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Modern Windows developer workstation configuration, 17-theme TrueColor palette engine, cross-platform Zellij + Neovim RPC IDE & AI agent fleet manager, and setup automation for **PowerShell 7+**, **Zellij**, **Oh My Posh**, **Neovim**, **Command Prompt (`cmd.exe`)**, and **Windows Terminal**.
+Workstation setup automation, a 17-theme 24-bit TrueColor palette engine, a Zellij 0.46+ and Neovim Named Pipe RPC terminal IDE and AI agent fleet manager, and shell configurations for Windows 10 and Windows 11.
 
----
+Host machines require PowerShell 7+ (`pwsh`), Git for Windows, Windows Terminal, and `winget`. Polyglot runtimes and modern CLI utilities are managed declaratively via WinGet DSC (`configuration.dsc.yaml`) and [mise](https://mise.jdx.dev/) (`mise.toml`).
 
-## Showcase
+## Table of contents
 
-<p align="center">
-  <img src="assets/prompt.png" alt="Oh My Posh & Modern Directory Trees" width="850">
-  <br>
-  <em>Oh My Posh Powerline prompt, predictive IntelliSense, and <code>eza</code> directory tree</em>
-</p>
+- [Quick start and installation](#quick-start-and-installation)
+  - [Turnkey bootstrap (new machines)](#turnkey-bootstrap-new-machines)
+  - [Declarative WinGet configuration (Microsoft DSC v3)](#declarative-winget-configuration-microsoft-dsc-v3)
+  - [CLI orchestrator (`setup.ps1`)](#cli-orchestrator-setupps1)
+- [Command-line options (`setup.ps1` and `bootstrap.ps1`)](#command-line-options-setupps1-and-bootstrapps1)
+- [Architecture overview](#architecture-overview)
+- [Integrated development environment and AI workspace](#integrated-development-environment-and-ai-workspace)
+  - [IDE workspace keybindings and navigation](#ide-workspace-keybindings-and-navigation)
+- [Interactive shells and prompts](#interactive-shells-and-prompts)
+- [Developer toolchains and modern CLI suite](#developer-toolchains-and-modern-cli-suite)
+  - [Color theme management (`theme`)](#color-theme-management-theme)
+- [Extensibility and customization](#extensibility-and-customization)
+- [Git and shell shortcuts](#git-and-shell-shortcuts)
+- [Standalone utilities (`bin/`)](#standalone-utilities-bin)
+- [Development and testing](#development-and-testing)
+- [Contributing, security, and license](#contributing-security-and-license)
 
-<p align="center">
-  <img src="assets/bat.png" alt="24-bit TrueColor Syntax Highlighting via bat" width="850">
-  <br>
-  <em>24-bit TrueColor syntax highlighting and Git gutter integration via <code>bat</code> (<code>b</code>)</em>
-</p>
+## Quick start and installation
 
-<p align="center">
-  <img src="assets/nvim.png" alt="Modern Lua Neovim in Solarized Dark with Native LSP" width="850">
-  <br>
-  <em>Modern Lua Neovim in Solarized Dark with Native LSP, <code>render-markdown.nvim</code>, and Tree-sitter AST highlighting</em>
-</p>
+Provision a new machine via the single-command remote bootstrapper, apply the declarative Microsoft DSC manifest, or invoke `setup.ps1` directly with modular flags.
 
----
-
-## Architecture Overview
-
-```text
-windows-settings/
-├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
-├── mise.toml                      # Declarative polyglot toolchains & CLI tools (Go, Java, Node, Python, Rust, Lean, CLI suite)
-├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
-├── setup.ps1                      # Declarative master setup engine (-Theme, -Uninstall*, diff backup, -DryRun)
-├── llms.txt                       # Concise LLM-oriented architecture & CLI index
-├── CONTRIBUTING.md                # Contributor guide, multi-file contracts & verification checklist
-├── SECURITY.md                    # Vulnerability reporting policy
-├── LICENSE                        # Apache License 2.0
-│
-├── .github/                       # CI & Security workflows, Dependabot, PR & YAML Issue templates
-│
-├── assets/                        # Showcase media and documentation diagrams
-│
-├── bin/                           # 7 dual-execution CLI utilities (.ps1 + .cmd):
-│                                  #   gen-passwd, ide, install-nerd-fonts, repeat-until-success, sum, theme, update-system
-│
-├── config/                        # Unified declarative tool, theme & editor configurations
-│   ├── bat/                       # 24-bit TrueColor bat themes & standalone Sublime syntaxes
-│   │   ├── themes/                # 17 TrueColor .tmTheme palettes (9 classic + 8 US Holiday)
-│   │   └── syntaxes/              # 37 standalone Sublime Text / bat syntax grammars
-│   ├── btop/                      # btop4win config (btop.conf) & 17 TrueColor themes
-│   ├── clangd/                    # C/C++ language server configuration (config.yaml)
-│   ├── cmd/                       # Native cmd.exe AutoRun, Powerline shelf prompt & doskey macros (autorun.cmd)
-│   ├── colors/                    # 40-language calibrated GNU dircolors (LS_COLORS)
-│   ├── git/                       # TrueColor Git delta diff viewer config (delta.gitconfig)
-│   ├── nvim/                      # Modern Lua Neovim 0.11+ / 0.12+ (Native LSP, Named Pipe RPC, :Theme)
-│   │   ├── init.lua               # Native LSP, 17-theme engine, mini.files, render-markdown, IDE RPC
-│   │   ├── lazy-lock.json         # Pinned Lazy.nvim plugin lockfile
-│   │   ├── ftplugin/              # Per-filetype enhancements (java.lua)
-│   │   ├── queries/               # 13 custom base Tree-sitter AST queries
-│   │   └── after/queries/         # 30 Tree-sitter AST query extensions (43 .scm files total)
-│   ├── powershell/                # PowerShell profile & Oh My Posh theme (p10k_single_line.omp.json)
-│   ├── tealdeer/                  # Fast Rust tldr client configuration (config.toml)
-│   ├── terminal/                  # Windows Terminal JSON fragment & settings (17 schemes + Alt+* pass-through)
-│   ├── themes/                    # 17 canonical .theme palette specifications (9 classic + 8 US Holiday)
-│   ├── vim/                       # Standalone zero-dependency 17-theme Vim configuration (_vimrc)
-│   └── zellij/                    # Declarative Zellij 0.46+ config, Inverted-T layouts & TrueColor theme
-│
-├── module/                        # Autoloaded WindowsSettings PowerShell Module (<10ms startup)
-│   ├── WindowsSettings.psd1       # Module manifest (v3.0.0 — 82 exported functions)
-│   ├── WindowsSettings.psm1       # Root loader (theme sync, async PR badge cache, *.d/ drop-ins, FZF)
-│   ├── Completions.ps1            # Native dynamic CLI completions
-│   ├── Developer.ps1              # IDE RPC wrappers (v, icd, qide), theme & polyglot shortcuts
-│   ├── Git.ps1                    # Git shortcuts & safety guards (gprune vs gpurge, gsync, guser-branch)
-│   ├── Navigation.ps1             # Modern directory navigation & tree search (eza, ls, zoxide, fs)
-│   └── Utilities.ps1              # Core shell utilities (b, ds, btop, update)
-│
-├── sample-code/                   # 40-language polyglot sample suite for syntax & AST query validation
-│
-└── tests/
-    └── test_settings.ps1          # 234 automated tests across all 8 test modules
-```
-
----
-
-## Prerequisites
-
-- **PowerShell 7+** (`pwsh`)
-- **Git for Windows**
-- **Windows Terminal**
-- **winget** (Windows Package Manager, included in Windows 10/11)
-
----
-
-## Quick Start
-
-### 1. Turnkey Bootstrap (New Machines)
+### Turnkey bootstrap (new machines)
 
 Stream and run directly in PowerShell 7 (`pwsh`) without pre-cloning:
 
@@ -108,15 +39,17 @@ Stream and run directly in PowerShell 7 (`pwsh`) without pre-cloning:
 irm https://raw.githubusercontent.com/lock14/windows-settings/main/bootstrap.ps1 | iex
 ```
 
-### 2. Declarative WinGet Configuration (Microsoft DSC v3)
+### Declarative WinGet configuration (Microsoft DSC v3)
 
-Provision the complete workstation toolchain natively via Microsoft DSC:
+Provision workstation packages declaratively via Microsoft DSC:
 
 ```powershell
 winget configure .\configuration.dsc.yaml
 ```
 
-### 3. Automated Master Setup (Existing Clone)
+### CLI orchestrator (`setup.ps1`)
+
+Clone the repository and run `setup.ps1` to configure user dotfiles, select an initial theme, preview changes in dry-run mode, or cleanly uninstall managed files:
 
 ```powershell
 git clone https://github.com/lock14/windows-settings.git
@@ -128,170 +61,297 @@ cd windows-settings
 # User dotfiles only with a specific initial palette (or -Theme holiday)
 .\setup.ps1 -DotfilesOnly -Theme solarized-dark
 
-# Preview actions without making system changes
+# Preview actions without modifying system state
 .\setup.ps1 -DryRun
 
-# Cleanly remove deployed dotfiles, module, fragments, fonts, and PATH entries
+# Remove deployed dotfiles, module, fragments, fonts, and PATH entries
 .\setup.ps1 -Uninstall
 ```
 
-### 4. Command-Line Options (`setup.ps1` & `bootstrap.ps1`)
+## Command-line options (`setup.ps1` and `bootstrap.ps1`)
+
+`setup.ps1` and `bootstrap.ps1` accept modular switches to provision packages, deploy dotfiles, choose an initial color scheme, preview operations, or uninstall managed artifacts:
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
-| `-Bootstrap` | *disabled* | Full new machine bootstrap (packages, fonts, themes, prompt, module, terminal, nvim) |
-| `-DotfilesOnly` | *disabled* | Configure user dotfiles, fonts, themes, nvim, terminal, and shell module only (no package install) |
-| `-SystemOnly` | *disabled* | Provision winget packages and CLI tools only |
-| `-UseDSC` | *disabled* | Provision workstation packages using declarative WinGet DSC manifest (`configuration.dsc.yaml`) |
-| `-Theme <slug\|holiday>` | *current / `solarized-dark`* | Apply initial TrueColor theme across all tools (`solarized-dark`, `catppuccin-mocha`, `holiday`, etc.) |
-| `-DryRun` | *disabled* | Preview setup or uninstall actions without modifying the system |
-| `-WithGUI` / `-IncludeGUI` | *disabled* | Install GUI desktop applications (VS Code, Windows Terminal, Docker Desktop via winget) |
-| `-Uninstall` | *disabled* | Cleanly remove all deployed dotfiles, module, terminal fragments, fonts, and `bin/` PATH entry |
-| `-UninstallDotfiles` | *disabled* | Remove deployed dotfiles, PowerShell module, CMD AutoRun, and Windows Terminal fragment only |
-| `-UninstallFonts` | *disabled* | Remove installed MesloLGS Nerd Font Mono files and registry entries only |
-| `-UninstallBin` | *disabled* | Remove repository `bin/` directory from User `PATH` only |
-| `-SkipPackages` | *disabled* | Skip winget package installation |
-| `-SkipFonts` | *disabled* | Skip MesloLGS Nerd Font Mono installation |
-| `-SkipPosh` | *disabled* | Skip Oh My Posh, Theme Engine & PowerShell module configuration |
-| `-SkipCMD` | *disabled* | Skip Windows Command Prompt (`cmd.exe`) AutoRun & Doskey configuration |
-| `-SkipCompletions` | *disabled* | Skip CLI argument completions registration |
-| `-SkipTerminal` | *disabled* | Skip Windows Terminal settings & JSON fragment deployment |
-| `-SkipVim` | *disabled* | Skip Neovim & Vim configuration |
-| `-SkipBin` | *disabled* | Skip adding `bin/` directory to User `PATH` |
+| `-Bootstrap` | `disabled` | Full machine bootstrap (packages, fonts, themes, prompt, PowerShell module, terminal, and Neovim) |
+| `-DotfilesOnly` | `disabled` | Configure user dotfiles, fonts, themes, Neovim, terminal, and shell module without installing packages |
+| `-SystemOnly` | `disabled` | Provision `winget` packages and CLI tools only |
+| `-UseDSC` | `disabled` | Provision workstation packages using the declarative WinGet DSC manifest (`configuration.dsc.yaml`) |
+| `-Theme <slug\|holiday>` | `solarized-dark` | Apply initial TrueColor theme across all tools (`solarized-dark`, `catppuccin-mocha`, `holiday`, and others) |
+| `-DryRun` | `disabled` | Preview setup or uninstall actions without modifying the system |
+| `-WithGUI` or `-IncludeGUI` | `disabled` | Install GUI desktop applications (VS Code, Windows Terminal, and Docker Desktop via `winget`) |
+| `-Uninstall` | `disabled` | Remove all deployed dotfiles, module, terminal fragments, fonts, and `bin/` `PATH` entry |
+| `-UninstallDotfiles` | `disabled` | Remove deployed dotfiles, PowerShell module, `cmd.exe` AutoRun, and Windows Terminal fragment only |
+| `-UninstallFonts` | `disabled` | Remove installed MesloLGS Nerd Font Mono files and registry entries only |
+| `-UninstallBin` | `disabled` | Remove repository `bin/` directory from User `PATH` only |
+| `-SkipPackages` | `disabled` | Skip `winget` package installation |
+| `-SkipFonts` | `disabled` | Skip MesloLGS Nerd Font Mono installation |
+| `-SkipPosh` | `disabled` | Skip Oh My Posh, theme engine, and PowerShell module configuration |
+| `-SkipCMD` | `disabled` | Skip Windows Command Prompt (`cmd.exe`) AutoRun and `doskey` configuration |
+| `-SkipCompletions` | `disabled` | Skip CLI argument completions registration |
+| `-SkipTerminal` | `disabled` | Skip Windows Terminal settings and JSON Fragment deployment |
+| `-SkipVim` | `disabled` | Skip Neovim and standalone Vim configuration |
+| `-SkipBin` | `disabled` | Skip adding `bin/` directory to User `PATH` |
 
----
+## Architecture overview
 
-## What's Included
+<p align="center">
+  <img src="assets/prompt.png" alt="Oh My Posh prompt and eza directory tree" width="850">
+  <br>
+  <em>Oh My Posh Powerline shelf prompt, predictive IntelliSense, and <code>eza</code> directory tree</em>
+</p>
 
-### 1. Multi-Theme TrueColor Engine (`theme` — 17 Built-in & US Holiday Palettes)
-- Zero-dependency native PowerShell theme manager (`bin/theme.ps1` + `bin/theme.cmd`) synchronizing **17 built-in 24-bit TrueColor themes** plus custom user themes across **Zellij**, **Windows Terminal**, **Neovim** (live Named Pipe RPC), **Vim**, **PowerShell + PSReadLine**, **Oh My Posh**, **Command Prompt (`cmd.exe`)**, **`bat`**, **`delta`**, **`btop4win`**, **`tealdeer`**, **`fzf`**, **`eza`**, **`jq`**, and **`LS_COLORS`**:
-  - **9 Classic Palettes**: `solarized-dark` *(default)*, `solarized-light`, `catppuccin-mocha`, `catppuccin-latte`, `gruvbox-dark`, `tokyonight-night`, `kanagawa-wave`, `nord`, `onedark`
-  - **8 US Holiday Editions**: `new-years`, `valentines`, `st-patricks`, `easter`, `independence-day`, `halloween`, `thanksgiving`, `christmas`
-- Common `theme` workflows:
-  ```powershell
-  theme                          # Interactive fzf picker with live TrueColor ANSI preview card
-  theme --list                   # List all available themes with palette swatches
-  theme catppuccin-mocha         # Instantly switch active theme across live terminal & Neovim sessions
-  theme --holiday                # Auto-select today's US Holiday theme (falls back to default palette)
-  theme --preview kanagawa-wave  # Render TrueColor swatch & sample syntax preview without switching
-  theme --create my-theme --from nord
-  ```
+<p align="center">
+  <img src="assets/bat.png" alt="24-bit TrueColor syntax highlighting via bat" width="850">
+  <br>
+  <em>24-bit TrueColor syntax highlighting and Git gutter integration via <code>bat</code> (<code>b</code>)</em>
+</p>
 
-### 2. Hybrid Zellij + Neovim RPC IDE & Agent Fleet Manager (`ide`)
-- Persistent multi-session IDE & AI coding agent fleet manager (`bin/ide.ps1` + `bin/ide.cmd`) powered by **Zellij 0.46+** (`config/zellij/`) and a live **Neovim Named Pipe RPC server** (`\\.\pipe\nvim-ide-<session>`), replicating the Linux `tmux` `home-settings` workflow natively on Windows (with `--backend wt` Windows Terminal fallback):
-  - **`ide` / `ide3` (`--3pane`)**: Frameless Inverted-T layout beneath a 1-line `BASE02` `compact-bar` — Top-Left AI Agent (`agy`, `claude`, or `codex`), Top-Right Neovim Editor (`mini.files` + buffers), Bottom full-width PowerShell terminal.
-  - **`ide2` (`--2pane`)**: Side-by-side AI Agent + Neovim Editor layout.
-  - **Persistent Background Sessions & 1-Hop GPU Desktop Mode**:
-    - `ide -d <dir>` spawns detached background agent sessions (`zellij attach --create-background`); `Ctrl+b d` detaches while keeping agents and Neovim alive.
-    - `ide --desktop [dir]` launches Zellij's native 1-hop GPU desktop app (`zellij terminal`) with built-in OS System Tray icon and native desktop toast notifications.
-  - **Native `OSC 7501` Attention Inbox**:
-    - Tracks live agent state (`working`, `needs_you`, `done`, `failed`) across Claude Code, Codex, and Antigravity (`agy` via `~/.gemini/config/hooks.json`).
-    - `Alt+s` / `Ctrl+b s` / `ide -s` opens Zellij's floating `session-manager` Attention Inbox; `Alt+Shift+S` / `Ctrl+b S` (`ide --next-attention`) jumps straight to the next agent needing input.
-  - **Seamless Shell $\leftrightarrow$ Editor $\leftrightarrow$ Agent RPC**:
-    - `v [+line] <file>` opens files directly inside the live IDE Neovim pane instead of nesting editors.
-    - `icd <dir>` (and `:IdeCd` inside Neovim) synchronizes the workspace root across both shell and editor.
-    - `<leader>a` in Neovim Visual mode (or `ide --send`) bracket-pastes `@file#L10-L25` references directly into the live AI pane (`zellij action paste -p`).
-    - `Alt+a` / `Alt+e` / `Alt+t` jump directly to AI / Editor / Shell panes (`Alt+;` or Normal `<leader>a` bounces back); `Alt+h/j/k/l`, `Alt+Arrows`, and `Alt+z` navigate, resize, and zoom panes.
-    - `:Q`, `Alt+q`, `qide`, and `quit` (`ide --quit`) check all Neovim buffers for unsaved changes before closing the session (`idek` / `ide --kill` force-closes).
+<p align="center">
+  <img src="assets/nvim.png" alt="Neovim in Solarized Dark with Native LSP" width="850">
+  <br>
+  <em>Lua Neovim in Solarized Dark with Native LSP, <code>render-markdown.nvim</code>, and Tree-sitter AST highlighting</em>
+</p>
 
-### 3. Single-Line Powerlevel10k Prompt (`config/powershell/p10k_single_line.omp.json`)
-- Flawless dynamic Powerline transitions powered by **Oh My Posh** on the active theme's **`BASE02` shelf** (`#073642` in Solarized Dark).
-- **Calm OS & Holiday Glyph**: Displays the Windows glyph in calm `BASE0` (`#839496`), automatically shifting to seasonal holiday icons when a US Holiday theme is active.
-- **Async Clickable `<branch>@<N>` PR Badges**: Background non-blocking `gh` / `glab` lookup renders clickable OSC 8 Pull Request hyperlinks right next to the Git branch without adding prompt latency.
-- **Persistent Right Status Anchor**: Displays `` in Green on success or `` in Red on error alongside execution duration (``), active toolchains (Node, Go, Python, .NET, Rust), and AWS context.
-- **High-Speed Disk Caching**: Compiles prompt initialization into `$HOME\.cache\powershell\omp_init.ps1` for `<10ms` shell startup.
+The repository is organized into declarative package manifests (`configuration.dsc.yaml` and `mise.toml`), idempotent orchestrators (`setup.ps1` and `bootstrap.ps1`), dual-execution CLI utilities (`bin/`), tool and theme configurations (`config/`), an autoloaded PowerShell module (`module/`), a 40-language validation corpus (`sample-code/`), and an automated verification suite (`tests/`):
 
-### 4. First-Class PowerShell Module (`WindowsSettings`) & Local Drop-In Hooks
-- Clean autoloaded PowerShell Module (`$HOME\Documents\PowerShell\Modules\WindowsSettings`) imported via a 1-line `$PROFILE`:
-  ```powershell
-  Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue
-  ```
-- **Untracked Local Customization (`*.d/`)**: Automatically sources machine-local scripts from `$HOME\.config\windows-settings\{env,aliases,functions}.d\*.ps1` without touching tracked files.
+```text
+windows-settings/
+├── configuration.dsc.yaml         # WinGet DSC v3 declarative machine configuration
+├── mise.toml                      # Declarative polyglot toolchains and CLI tools (Go, Java, Node, Python, Rust, Lean, CLI suite)
+├── bootstrap.ps1                  # Turnkey one-liner bootstrapper
+├── setup.ps1                      # Declarative master setup engine (-Theme, -Uninstall*, diff backup, -DryRun)
+├── llms.txt                       # Concise LLM-oriented architecture and CLI index
+├── CONTRIBUTING.md                # Contributor guide, multi-file contracts, and verification checklist
+├── SECURITY.md                    # Vulnerability reporting policy
+├── LICENSE                        # Apache License 2.0
+│
+├── .github/                       # CI and Security workflows, Dependabot, PR and YAML Issue templates
+│
+├── assets/                        # Showcase media and documentation diagrams
+│
+├── bin/                           # 7 dual-execution CLI utilities (.ps1 and .cmd):
+│                                  #   gen-passwd, ide, install-nerd-fonts, repeat-until-success, sum, theme, update-system
+│
+├── config/                        # Unified declarative tool, theme, and editor configurations
+│   ├── bat/                       # 24-bit TrueColor bat themes and standalone Sublime syntaxes
+│   │   ├── themes/                # 17 TrueColor .tmTheme palettes (9 classic and 8 US Holiday)
+│   │   └── syntaxes/              # 37 standalone Sublime Text and bat syntax grammars
+│   ├── btop/                      # btop4win config (btop.conf) and 17 TrueColor themes
+│   ├── clangd/                    # C and C++ language server configuration (config.yaml)
+│   ├── cmd/                       # Native cmd.exe AutoRun, Powerline shelf prompt, and doskey macros (autorun.cmd)
+│   ├── colors/                    # 40-language calibrated GNU dircolors (LS_COLORS)
+│   ├── git/                       # TrueColor Git delta diff viewer config (delta.gitconfig)
+│   ├── nvim/                      # Lua Neovim 0.11+ and 0.12+ (Native LSP, Named Pipe RPC, :Theme)
+│   │   ├── init.lua               # Native LSP, 17-theme engine, mini.files, render-markdown, IDE RPC
+│   │   ├── lazy-lock.json         # Pinned Lazy.nvim plugin lockfile
+│   │   ├── ftplugin/              # Per-filetype enhancements (java.lua)
+│   │   ├── queries/               # 13 custom base Tree-sitter AST queries
+│   │   └── after/queries/         # 30 Tree-sitter AST query extensions (43 .scm files total)
+│   ├── powershell/                # PowerShell profile and Oh My Posh theme (p10k_single_line.omp.json)
+│   ├── tealdeer/                  # Rust tldr client configuration (config.toml)
+│   ├── terminal/                  # Windows Terminal JSON Fragment and settings (17 schemes and Alt+* pass-through)
+│   ├── themes/                    # 17 canonical .theme palette specifications (9 classic and 8 US Holiday)
+│   ├── vim/                       # Standalone zero-dependency 17-theme Vim configuration (_vimrc)
+│   └── zellij/                    # Declarative Zellij 0.46+ config, Inverted-T layouts, and TrueColor theme
+│
+├── module/                        # Autoloaded WindowsSettings PowerShell module (sub-10ms warm startup)
+│   ├── WindowsSettings.psd1       # Module manifest (v3.0.0, 82 exported functions)
+│   ├── WindowsSettings.psm1       # Root loader (theme sync, async PR badge cache, *.d/ drop-ins, FZF)
+│   ├── Completions.ps1            # Dynamic CLI tab completions
+│   ├── Developer.ps1              # IDE RPC wrappers (v, icd, qide), theme, and polyglot shortcuts
+│   ├── Git.ps1                    # Git shortcuts and safety guards (gprune vs gpurge, gsync, guser-branch)
+│   ├── Navigation.ps1             # Directory navigation and tree search (eza, ls, zoxide, fs)
+│   └── Utilities.ps1              # Core shell utilities (b, ds, btop, update)
+│
+├── sample-code/                   # 40-language polyglot sample suite for syntax and AST query validation
+│
+└── tests/
+    └── test_settings.ps1          # 237+ automated tests across all 8 test modules
+```
 
-### 5. Windows Command Prompt (`cmd.exe`) AutoRun & Doskey
-- Zero-dependency `cmd.exe` parity via `config/cmd/autorun.cmd` registered in `HKCU\Software\Microsoft\Command Processor\AutoRun`.
-- **Dynamic Theme Sync & Drop-Ins**: Loads UTF-8 (`chcp 65001`), `COLORTERM=truecolor`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, generated `theme_env.cmd`, and `$HOME\.config\windows-settings\cmd.d\*.cmd` hooks with 0ms external process overhead.
-- **Complete Doskey Parity**: Mirrors `b=bat`, `ds=dust`, `btop`, `theme`, `update`, `ide`/`ide2`/`ide3`/`idek`/`qide`/`quit`, `v`, `icd`, `ls`/`eza` variants, and Git shortcuts.
+## Integrated development environment and AI workspace
 
-### 6. Modern Rust & Polyglot CLI Developer Toolchain
-- **`bat` (`b`) & Raw `uutils` `cat`**: `b` launches `bat` with 17 custom `.tmTheme` palettes, 37 standalone `.sublime-syntax` grammars, Git gutter markers, and italic comments, while `cat` runs native `uutils-coreutils` `cat` with zero decoration surprises.
-- **`delta`**: Syntax-highlighted TrueColor Git diffs (`config/git/delta.gitconfig`) automatically wired into global `.gitconfig` and synced by `theme`.
-- **`eza` & `LS_COLORS`**: 83-code 24-bit TrueColor `EZA_COLORS` (`e`, `el`, `elm`, `et`, `elt`, `elx`) and 40-language calibrated `LS_COLORS` (`ls`, `ll`, `la`, `l`).
-- **`dust` (`ds`), `sd`, `yq`, `jq`, `tealdeer` (`tldr`), `btop4win` (`btop`), `glow`, `zoxide` (`z`), `fzf`**: Declaratively provisioned via `configuration.dsc.yaml` and `mise.toml`.
-- **Native `bin/` Utilities**: Dual-execution (`.ps1` + `.cmd`) scripts for `theme`, `ide`, `update-system` (`update`), `sum`, `gen-passwd`, `repeat-until-success`, and `install-nerd-fonts`.
+The repository provides a multi-session terminal IDE (`bin/ide.ps1` and `bin/ide.cmd`) built on Zellij `0.46+` (`config/zellij/`) and a live Neovim Named Pipe RPC server (`\\.\pipe\nvim-ide-<session>`), with an automatic Windows Terminal split-pane fallback (`--backend wt`).
 
-### 7. Git, IDE & Developer Shortcuts
+- **Spatial window geometry and background sessions**:
+  - **3-pane layout**: Launched by default via `ide`, `ide3`, or `ide --3pane` as a frameless Inverted-T workspace beneath a 1-line `compact-bar`, placing the AI Agent (`agy`, `claude`, or `codex`) at top-left, the Neovim Editor (`mini.files` and buffers) at top-right, and a full-width PowerShell terminal across the bottom.
+  - **2-pane layout**: Launched via `ide2` or `ide --2pane` with side-by-side AI Agent and full-height Neovim Editor panes.
+  - **Detached fleet and GPU desktop app**: `ide -d <dir>` (`--detach`) spawns background agent sessions (`zellij attach --create-background`), while `Ctrl+b d` detaches without stopping running processes. `ide --desktop [dir]` launches Zellij's 1-hop GPU desktop app (`zellij terminal`) with a native OS system tray badge and desktop notifications.
+- **Native Attention Inbox**:
+  - Tracks live `OSC 7501` agent lifecycle states (`working`, `needs_you`, `done`, `failed`) across Claude Code, Codex, and Antigravity (`agy` via `~/.gemini/config/hooks.json`).
+  - Press `Alt+s` or `Ctrl+b s` (or run `ide -s` or `ide --sessions`) to open Zellij's floating `session-manager` Attention Inbox across running workspaces, or press `Alt+Shift+S` or `Ctrl+b S` (`ide --next-attention`) to jump directly to the next agent waiting for input.
+- **4-layer keybinding and RPC architecture**:
+  - **Layer 1 (app-local)**: Preserves standard `Ctrl` bindings inside shells, AI CLIs, and Neovim (`Ctrl+h/j/k/l` move across internal Neovim splits and `Ctrl+j/k` navigate Telescope results), while Windows Terminal forwards `Alt+*` chords cleanly to Zellij.
+  - **Layer 2 (workspace navigation)**: `Alt+h/j/k/l` move focus across panes, `Alt+a`, `Alt+e`, and `Alt+t` jump directly to the AI Agent, Editor, or Shell pane (`Alt+;` or normal-mode `Space a` bounces back), `Alt+Left/Down/Up/Right` resize panes, `Alt+z` toggles pane zoom, `Alt+m` opens the floating system monitor (`ide --monitor`), and `Alt+?` opens the keybinding cheatsheet (`ide --keys`).
+  - **Layer 3 (editor, file explorer, and RPC context dispatch)**: Inside the shell, `v [+line] <file>` opens files directly in the session's Neovim pane over Named Pipe RPC instead of nesting editors, and `icd [dir]` (or `:IdeCd [dir]` in Neovim) synchronizes the working directory across shell and editor. Inside Neovim, `-` or `Space e` opens `mini.files`, visual-mode `Space a` bracket-pastes `@file#L10-L25` line references into the AI Agent pane (`ide --send`), `Space m` toggles `render-markdown.nvim`, and `:Q`, `Alt+q`, `qide`, and `quit` (`ide --quit`) verify all Neovim buffers are saved before closing the session (`idek` or `ide --kill` force-closes).
+  - **Layer 4 (links, jumplist, and clipboard)**: `gx` and `Ctrl+Click` follow Markdown links, `#heading` anchors, relative paths, and URLs, falling back to LSP definition jumps, while mouse back and forward buttons (`<X1Mouse>` and `<X2Mouse>`) traverse the Neovim jumplist.
+- **LSP, Tree-sitter, and standalone Vim**:
+  - **Native LSP**: Configured in `config/nvim/init.lua` via `vim.lsp.config` and `vim.lsp.enable` for Go (`gopls`), Python (`pyright`), TypeScript (`ts_ls`), Rust (`rust_analyzer`), C and C++ (`clangd`), Terraform (`terraformls`), YAML (`yamlls`), Lean 4 (`leanls`), and Java (`ftplugin/java.lua`).
+  - **Tree-sitter and fallback Vim**: 43 custom `.scm` queries (`queries/` and `after/queries/`) align highlighting with `bat`, and `config/vim/_vimrc` provides a zero-dependency 17-theme `:Theme` fallback when Neovim is unavailable.
+
+### IDE workspace keybindings and navigation
+
+The following table indexes keyboard shortcuts, editor commands, shell wrappers, and CLI flags across the IDE workspace:
+
+| Keybinding or action | Context | Description |
+| :--- | :--- | :--- |
+| `Alt+h/j/k/l` | Universal | Move focus across Zellij panes and Neovim splits |
+| `Ctrl+h/j/k/l` | Neovim normal | Move focus across internal Neovim splits (`Ctrl+j/k` move through Telescope results) |
+| `Alt+a`, `Alt+e`, or `Alt+t` | Universal | Jump directly to the AI Agent, Editor, or Shell pane (`Alt+;` bounces back) |
+| `Alt+s` or `Ctrl+b s` | Universal | Open floating Zellij `session-manager` and `OSC 7501` Attention Inbox (`ide --sessions`) |
+| `Alt+Shift+S` or `Ctrl+b S` | Universal | Jump to the next workspace waiting for AI attention (`ide --next-attention`) |
+| `Space a` | Neovim visual | Bracket-paste `@file#L1-L2` visual line reference into the AI Agent prompt (`ide --send`) |
+| `Alt+Left/Down/Up/Right` | Zellij | Resize the active pane directionally |
+| `Alt+z` | Zellij | Toggle full-window zoom on the active pane |
+| `Alt+m` or `Ctrl+b m` | Universal | Open floating system monitor (`ide --monitor` using `btop4win`) |
+| `Alt+?` or `Ctrl+b ?` | Universal | Open TrueColor IDE keybinding cheatsheet (`ide --keys`) |
+| `Ctrl+b d` | Zellij | Detach from the current workspace while keeping agents and Neovim running |
+| `-` or `Space e` | Neovim normal | Open `mini.files` explorer at the active buffer directory |
+| `Space ff` or `Space fg` | Neovim normal | Find files (`Space ff`) or live grep (`Space fg`) via Telescope |
+| `Space m` | Neovim normal | Toggle in-buffer Markdown rendering (`render-markdown.nvim`) |
+| `gd`, `gr`, or `K` | Neovim LSP | Go to definition (`gd`), find references (`gr`), or show hover documentation (`K`) |
+| `gx` | Neovim normal | Follow Markdown link, `#heading` anchor, file path, or URL under cursor |
+| `<X1Mouse>` or `<X2Mouse>` | Neovim | Step backward or forward in the Editor jumplist |
+| `:IdeCd [dir]` or `icd [dir]` | Neovim or shell | Synchronize working directory across Editor and Shell (`icd ~` resets root) |
+| `v [+line] <file>` | Shell | Open file at optional line number in the active IDE Neovim pane over Named Pipe RPC |
+| `:Q`, `Alt+q`, `qide`, or `quit` | Universal | Quit the IDE workspace after checking Neovim for unsaved buffers (`ide --quit`) |
+| `:Q!`, `idek`, or `ide --kill` | Neovim or shell | Force-close the active or named IDE workspace without checking unsaved buffers |
+| `ide [dir]`, `ide3`, or `ide2` | Shell | Launch or attach to a 3-pane Inverted-T (`--3pane`) or 2-pane (`--2pane`) workspace |
+| `ide -d <dir>` or `ide --detach <dir>` | Shell | Spawn a detached background IDE session for `<dir>` |
+| `ide --desktop [dir]` | Shell | Launch the workspace inside Zellij's native 1-hop GPU desktop app (`zellij terminal`) |
+| `ide --ai <agy\|claude\|codex>` | Shell | Select the AI coding agent CLI (overriding `$env:IDE_AI_CLI`) |
+| `ide --list [--plain]` | Shell | List active IDE sessions and states (`--plain` prints raw session names) |
+| `ide --backend <zellij\|wt>` | Shell | Select Zellij multiplexer (default) or Windows Terminal split-pane backend |
+
+## Interactive shells and prompts
+
+Interactive PowerShell and Command Prompt sessions are configured for low startup latency, predictive completion, and visual parity:
+
+- **PowerShell module**: `WindowsSettings` is deployed to `$HOME\Documents\PowerShell\Modules\WindowsSettings` and imported via a 1-line `$PROFILE` (`Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue`), compiling `oh-my-posh`, `zoxide`, `gh` completion, and `theme_env.ps1` initializers to `$HOME\.cache\powershell\` for sub-10ms warm startup.
+- **Single-line Oh My Posh shelf prompt**: Configured in `config/powershell/p10k_single_line.omp.json`:
+  - Renders on the active theme's `BASE02` shelf (`#073642` in Solarized Dark) with the OS icon in calm `BASE0` (shifting automatically to seasonal glyphs when a US Holiday theme is active).
+  - Resolves and caches GitHub and GitLab pull and merge request numbers asynchronously in the background, rendering clickable OSC 8 `<branch>@<N>` badges next to the Git branch without blocking prompt redraws.
+  - Anchors right-prompt command status (Green on success and Red on error) alongside execution duration, active language toolchains, and cloud context.
+- **Windows Command Prompt AutoRun**: `config/cmd/autorun.cmd` is registered in `HKCU\Software\Microsoft\Command Processor\AutoRun` to enable UTF-8 (`chcp 65001`), `COLORTERM=truecolor`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, dynamic `theme_env.cmd` palette hooks, and full `doskey` shortcut parity with zero external process spawns.
+
+## Developer toolchains and modern CLI suite
+
+- **Syntax-highlighted file viewer and raw concatenation**: `b` invokes `bat` with 17 `.tmTheme` palettes, 37 standalone `.sublime-syntax` grammars, Git gutter markers, and italic comments, while `cat` runs unwrapped `uutils-coreutils` `cat.exe`.
+- **Git diff viewer**: `delta` renders TrueColor syntax-highlighted Git diffs (`config/git/delta.gitconfig`) linked into global `.gitconfig` and updated dynamically by `theme`.
+- **Directory listings**: `eza` provides 24-bit TrueColor `EZA_COLORS` (`e`, `el`, `elm`, `et`, `elt`, `elx`) alongside 40-language calibrated `LS_COLORS` (`ls`, `ll`, `la`, `l`).
+- **Modern CLI utilities**: `dust` (`ds`), `sd`, `yq`, `jq`, `tealdeer` (`tldr`), `btop4win` (`btop`), `glow`, `zoxide` (`z`, `zi`), and `fzf` (`Ctrl+R`), provisioned via `configuration.dsc.yaml` and `mise.toml`.
+- **Zero-touch Windows Terminal Fragment**: `config/terminal/windows-settings.json` deploys all 17 TrueColor schemes, `MesloLGS Nerd Font Mono`, and clean `Alt+*` pass-through without overwriting user profiles in base `settings.json`.
+
+### Color theme management (`theme`)
+
+The `theme` utility (`bin/theme.ps1` and `bin/theme.cmd`) switches the active color scheme across Zellij, Windows Terminal, Neovim (live Named Pipe RPC), Vim, PowerShell and PSReadLine, Oh My Posh, `cmd.exe`, `bat`, `delta`, `btop4win`, `tealdeer`, `fzf`, `eza`, `jq`, `LS_COLORS`, and live terminal OSC 4, 10, 11, and 12 slots:
+
+- **Classic developer palettes (9)**: `solarized-dark` (default), `solarized-light`, `catppuccin-mocha`, `catppuccin-latte`, `gruvbox-dark`, `tokyonight-night`, `kanagawa-wave`, `nord`, and `onedark`.
+- **US Holiday palettes (8)**: `new-years`, `valentines`, `st-patricks`, `easter`, `independence-day`, `halloween`, `thanksgiving`, and `christmas`.
+- **Custom user themes**: Scaffold a custom `.theme` specification in `$HOME\.config\windows-settings\themes\` with `theme --create <slug> --from <base>` to include it in `theme --list`, `:Theme` completion, and interactive `fzf` previews.
+
+| Command | Description |
+| :--- | :--- |
+| `theme` | Open interactive `fzf` picker with live TrueColor swatch and syntax preview |
+| `theme <slug>` | Switch terminal emulators, Zellij, Neovim, Vim, prompts, and CLI tools to `<slug>` |
+| `theme --holiday` | Switch to the active or nearest upcoming US Holiday theme |
+| `:Theme [slug\|--holiday]` | View or switch the active color theme inside Neovim or standalone Vim |
+| `theme --list [--plain]` | List all built-in and custom themes (`--plain` prints raw theme slugs) |
+| `theme --current` | Print the currently active theme slug |
+| `theme --preview <slug>` | Render a TrueColor 16-color swatch and syntax preview without switching |
+| `theme --create <slug> [--from <base>]` | Scaffold a custom user theme in `$HOME\.config\windows-settings\themes\<slug>.theme` |
+| `theme --sync-assets` | Regenerate static `bat`, `btop`, and Windows Terminal theme assets from `.theme` files |
+| `theme --dry-run <slug>` | Preview all configuration updates for `<slug>` without modifying files |
+
+## Extensibility and customization
+
+Keep machine-local or private settings in untracked drop-in hooks so repository updates remain conflict-free:
+
+- `$HOME\.config\windows-settings\env.d\*.ps1`: Local PowerShell environment variables and `PATH` additions.
+- `$HOME\.config\windows-settings\aliases.d\*.ps1`: Local PowerShell aliases.
+- `$HOME\.config\windows-settings\functions.d\*.ps1`: Local PowerShell functions.
+- `$HOME\.config\windows-settings\cmd.d\*.cmd`: Local `cmd.exe` AutoRun drop-in scripts and `doskey` macros.
+- `$HOME\.config\windows-settings\themes\*.theme`: Custom user 24-bit TrueColor theme definitions.
+- `$HOME\.gemini\config\hooks.json`: Antigravity lifecycle hooks forwarding `SessionStart`, `PreInvocation`, and `Stop` events to `ide.cmd --agy-hook` for Zellij `OSC 7501` attention badges.
+
+## Git and shell shortcuts
+
+Functions and aliases in `module/` (mirrored as `doskey` macros in `config/cmd/autorun.cmd`) provide shortcuts for navigation, IDE control, directory listings, Git workflows, and polyglot builds:
 
 | Shortcut | Description |
 | :--- | :--- |
-| `Ctrl+R` | Interactive fuzzy search command history via `fzf` (with graceful PSReadLine fallback) |
-| `z <dir>` | Smart frecency jump to directory via `zoxide` |
-| `b <file>` | Syntax-highlighted file viewing with Git gutter via `bat` |
-| `cat <file>` | Fast raw file concatenation via `uutils-coreutils` `cat` |
-| `theme [slug]` | Interactive `fzf` theme picker or instant 17-theme palette switch (`--list`, `--holiday`, `--preview`) |
-| `ide` / `ide3` / `ide2` | Launch or attach 3-pane Inverted-T or 2-pane Zellij + Neovim RPC + AI IDE session (`-d` detach, `--desktop` GPU app) |
-| `ide -s` / `Alt+s` | Open Zellij floating Session Manager & `OSC 7501` Agent Attention Inbox (`Alt+Shift+S` jumps to next attention) |
-| `v [+line] <file>` | Open file in active IDE Neovim pane via Named Pipe RPC (falls back to local `nvim`) |
-| `icd [dir]` | Synchronized directory jump across current shell and active IDE Neovim server (`icd ~` resets root) |
-| `qide` / `quit` / `idek` | Safely quit IDE workspace after checking unsaved Neovim buffers (`idek` force-kills) |
-| `ds` | Visual disk usage tree via `dust` |
-| `btop` | Interactive TrueColor system monitor (`btop4win`) |
-| `update` | Unified workstation updater (`winget`, `mise`, PowerShell modules, `nvim` Lazy plugins, `tldr`) |
-| `gco` / `gcb` / `gcm` | `git checkout` / `git checkout -b` / `git checkout main` (or `master`) |
-| `ga` / `gaa` | `git add` / `git add --all` |
-| `gst` / `gss` | `git status` / `git status -s` |
-| `gd` / `gds` | `git diff` / `git diff --staged` (rendered via `delta`) |
-| `gl` / `gp` | `git pull --rebase --autostash` / `git push` (auto-sets `-u origin HEAD` on new branches) |
-| `gb` / `gba` / `gbd` | `git branch` (list / all / safe delete `-d`) |
-| `gsta` / `gstp` / `gstl` | `git stash` (push / pop / list) |
-| `glog` / `glo` | `git log --graph` / `git log --oneline` |
-| `grb` / `grbc` / `grba` | `git rebase` / `--continue` / `--abort` |
-| `gcommit` / `gamend` | `git add -A && git commit` / `git add -A && git commit --amend --no-edit` |
-| `gup` | `git fetch --prune && git pull --rebase --autostash` |
-| `gprune` / `gpurge` | Delete **merged** local branches safely (`gprune`) vs force-delete unmerged branches (`gpurge`) |
-| `gsync` | Guarded rebase of clean working tree onto latest `origin/main` or `origin/master` |
-| `guser-branch` | Prefix feature branch with `$USER/` (blocks renaming `main`/`master`, strips duplicate prefixes) |
-| `go-testall` / `go-buildall` / `go-lint` | `go test ./...` / `go build ./...` / `golangci-lint run` |
-| `tf` / `yaml-lint` | `terraform` / `yamllint` |
-| `vi` / `vim` | `nvim` (with automatic fallback to `vim`) |
-| `ls` / `ll` / `la` / `l` | Coreutils directory listings rendered with unbolded TrueColor `LS_COLORS` |
-| `e` / `el` / `elm` / `et` / `elt` / `elx` | Modern `eza` listings with Git status, `--group`, `--time-style=long-iso`, and tree views |
-| `fs` | Fast recursive directory tree search (`fd` + `Format-PathTree`) |
+| `Ctrl+R` | Fuzzy search command history via `fzf` (with PSReadLine fallback when `fzf` is absent) |
+| `z <dir>` or `zi` | Jump to frecency-ranked directory via `zoxide` (`zi` opens interactive picker) |
+| `b <file>` | View file with TrueColor syntax highlighting and Git gutter via `bat` |
+| `cat <file>` | Concatenate files raw without paging or line numbers via `uutils-coreutils` `cat` |
+| `theme [slug]` | Open interactive `fzf` theme picker or switch all tools to `<slug>` |
+| `ide`, `ide3`, or `ide2` | Launch or attach to a 3-pane Inverted-T or 2-pane Zellij and Neovim IDE workspace |
+| `v [+line] <file>` | Open file in the active IDE Neovim pane over Named Pipe RPC (falls back to local `nvim`) |
+| `icd [dir]` | Synchronize working directory across current shell and active IDE Neovim server |
+| `qide`, `quit`, or `idek` | Safely quit IDE workspace after checking unsaved buffers (`idek` force-kills) |
+| `vi` or `vim` | Launch `nvim` (falling back to standalone `vim` when `nvim` is absent) |
+| `ds` | Analyze directory disk usage via `dust` |
+| `btop` | Launch interactive TrueColor system monitor (`btop4win`) |
+| `update` | Update `winget`, `mise`, PowerShell modules, Neovim plugins, and `tldr` cache (`update-system`) |
+| `ls`, `ll`, `la`, or `l` | Coreutils directory listings styled with TrueColor `LS_COLORS` |
+| `e`, `el`, `elm`, `et`, `elt`, or `elx` | `eza` listings with Nerd Font icons, Git status, ISO timestamps, and tree views |
+| `fs [pattern]` | Recursive directory tree search combining `fd` and `Format-PathTree` |
+| `gco`, `gcb`, or `gcm` | `git checkout`, `git checkout -b`, or switch to primary branch (`main`, `master`, or `trunk`) |
+| `ga` or `gaa` | `git add` or `git add --all` |
+| `gst` or `gss` | `git status` or short `git status -s` |
+| `gd` or `gds` | `git diff` or `git diff --staged` rendered through `delta` |
+| `gl` or `gp` | `git pull --rebase --autostash` or `git push` (auto-sets `-u origin HEAD` on new branches) |
+| `gb`, `gba`, or `gbd` | List local branches, list all branches, or delete merged branch (`git branch -d`) |
+| `gsta`, `gstp`, or `gstl` | Push, pop, or list Git stashes |
+| `glog` or `glo` | Graph commit log (`git log --graph`) or compact one-line log (`git log --oneline`) |
+| `grb`, `grbc`, or `grba` | Start, continue, or abort interactive or branch rebase |
+| `gcommit` or `gamend` | Stage all changes and commit, or stage all and `--amend --no-edit` |
+| `gup` | Fetch with `--prune` and pull with `--rebase --autostash` |
+| `gprune` | Delete local branches already merged into the primary branch (`git branch -d`) |
+| `gpurge` | Force-delete unmerged local branches (`git branch -D`) after confirmation |
+| `gsync` | Verify clean working tree, fetch, and rebase current branch onto `origin/main` or `origin/master` |
+| `guser-branch` | Prefix feature branch with `$USER/` (refuses `main` or `master` and strips duplicate prefixes) |
+| `go-testall`, `go-buildall`, or `go-lint` | Run `go test ./...`, `go build ./...`, or `golangci-lint run` |
+| `tf` or `yaml-lint` | Run `terraform` or `yamllint` |
 
-### 8. Modern Lua Neovim (`config/nvim/init.lua`) & Standalone Vim (`config/vim/_vimrc`)
-- **Neovim 0.11+ / 0.12+ Native LSP**: Configured via `vim.lsp.config` / `vim.lsp.enable` across Go (`gopls`), Python (`pyright`), TypeScript (`ts_ls`), Rust (`rust_analyzer`), C/C++ (`clangd`), Terraform (`terraformls`), YAML (`yamlls`), Lean 4 (`leanls`), and Java (`ftplugin/java.lua`).
-- **43 Custom Tree-sitter AST Queries**: 13 base query supersedures (`queries/`) and 30 runtime extensions (`after/queries/`) calibrated across the 40-language polyglot validation suite (`sample-code/`).
-- **Rich In-Buffer UX**: `render-markdown.nvim` terminal Markdown rendering, `mini.files` + `mini.icons` explorer (`-`), AST link/heading navigation (`gx`, `]]`, `[[`, `gO`), mouse back/forward (`<X1Mouse>`/`<X2Mouse>`), Telescope (`<leader>ff`, `<leader>fg`), and live `:Theme <slug>` switching.
-- **Zero-Dependency Fallback Vim (`_vimrc`)**: Self-contained 17-theme TrueColor/256-color engine with `:Theme` command for environments without Neovim.
+## Standalone utilities (`bin/`)
 
-### 9. Zero-Touch Windows Terminal (`config/terminal/`)
-- Native Windows Terminal JSON Fragment extension (`config/terminal/windows-settings.json`) deploying all **17 TrueColor schemes**, **MesloLGS Nerd Font Mono**, and clean **`Alt+*` pass-through** so Zellij workspace/session/attention keybindings operate without host terminal collisions.
+Every utility in `bin/` ships as a PowerShell script (`<name>.ps1`) paired with a `cmd.exe` wrapper (`<name>.cmd`) registered on the User `PATH` by `setup.ps1`:
 
----
+| Utility | Key options and arguments | Description |
+| :--- | :--- | :--- |
+| `gen-passwd` | `-Length <int>`, `-Count <int>`, `-NoSymbols` | Generate cryptographically random passwords using `RandomNumberGenerator` |
+| `ide` | `--3pane`, `--2pane`, `--ai <cli>`, `-d, --detach`, `--desktop`, `-s, --sessions`, `--next-attention`, `--open [+line] <file>`, `--preview <file>`, `--cd <dir>`, `--send <text>`, `--monitor`, `--keys`, `--quit`, `--kill`, `--list [--plain]`, `--backend <zellij\|wt>`, `--dry-run`, `[dir]` | Launch and manage Zellij `0.46+` and Neovim Named Pipe RPC workspaces and AI coding agent sessions |
+| `install-nerd-fonts` | `-FontName <name>`, `-DryRun` | Download and register MesloLGS Nerd Font Mono faces in user font settings |
+| `repeat-until-success` | `-MaxAttempts <int>`, `-DelaySeconds <int>`, `<command>` | Re-run a command until it exits `0` or reaches `-MaxAttempts` |
+| `sum` | `[numbers...]`, pipeline `stdin` | Accumulate integers and floating-point numbers from arguments or piped input |
+| `theme` | `--list [--plain]`, `--current`, `--set <slug>`, `--holiday`, `--preview <slug>`, `--create <slug> [--from <base>]`, `--env`, `--path`, `--sync-assets`, `--no-live`, `--dry-run`, `[slug]` | Synchronize 17 built-in and custom 24-bit TrueColor themes across terminals, multiplexers, editors, prompts, and CLI tools |
+| `update-system` | `--dry-run`, `-SkipWinget`, `-SkipMise`, `-SkipModules`, `-SkipNvim` | Update `winget` packages, `mise` runtimes, PowerShell modules, Oh My Posh, Neovim plugins, and `tldr` cache |
 
-## Testing & Quality Gates
+## Development and testing
 
-Run static analysis and the automated validation suite locally:
+Run `PSScriptAnalyzer` static analysis and the 8-module validation suite locally before submitting changes:
 
 ```powershell
 Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
 $null | pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **234 automated tests across all 8 modules**:
-1. PowerShell Script & Module Syntax
-2. JSON, KDL, YAML, Theme, Query, Governance & Manifest Validity (`configuration.dsc.yaml`, `mise.toml`, `config/zellij/`, `p10k_single_line.omp.json`, `settings.json`, fragments, 17 `.theme` & `.tmTheme` files, 37 `bat` syntaxes, 43 `.scm` queries, `delta`, `tealdeer`, `clangd`, `btop`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `llms.txt`, `.github/`)
-3. WindowsSettings Module Import, Aliases & Function Exports (82 functions)
-4. Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`, `theme`, `ide`, `update-system`)
-5. Git Workflow Behavior & Safety Guards (`gsync`, `gprune`, `gpurge`, `guser-branch`, `fix-abcxyz-branch-name`)
-6. Completions, CMD AutoRun & Prompt Rendering (including OSC 8 PR badge hyperlinks)
-7. Path, Line-Ending, Startup Hygiene & Dual Execution Wrappers (all 7 `.ps1` + `.cmd` pairs in `bin/`)
-8. Setup Script Idempotency, DryRun, `-Theme`, Clean `-Uninstall*` & Backup Policy
+The test suite executes 237+ automated checks across 8 modules:
 
----
+1. PowerShell script and module AST syntax validation
+2. JSON, KDL, YAML, theme, Tree-sitter query, governance, documentation typography, and manifest validity
+3. `WindowsSettings` module import, alias mapping, and 82 function exports
+4. Native `bin/` CLI utilities and pipeline input handling
+5. Git workflow behavior and branch safety guards (`gsync`, `gprune`, `gpurge`, `guser-branch`)
+6. Tab completions, `cmd.exe` AutoRun, and Oh My Posh rendering (including OSC 8 PR badges and live theme cache rotation)
+7. Path invariants, byte-level `CRLF` and `LF` line endings, startup hygiene, and `.cmd` batch wrappers
+8. Setup orchestrator idempotency, `-DryRun`, `-Theme`, clean `-Uninstall*`, and timestamped backup behavior
 
-## Contributing & Security
+## Contributing, security, and license
 
-- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for local `-DryRun` workflows, multi-file component contracts, and pre-PR checks.
-- **Security**: Please report vulnerabilities privately per [SECURITY.md](SECURITY.md).
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for local `-DryRun` testing, multi-file component contracts, and pull request guidelines.
+- **Security**: Report vulnerabilities privately per [SECURITY.md](SECURITY.md).
 - **License**: Licensed under the [Apache License 2.0](LICENSE).

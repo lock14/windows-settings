@@ -176,10 +176,10 @@ if ((Test-Path $licensePath) -and ((Get-Content $licensePath -Raw) -match 'Apach
 }
 
 foreach ($govDoc in @(
-    @{ Rel = 'AGENTS.md';       Pattern = 'Universal Semantic Color Contract' },
-    @{ Rel = 'CONTRIBUTING.md'; Pattern = 'Pre-Completion Verification Checklist' },
+    @{ Rel = 'AGENTS.md';       Pattern = 'Universal semantic color contract' },
+    @{ Rel = 'CONTRIBUTING.md'; Pattern = 'Pre-completion verification checklist' },
     @{ Rel = 'SECURITY.md';     Pattern = 'Private Vulnerability Reporting' },
-    @{ Rel = 'llms.txt';        Pattern = '## Core Components' }
+    @{ Rel = 'llms.txt';        Pattern = '## Core components' }
 )) {
     $govFull = Join-Path $RootDir $govDoc.Rel
     if ((Test-Path $govFull) -and ((Get-Content $govFull -Raw) -match $govDoc.Pattern)) {
@@ -196,7 +196,7 @@ if (-not (Test-Path (Join-Path $RootDir 'CLAUDE.md')) -and -not (Test-Path (Join
 }
 
 foreach ($ghRel in @(
-    @{ Rel = '.github\PULL_REQUEST_TEMPLATE.md';           Pattern = 'Verification & Testing' },
+    @{ Rel = '.github\PULL_REQUEST_TEMPLATE.md';           Pattern = '## Verification' },
     @{ Rel = '.github\ISSUE_TEMPLATE\bug_report.yml';      Pattern = 'title:\s*"\[Bug\]: "' },
     @{ Rel = '.github\ISSUE_TEMPLATE\feature_request.yml'; Pattern = 'title:\s*"\[Feature\]: "' },
     @{ Rel = '.github\ISSUE_TEMPLATE\config.yml';          Pattern = 'blank_issues_enabled:\s*false' },
@@ -210,6 +210,344 @@ foreach ($ghRel in @(
     } else {
         Fail "GitHub governance/workflow check: $($ghRel.Rel)" "Missing file or required pattern ($($ghRel.Pattern))"
     }
+}
+
+# Test Documentation Typography, Formatting Restraint, JSON Blocks & Link/Anchor Integrity
+function Find-ClosingBacktickRun {
+    param([string]$Text, [int]$TickCount)
+    for ($i = 0; $i -le ($Text.Length - $TickCount); ) {
+        if ($Text[$i] -ne '`') {
+            $i++
+            continue
+        }
+        $run = 0
+        while (($i + $run) -lt $Text.Length -and $Text[$i + $run] -eq '`') {
+            $run++
+        }
+        if ($run -eq $TickCount) {
+            return $i
+        }
+        $i += $run
+    }
+    return -1
+}
+
+function Get-LineWithoutInlineCode {
+    param([string]$Line)
+    $sb = [System.Text.StringBuilder]::new($Line.Length)
+    for ($i = 0; $i -lt $Line.Length; ) {
+        if ($Line[$i] -eq '`') {
+            $tickCount = 0
+            while (($i + $tickCount) -lt $Line.Length -and $Line[$i + $tickCount] -eq '`') {
+                $tickCount++
+            }
+            $closeRel = Find-ClosingBacktickRun -Text $Line.Substring($i + $tickCount) -TickCount $tickCount
+            if ($closeRel -ge 0) {
+                $i += $tickCount + $closeRel + $tickCount
+                continue
+            }
+            [void]$sb.Append($Line.Substring($i, $tickCount))
+            $i += $tickCount
+            continue
+        }
+        [void]$sb.Append($Line[$i])
+        $i++
+    }
+    return $sb.ToString()
+}
+
+function Find-StackedFormatting {
+    param([string]$Line)
+    for ($i = 0; $i -lt $Line.Length; ) {
+        if ($Line[$i] -eq '`') {
+            $tickCount = 0
+            while (($i + $tickCount) -lt $Line.Length -and $Line[$i + $tickCount] -eq '`') {
+                $tickCount++
+            }
+            $closeRel = Find-ClosingBacktickRun -Text $Line.Substring($i + $tickCount) -TickCount $tickCount
+            if ($closeRel -ge 0) {
+                $i += $tickCount + $closeRel + $tickCount
+                continue
+            }
+            $i += $tickCount
+            continue
+        }
+
+        $tail = $Line.Substring($i)
+        if ($tail.StartsWith('***')) {
+            $end = $tail.Substring(3).IndexOf('***')
+            if ($end -ge 0) { return $Line.Substring($i, 3 + $end + 3) }
+        }
+        if ($tail.StartsWith('_**')) {
+            $end = $tail.Substring(3).IndexOf('**_')
+            if ($end -ge 0) { return $Line.Substring($i, 3 + $end + 3) }
+        }
+        if ($tail.StartsWith('**')) {
+            $end = $tail.Substring(2).IndexOf('**')
+            if ($end -ge 0) {
+                $inner = $Line.Substring($i + 2, $end)
+                $full = $Line.Substring($i, 2 + $end + 2)
+                if ($inner.Contains('`')) { return $full }
+                if ($inner.Contains('[') -and $inner.Contains('](')) { return $full }
+                if (($inner.StartsWith('_') -and $inner.EndsWith('_') -and $inner.Length -gt 2) -or
+                    ($inner.StartsWith('*') -and $inner.EndsWith('*') -and $inner.Length -gt 2)) {
+                    return $full
+                }
+                $i += 2 + $end + 2
+                continue
+            }
+        }
+        if ($Line[$i] -eq '[') {
+            $closeBracket = $Line.Substring($i + 1).IndexOf(']')
+            if ($closeBracket -ge 0) {
+                $afterBracket = $i + 1 + $closeBracket + 1
+                if ($afterBracket -lt $Line.Length -and $Line[$afterBracket] -eq '(') {
+                    $linkText = $Line.Substring($i + 1, $closeBracket)
+                    if ($linkText.Contains('**')) {
+                        $closeParen = $Line.Substring($afterBracket + 1).IndexOf(')')
+                        if ($closeParen -ge 0) {
+                            return $Line.Substring($i, $afterBracket + 1 + $closeParen + 1 - $i)
+                        }
+                    }
+                }
+            }
+        }
+        $i++
+    }
+    return ''
+}
+
+function Get-GitHubHeadingSlug {
+    param([string]$Heading)
+    $stripped = [regex]::Replace($Heading, '\[([^\]]+)\]\([^)]+\)', '$1')
+    $lower = $stripped.Trim().ToLowerInvariant()
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($ch in $lower.ToCharArray()) {
+        if ([char]::IsLetterOrDigit($ch) -or $ch -eq '-' -or $ch -eq '_') {
+            [void]$sb.Append($ch)
+        } elseif ($ch -eq ' ') {
+            [void]$sb.Append('-')
+        }
+    }
+    return $sb.ToString()
+}
+
+function Get-MarkdownLinkTarget {
+    param([string]$Line)
+    $cleaned = Get-LineWithoutInlineCode -Line $Line
+    $targets = [System.Collections.Generic.List[string]]::new()
+    for ($pos = 0; $pos -lt $cleaned.Length; ) {
+        $idx = $cleaned.Substring($pos).IndexOf('](')
+        if ($idx -lt 0) { break }
+        $start = $pos + $idx + 2
+        $depth = 1
+        $raw = [System.Text.StringBuilder]::new()
+        $j = $start
+        while ($j -lt $cleaned.Length -and $depth -gt 0) {
+            if ($cleaned[$j] -eq '\' -and ($j + 1) -lt $cleaned.Length) {
+                [void]$raw.Append($cleaned[$j + 1])
+                $j += 2
+                continue
+            }
+            if ($cleaned[$j] -eq '(') {
+                $depth++
+                [void]$raw.Append('(')
+                $j++
+                continue
+            }
+            if ($cleaned[$j] -eq ')') {
+                $depth--
+                if ($depth -eq 0) { break }
+                [void]$raw.Append(')')
+                $j++
+                continue
+            }
+            [void]$raw.Append($cleaned[$j])
+            $j++
+        }
+        if ($depth -ne 0) { break }
+        $target = $raw.ToString().Trim()
+        if ($target -match '^\S+') { $target = $Matches[0] }
+        $target = $target.TrimStart('<').TrimEnd('>')
+        if ($target -ne '') { $targets.Add($target) }
+        $pos = $j + 1
+    }
+    return $targets
+}
+
+$docLintMarkdownFiles = @(
+    'README.md',
+    'CONTRIBUTING.md',
+    'AGENTS.md',
+    'SECURITY.md',
+    'llms.txt',
+    '.github\PULL_REQUEST_TEMPLATE.md'
+)
+$docLintYamlFiles = @(
+    '.github\ISSUE_TEMPLATE\bug_report.yml',
+    '.github\ISSUE_TEMPLATE\feature_request.yml',
+    '.github\ISSUE_TEMPLATE\config.yml',
+    '.github\dependabot.yml',
+    '.github\workflows\ci.yml',
+    '.github\workflows\security.yml'
+)
+
+$docEmojiRegex = '([\uD83C-\uDBFF][\uDC00-\uDFFF]|[\u26A1\u2705\u2728\u274C]|:(?:white_check_mark|x):)'
+$docBoldCellRegex = '^\|\s*\*\*[^*]+\*\*\s*\|'
+$docItalicAsideRegex = '(?i)(\*|_)\((?:note|tip|alternatively)\b'
+$docProseArrowRegex = '(<->|->|<-|=>|\\rightarrow|\\leftrightarrow|\\gg|[\u2190-\u21FF\u226B])'
+$docPersonalPathRegex = '(?i)(/home/(?!<)[a-z0-9_-]+|/Users/(?!<)[a-z0-9_-]+|C:\\Users\\(?!<)[a-z0-9_-]+)'
+
+$docEmojiAndPathErrors = [System.Collections.Generic.List[string]]::new()
+$docTypographyErrors = [System.Collections.Generic.List[string]]::new()
+$docLinkAndJsonErrors = [System.Collections.Generic.List[string]]::new()
+
+foreach ($relYaml in $docLintYamlFiles) {
+    $fullYaml = Join-Path $RootDir $relYaml
+    if (-not (Test-Path $fullYaml)) { continue }
+    $yamlText = [System.IO.File]::ReadAllText($fullYaml)
+    if ($yamlText -match $docPersonalPathRegex) {
+        $docEmojiAndPathErrors.Add("${relYaml}: personal path '$($Matches[0])'")
+    }
+    if ($yamlText -match $docEmojiRegex) {
+        $docEmojiAndPathErrors.Add("${relYaml}: decorative emoji or shortcode '$($Matches[0])'")
+    }
+}
+
+foreach ($relDoc in $docLintMarkdownFiles) {
+    $fullDoc = Join-Path $RootDir $relDoc
+    if (-not (Test-Path $fullDoc)) { continue }
+    $docText = [System.IO.File]::ReadAllText($fullDoc)
+    if ($docText -match $docPersonalPathRegex) {
+        $docEmojiAndPathErrors.Add("${relDoc}: personal path '$($Matches[0])'")
+    }
+    if ($docText -match $docEmojiRegex) {
+        $docEmojiAndPathErrors.Add("${relDoc}: decorative emoji or shortcode '$($Matches[0])'")
+    }
+
+    $docLines = $docText -split "`n"
+    $inFence = $false
+    $fenceLang = ''
+    $fenceStart = 0
+    $fenceBuf = [System.Text.StringBuilder]::new()
+    $headingSlugs = @{}
+    $slugCounts = @{}
+
+    for ($idx = 0; $idx -lt $docLines.Count; $idx++) {
+        $lineNum = $idx + 1
+        $line = $docLines[$idx].TrimEnd("`r")
+        $trimmed = $line.Trim()
+
+        if ($trimmed.StartsWith('```')) {
+            if (-not $inFence) {
+                $inFence = $true
+                $fenceLang = $trimmed.Substring(3).Trim().ToLowerInvariant()
+                $fenceStart = $lineNum
+                [void]$fenceBuf.Clear()
+            } else {
+                if ($fenceLang -eq 'json') {
+                    try {
+                        $null = $fenceBuf.ToString() | ConvertFrom-Json -ErrorAction Stop
+                    } catch {
+                        $docLinkAndJsonErrors.Add("${relDoc}:${fenceStart}: invalid JSON code block")
+                    }
+                }
+                $inFence = $false
+                $fenceLang = ''
+            }
+            continue
+        }
+        if ($inFence) {
+            [void]$fenceBuf.AppendLine($line)
+            continue
+        }
+
+        if ($trimmed -eq '---') {
+            $docTypographyErrors.Add("${relDoc}:${lineNum}: horizontal rule divider '---'")
+        }
+        if ($trimmed -match $docBoldCellRegex) {
+            $docTypographyErrors.Add("${relDoc}:${lineNum}: bolded first-column table cell '$($Matches[0].Trim())'")
+        }
+        $stackedSpan = Find-StackedFormatting -Line $line
+        if ($stackedSpan -ne '') {
+            $docTypographyErrors.Add("${relDoc}:${lineNum}: stacked formatting '$stackedSpan'")
+        }
+
+        $cleanedLine = [regex]::Replace((Get-LineWithoutInlineCode -Line $line), '<!--.*?-->', '')
+        if ($cleanedLine -match $docItalicAsideRegex) {
+            $docTypographyErrors.Add("${relDoc}:${lineNum}: italic parenthetical aside '$($Matches[0])'")
+        }
+        if ($cleanedLine -match $docProseArrowRegex) {
+            $docTypographyErrors.Add("${relDoc}:${lineNum}: prose arrow '$($Matches[0])'")
+        }
+
+        if ($trimmed.StartsWith('#')) {
+            $title = $trimmed.TrimStart('#').Trim()
+            if ($title -ne '') {
+                $baseSlug = Get-GitHubHeadingSlug -Heading $title
+                if ($baseSlug -ne '') {
+                    $count = if ($slugCounts.ContainsKey($baseSlug)) { $slugCounts[$baseSlug] } else { 0 }
+                    $slugCounts[$baseSlug] = $count + 1
+                    $slug = if ($count -gt 0) { "$baseSlug-$count" } else { $baseSlug }
+                    $headingSlugs[$slug] = $true
+                }
+            }
+        }
+    }
+
+    $inFence = $false
+    $docDir = Split-Path -Parent $fullDoc
+    for ($idx = 0; $idx -lt $docLines.Count; $idx++) {
+        $lineNum = $idx + 1
+        $line = $docLines[$idx].TrimEnd("`r")
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('```')) {
+            $inFence = -not $inFence
+            continue
+        }
+        if ($inFence) { continue }
+
+        foreach ($target in (Get-MarkdownLinkTarget -Line $line)) {
+            if ($target.StartsWith('#')) {
+                $slug = $target.Substring(1)
+                if (-not $headingSlugs.ContainsKey($slug)) {
+                    $docLinkAndJsonErrors.Add("${relDoc}:${lineNum}: broken anchor link '$target'")
+                }
+                continue
+            }
+            if ($target.StartsWith('http://') -or $target.StartsWith('https://') -or $target.StartsWith('mailto:')) {
+                continue
+            }
+            $relTarget = $target
+            $hashIdx = $relTarget.IndexOf('#')
+            if ($hashIdx -ge 0) {
+                $relTarget = $relTarget.Substring(0, $hashIdx)
+            }
+            if ($relTarget -eq '') { continue }
+            $targetPath = Join-Path $docDir ($relTarget.Replace('/', '\'))
+            if (-not (Test-Path $targetPath)) {
+                $docLinkAndJsonErrors.Add("${relDoc}:${lineNum}: broken relative file link '$target'")
+            }
+        }
+    }
+}
+
+if ($docEmojiAndPathErrors.Count -eq 0) {
+    Pass "Documentation & GitHub YAML free of decorative emojis, shortcodes & personal paths"
+} else {
+    Fail "Documentation emoji/path hygiene" ($docEmojiAndPathErrors -join '; ')
+}
+
+if ($docTypographyErrors.Count -eq 0) {
+    Pass "Documentation typography restraint valid (no '---', bold first-col cells, stacked spans, italic asides, or prose arrows)"
+} else {
+    Fail "Documentation typography restraint" ($docTypographyErrors -join '; ')
+}
+
+if ($docLinkAndJsonErrors.Count -eq 0) {
+    Pass "Documentation JSON code blocks, #anchor slugs & relative file links valid"
+} else {
+    Fail "Documentation links/JSON blocks" ($docLinkAndJsonErrors -join '; ')
 }
 
 # Test configuration.dsc.yaml
