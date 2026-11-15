@@ -16,6 +16,8 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.toml text eol=lf
+*.lock text eol=lf
+*.rs text eol=lf
 *.lua text eol=lf
 *.scm text eol=lf
 *.theme text eol=lf

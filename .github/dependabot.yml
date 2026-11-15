@@ -14,3 +14,17 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # Rust WASM Top-Bar Plugin
+  - package-ecosystem: cargo
+    directory: "/plugin/ws-bar"
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns:
+          - "*"

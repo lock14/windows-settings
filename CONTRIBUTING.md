@@ -9,7 +9,7 @@ All contributions must respect the repository invariants:
 * **Portability and zero personal paths**: Never commit personal user directories or machine-specific paths such as `C:\Users\<username>\`, `/Users/<username>/`, or `/home/<username>/`. Always use canonical PowerShell and Windows environment variables (`$HOME`, `$env:USERPROFILE`, `$env:LOCALAPPDATA`, `$env:APPDATA`, `$PROFILE`) and construct paths with `Join-Path` and `Split-Path`.
 * **Strict line-ending discipline**:
   * `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` files use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a batch script uses `LF`.
-  * `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files use `LF` (`\n`) line endings.
+  * `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lock`, `.rs`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files use `LF` (`\n`) line endings.
 * **Non-destructive backups, idempotency, and dry-run support**:
   * Provisioning and uninstall flows (`setup.ps1`, `bootstrap.ps1`) create a timestamped `.bak_<timestamp>` backup before modifying existing user files and skip backup creation when file content is already identical.
   * Every provisioning, theme-switching, IDE orchestration, and system-update script (`setup.ps1`, `bootstrap.ps1`, `bin/theme.ps1`, `bin/ide.ps1`, `bin/update-system.ps1`) honors `-DryRun` or `--dry-run` without mutating files, registry keys, or running processes.
@@ -32,6 +32,9 @@ Keep components uniform across shells and tools, and never commit ad-hoc scratch
    * **Static asset synchronization**: Run `pwsh -NoProfile -File ./bin/theme.ps1 --sync-assets` to regenerate `config/bat/themes/*-TrueColor.tmTheme`, `config/btop/themes/*.theme`, `config/terminal/windows-settings.json`, and `config/terminal/settings.json`, and update the standalone palette table in `config/vim/_vimrc`.
 3. **Adding or updating language highlighting**:
    * **Polyglot parity**: Add a representative sample in `sample-code/`, a standalone `.sublime-syntax` grammar in `config/bat/syntaxes/`, a Tree-sitter `.scm` query in `config/nvim/queries/` or `config/nvim/after/queries/`, and an extension mapping in `config/colors/LS_COLORS`.
+4. **Modifying the Zellij WASM top-bar plugin**:
+   * **Source-only tracking**: Keep Rust sources and `Cargo.lock` (`LF`) in `plugin/ws-bar/` while never committing `target/` directories or compiled `.wasm` binaries.
+   * **Build, lint, and fallback**: Verify changes with `cargo test --manifest-path plugin/ws-bar/Cargo.toml`, `cargo clippy --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 -- -D warnings`, and `cargo build --release --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1`, and preserve automatic fallback to `zellij:bars` (`role "compact-bar"`) in `setup.ps1` when Rust is absent.
 
 ## Development setup and local workflow
 
@@ -41,7 +44,7 @@ Keep components uniform across shells and tools, and never commit ad-hoc scratch
 * PowerShell 7 or higher (`pwsh`)
 * Git for Windows
 * `PSScriptAnalyzer` PowerShell module (`Install-Module -Name PSScriptAnalyzer -Scope CurrentUser`)
-* Optional integration binaries: `oh-my-posh`, `zellij` (`0.46+`), `bat`, and `nvim`
+* Optional integration binaries: `oh-my-posh`, `zellij` (`0.46+`), `bat`, `nvim`, and `rustup` with `cargo` (`wasm32-wasip1` target)
 
 ### Clone, preview, and test
 

@@ -1850,6 +1850,15 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             if (Test-Path -LiteralPath $themePs1 -PathType Leaf) {
                 & $themePs1 --sync-assets *> $null
             }
+            if ($env:ZELLIJ -and $env:APPDATA) {
+                $barWasm = Join-Path (Join-Path (Join-Path (Join-Path $env:APPDATA 'Zellij') 'data') 'plugins') 'windows-settings-bar.wasm'
+                if (Test-Path -LiteralPath $barWasm -PathType Leaf) {
+                    $zellijBin = Resolve-ZellijExecutable
+                    if ($zellijBin) {
+                        & $zellijBin action start-or-reload-plugin 'file:windows-settings-bar' *> $null
+                    }
+                }
+            }
             if ($targetArg) {
                 $sess = Resolve-TargetSession $targetArg
                 [void](Invoke-NvimRemoteExpr -PipePath (Get-SessionPipePath $sess) -Expr 'v:lua.apply_home_settings_theme()')

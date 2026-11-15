@@ -1,7 +1,7 @@
 // ============================================================================
 // windows-settings 2-Pane Side-by-Side IDE Layout (ide-2pane.kdl)
 // ============================================================================
-// Top 1-line compact-bar on BASE02 shelf:
+// Top 1-line BASE02 shelf (windows-settings-bar WASM plugin with compact-bar fallback):
 //   50% AI Agent (focused) | 50% Neovim Editor (Named Pipe RPC)
 
 layout {

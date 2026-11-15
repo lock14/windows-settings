@@ -41,9 +41,9 @@ plugins {
         role "status-bar"
     }
     strider location="zellij:strider"
-    compact-bar location="zellij:bars" {
-        role "compact-bar"
-    }
+    // BEGIN WINDOWS-SETTINGS BAR PLUGIN
+    compact-bar location="file:windows-settings-bar"
+    // END WINDOWS-SETTINGS BAR PLUGIN
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true

@@ -28,10 +28,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat', '.doskey')
-          $lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
+          $lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lock', '.rs', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
           $violations = [System.Collections.Generic.List[string]]::new()
 
-          foreach ($file in (Get-ChildItem -Path . -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' })) {
+          foreach ($file in (Get-ChildItem -Path . -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp|plugin[\\/]ws-bar[\\/]target)[\\/]' })) {
               $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
               if ($bytes.Length -eq 0) { continue }
               $text = [System.Text.Encoding]::UTF8.GetString($bytes)
@@ -133,6 +133,38 @@ jobs:
           ) -join "`n"
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
+  wasm-plugin:
+    name: Build & Test WASM Top-Bar Plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Cache Cargo registry and WASM build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            plugin/ws-bar/target/
+          key: ${{ runner.os }}-cargo-ws-bar-${{ hashFiles('plugin/ws-bar/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ws-bar-
+
+      - name: Install wasm32-wasip1 target and clippy
+        run: |
+          rustup target add wasm32-wasip1
+          rustup component add clippy
+
+      - name: Run Rust unit tests, Clippy, and WASM release build
+        run: |
+          cargo test --manifest-path plugin/ws-bar/Cargo.toml --target x86_64-unknown-linux-gnu --locked
+          cargo clippy --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 --locked -- -D warnings
+          cargo build --release --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 --locked
+          ls -lh plugin/ws-bar/target/wasm32-wasip1/release/windows-settings-bar.wasm
+
   # CI Gatekeeper Aggregator Job
   # Acts as the single required status check for branch protection rules.
   ci-gatekeeper:
@@ -141,18 +173,21 @@ jobs:
     needs:
       - lint-and-hygiene
       - test
+      - wasm-plugin
     if: always()
     env:
       LINT_RESULT: ${{ needs.lint-and-hygiene.result }}
       TEST_RESULT: ${{ needs.test.result }}
+      WASM_RESULT: ${{ needs.wasm-plugin.result }}
     steps:
       - name: Evaluate Gatekeeper Status
         run: |
           echo "Evaluating CI pipeline job results:"
           echo "Lint and Hygiene: ${LINT_RESULT}"
           echo "Test Suite:       ${TEST_RESULT}"
+          echo "WASM Plugin:      ${WASM_RESULT}"
 
-          if [ "${LINT_RESULT}" != "success" ] || [ "${TEST_RESULT}" != "success" ]; then
+          if [ "${LINT_RESULT}" != "success" ] || [ "${TEST_RESULT}" != "success" ] || [ "${WASM_RESULT}" != "success" ]; then
             echo "[FAIL] CI Gatekeeper failed: one or more upstream checks did not succeed."
             exit 1
           fi

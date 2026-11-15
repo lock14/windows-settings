@@ -30,6 +30,7 @@ cd windows-settings
 - `module/` (`WindowsSettings` v3.0.0): Autoloaded PowerShell module exporting 82 functions across `Navigation.ps1`, `Git.ps1`, `Developer.ps1`, `Utilities.ps1`, and `Completions.ps1`, with compiled disk caching and non-blocking `<branch>@<N>` OSC 8 pull and merge request badge synchronization.
 - `config/themes/`: 17 canonical 24-bit TrueColor `.theme` specifications covering 9 classic developer palettes (`solarized-dark`, `solarized-light`, `catppuccin-mocha`, `catppuccin-latte`, `gruvbox-dark`, `tokyonight-night`, `kanagawa-wave`, `nord`, `onedark`) and 8 US Holiday palettes (`new-years`, `valentines`, `st-patricks`, `easter`, `independence-day`, `halloween`, `thanksgiving`, `christmas`).
 - `config/zellij/`: Declarative Zellij `0.46+` `config.kdl`, frameless `ide-3pane.kdl` (Inverted-T) and `ide-2pane.kdl` layouts, right-click IDE `context_menu`, `themes/windows-settings.kdl`, `OSC 7501` Attention Inbox, and `zellij terminal` GPU desktop app settings.
+- `plugin/ws-bar/`: Optional Rust `wasm32-wasip1` 1-line `BASE02` Zellij top-bar plugin overriding the `compact-bar` alias with clickable `AI`, `Editor`, `Shell`, `ZOOM`, `SYNC`, `Attention`, `Fleet`, `Monitor`, and `Help` pills, mode-contextual key hints, and automatic built-in `zellij:bars` fallback.
 - `config/nvim/` and `config/vim/_vimrc`: Neovim 0.11+ and 0.12+ Lua configuration (Native LSP, Lazy.nvim, 43 Tree-sitter `.scm` queries, `mini.files`, `render-markdown.nvim`, Named Pipe RPC, `:Theme`) plus standalone 17-theme `_vimrc`.
 - `config/bat/` and `config/colors/LS_COLORS`: 17 `*-TrueColor.tmTheme` files, 37 standalone `.sublime-syntax` grammars, and 40-language calibrated `LS_COLORS`.
 - `config/powershell/`, `config/cmd/autorun.cmd`, and `config/cmd/macros.doskey`: Minimal 1-line `$PROFILE`, streaming Base02 shelf Oh My Posh theme (`p10k_single_line.omp.json`), and UTF-8 `cmd.exe` AutoRun prompt and `doskey /macrofile` parity.
@@ -51,7 +52,7 @@ Every utility ships as a dual-execution pair (`<name>.ps1` and `<name>.cmd`):
 ## Key design invariants
 
 - **Zero personal paths**: Use `$HOME`, `$env:LOCALAPPDATA`, `$env:APPDATA`, and `Join-Path`; never hardcode usernames.
-- **Line-ending contract**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` strictly use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` strictly use `LF`.
+- **Line-ending contract**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` strictly use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lock`, `.rs`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` strictly use `LF`.
 - **Git safety separation**: `gprune` deletes merged branches only (`git branch -d`); `gpurge` force-deletes unmerged branches (`git branch -D`) behind confirmation; `gsync` refuses dirty working trees; `guser-branch` refuses to rename `main` or `master`.
 - **3-tier semantic color contract**: `YELLOW` is exclusive to control flow; `BASE0` holds invocations, qualifiers, and custom domain types; `BLUE` marks routine declarations and section headers; `GREEN` marks declarations and primitive types.
 

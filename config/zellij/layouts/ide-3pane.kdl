@@ -1,7 +1,7 @@
 // ============================================================================
 // windows-settings 3-Pane Inverted-T IDE Layout (ide-3pane.kdl)
 // ============================================================================
-// Top 1-line compact-bar on BASE02 shelf:
+// Top 1-line BASE02 shelf (windows-settings-bar WASM plugin with compact-bar fallback):
 //   Top 75%:    50% AI Agent (focused) | 50% Neovim Editor (Named Pipe RPC)
 //   Bottom 25%: Full-width Interactive PowerShell 7 Shell
 

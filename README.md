@@ -165,6 +165,9 @@ windows-settings/
 │   ├── Navigation.ps1             # Directory navigation and tree search (eza, ls, zoxide, fs)
 │   └── Utilities.ps1              # Core shell utilities (b, ds, btop, update)
 │
+├── plugin/
+│   └── ws-bar/                    # Rust wasm32-wasip1 1-line BASE02 Zellij IDE top-bar plugin
+│
 ├── sample-code/                   # 40-language polyglot sample suite for syntax and AST query validation
 │
 └── tests/
@@ -176,8 +179,9 @@ windows-settings/
 The repository provides a multi-session terminal IDE (`bin/ide.ps1` and `bin/ide.cmd`) built on Zellij `0.46+` (`config/zellij/`) and a live Neovim Named Pipe RPC server (`\\.\pipe\nvim-ide-<session>`), with an automatic Windows Terminal split-pane fallback (`--backend wt`).
 
 - **Spatial window geometry and background sessions**:
-  - **3-pane layout**: Launched by default via `ide`, `ide3`, or `ide --3pane` as a frameless Inverted-T workspace beneath a 1-line `compact-bar`, placing the AI Agent (`agy`, `claude`, or `codex`) at top-left, the Neovim Editor (`mini.files` and buffers) at top-right, and a full-width PowerShell terminal across the bottom.
+  - **3-pane layout**: Launched by default via `ide`, `ide3`, or `ide --3pane` as a frameless Inverted-T workspace beneath a 1-line `BASE02` IDE top shelf (`windows-settings-bar`, falling back automatically to Zellij's built-in `compact-bar` when Rust is unavailable), placing the AI Agent (`agy`, `claude`, or `codex`) at top-left, the Neovim Editor (`mini.files` and buffers) at top-right, and a full-width PowerShell terminal across the bottom.
   - **2-pane layout**: Launched via `ide2` or `ide --2pane` with side-by-side AI Agent and full-height Neovim Editor panes.
+  - **Interactive 1-line IDE top shelf**: Displays the session pill on the left, clickable intra-tab `AI`, `Editor`, and `Shell` role indicators plus active `ZOOM` and extra tab pills in the center, and cross-session attention, fleet count, `Monitor`, and `Help` pills on the right. Clicking an already-focused role pill bounces back to the previous pane, while entering any modal Zellij input mode such as `Tmux`, `Resize`, or `Scroll` replaces the right shelf with contextual key hints.
   - **Detached fleet and GPU desktop app**: `ide -d <dir>` (`--detach`) spawns background agent sessions (`zellij attach --create-background`), while `Ctrl+b d` detaches without stopping running processes. `ide --desktop [dir]` launches Zellij's 1-hop GPU desktop app (`zellij terminal`) with a native OS system tray badge and desktop notifications.
 - **Native Attention Inbox**:
   - Tracks live `OSC 7501` agent lifecycle states (`working`, `needs_you`, `done`, `failed`) across Claude Code, Codex, and Antigravity (`agy` via `~/.gemini/config/hooks.json`).
@@ -207,6 +211,7 @@ The following table indexes keyboard shortcuts, editor commands, shell wrappers,
 | `Alt+z` | Zellij | Toggle full-window zoom on the active pane |
 | `Alt+m` or `Ctrl+b m` | Universal | Toggle floating system monitor (`ide --monitor` using `btop4win` or built-in TUI fallback) |
 | `Alt+?` or `Ctrl+b ?` | Universal | Open TrueColor IDE keybinding cheatsheet (`ide --keys`) |
+| `Left-click` (top-bar pills) | Zellij | Focus or bounce `AI`, `Editor`, or `Shell` panes, toggle `ZOOM`, or open `Inbox`, `Monitor`, or `Help` |
 | `Right-click` (bar, tab, or pane) | Zellij | Open IDE workspace context menu (`Focus AI/Editor/Shell`, `Attention Inbox`, `Monitor`, `Keys`, `Quit`) |
 | `Ctrl+b d` | Zellij | Detach from the current workspace while keeping agents and Neovim running |
 | `-` or `Space e` | Neovim normal | Open `mini.files` explorer at the active buffer directory |
