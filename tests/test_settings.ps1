@@ -607,9 +607,15 @@ if ($batThemeFiles.Count -eq 17) {
 }
 
 $btopThemesDir = Join-Path $RootDir "config\btop\themes"
+$btopConfFile = Join-Path $RootDir "config\btop\btop.conf"
 $btopThemeFiles = @(Get-ChildItem -Path $btopThemesDir -Filter "*.theme" -ErrorAction SilentlyContinue)
-if ($btopThemeFiles.Count -eq 17 -and (Test-Path (Join-Path $RootDir "config\btop\btop.conf"))) {
-    Pass "17 btop/btop4win themes & btop.conf present in config/btop/"
+if ($btopThemeFiles.Count -eq 17 -and (Test-Path $btopConfFile)) {
+    $btopConfRaw = Get-Content -LiteralPath $btopConfFile -Raw
+    if ($btopConfRaw -match '(?m)^cpu_graph_upper\s*=\s*"total"' -and $btopConfRaw -notmatch '(?m)^cpu_graph_(upper|lower)\s*=\s*"Auto"') {
+        Pass "17 btop/btop4win themes & btop4win-compatible btop.conf present in config/btop/"
+    } else {
+        Fail "config/btop/btop.conf compatibility" "cpu_graph_upper/cpu_graph_lower must use btop4win keys ('total'/'gpu'), not Linux-only 'Auto'"
+    }
 } else {
     Fail "config/btop validation" "Expected 17 btop themes and btop.conf, found $($btopThemeFiles.Count)"
 }

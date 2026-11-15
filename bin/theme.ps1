@@ -1355,6 +1355,8 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
     if (Test-Path -LiteralPath $repoBtopConf) {
         $rawBtop = Get-Content -LiteralPath $repoBtopConf -Raw
         $updatedBtop = [regex]::Replace($rawBtop, '(?m)^color_theme\s*=\s*"[^"]*"', "color_theme = `"$($Theme['BTOP_THEME_NAME'])`"")
+        $updatedBtop = [regex]::Replace($updatedBtop, '(?m)^cpu_graph_upper\s*=\s*"Auto"', 'cpu_graph_upper = "total"')
+        $updatedBtop = [regex]::Replace($updatedBtop, '(?m)^cpu_graph_lower\s*=\s*"Auto"', 'cpu_graph_lower = "gpu"')
         Write-TextUtf8NoBom -Path (Join-Path $btopXdgDir 'btop.conf') -Content $updatedBtop
         if ($env:LOCALAPPDATA) {
             $wingetBtopDirs = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages') -Directory -Filter 'aristocratos.btop4win*' -ErrorAction SilentlyContinue)
