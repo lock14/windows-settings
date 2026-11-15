@@ -558,7 +558,8 @@ function Show-IdeKeysCheatsheet {
         @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
         @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
         @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
-        @('Alt+? / Alt+m', 'Key cheatsheet / btop4win', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)')
+        @('Alt+? / Alt+m', 'Key cheatsheet / btop4win', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
+        @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
     )
     $rowsEditor = @(
         @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
