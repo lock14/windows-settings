@@ -64,6 +64,99 @@ load_plugins {
     }
 }
 
+// IDE Workspace Right-Click Context Menus (shortcuts auto-resolved by Zellij from keybinds)
+context_menu {
+    bar clear-defaults=true {
+        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }
+        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }
+        item "Focus Shell" { MoveFocus "Down"; }
+        separator
+        item "Session manager & inbox" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Next attention agent" { GoToNextAttention; }
+        item "Back to {}" { ToggleSession; }
+        separator
+        item "Toggle fullscreen zoom" { ToggleFocusFullscreen; }
+        item "Toggle floating panes" { ToggleFloatingPanes; }
+        item "Cycle swap layout" { NextSwapLayout; }
+        item "New tab" { NewTab; }
+        item "Rename session…" { SwitchToMode "RenameSession"; SessionNameInput 0; }
+        item "Open in a Zellij terminal" { OpenSessionInTerminal; }
+        separator
+        item "Hide top bar" { HideBars; }
+        item "Detach" { Detach; }
+    }
+    tab clear-defaults=true {
+        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }
+        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }
+        item "Focus Shell" { MoveFocus "Down"; }
+        separator
+        item "Session manager & inbox" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Next attention agent" { GoToNextAttention; }
+        separator
+        item "New tab" { NewTab; }
+        item "Rename tab…" { StartRenameTabByTabId; }
+        item "Move left" { MoveTabByTabId "left"; }
+        item "Move right" { MoveTabByTabId "right"; }
+        item "Mute tab" toggled_label="Unmute tab" { MuteTabByTabId; }
+        separator
+        item "Close tab" { CloseTabById; }
+    }
+    pane {
+        item "Paste" { PasteFromClipboardByPaneId; }
+        separator
+        item "New pane" { NewPane; }
+        item "New floating pane" { NewFloatingPane; }
+        separator
+        item "Rename pane…" { StartRenamePaneByPaneId; }
+        item "Fullscreen" toggled_label="Exit fullscreen" { ToggleFocusFullscreenByPaneId; }
+        item "Make floating" toggled_label="Make tiled" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Show titles in a row" toggled_label="Show titles in a column" { ToggleStackListOrientationByPaneId; }
+        separator
+        item "Watch pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
+        item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
+        separator
+        item "Close pane" { CloseFocusByPaneId; }
+    }
+    common clear-defaults=true {
+        item "System monitor" {
+            Run "ide.cmd" "--monitor" {
+                floating true
+                close_on_exit true
+            }
+        }
+        item "Keybinding cheatsheet" {
+            Run "ide.cmd" "--keys" {
+                floating true
+                close_on_exit true
+            }
+        }
+        item "Show bars" { ShowBars; }
+        item "Settings…" {
+            LaunchOrFocusPlugin "configuration" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        separator
+        item "Quit IDE workspace" {
+            Run "ide.cmd" "--quit" {
+                floating true
+                close_on_exit true
+            }
+        }
+    }
+}
+
 // Native OSC 7501 Agent Attention Inbox, Tray Badges & Desktop Notifications
 attention {
     enabled true

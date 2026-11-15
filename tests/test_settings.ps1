@@ -127,6 +127,10 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
     $zellijLayout3Raw = Get-Content $zellijLayout3Path -Raw
     $zellijThemeRaw = Get-Content $zellijThemePath -Raw
     if ($zellijCfgRaw -match 'pane_frames false' -and
+        $zellijCfgRaw -match 'context_menu \{' -and
+        $zellijCfgRaw -match 'bar clear-defaults=true' -and
+        $zellijCfgRaw -match 'Focus AI agent' -and
+        $zellijCfgRaw -match 'Quit IDE workspace' -and
         $zellijCfgRaw -match 'attention \{' -and
         $zellijCfgRaw -match 'tray_badge_colors' -and
         $zellijCfgRaw -match 'terminal \{' -and
@@ -135,9 +139,9 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
         $zellijLayout3Raw -match 'compact-bar' -and
         $zellijLayout3Raw -match '--pane-init' -and
         $zellijThemeRaw -match 'windows-settings \{') {
-        Pass "KDL valid: config/zellij/ (config.kdl, ide-3pane.kdl, ide-2pane.kdl, themes/windows-settings.kdl)"
+        Pass "KDL valid: config/zellij/ (config.kdl + context_menu, ide-3pane.kdl, ide-2pane.kdl, themes/windows-settings.kdl)"
     } else {
-        Fail "config/zellij/ content validation" "Missing expected Zellij 0.46+ attention, terminal, compact-bar, or theme blocks"
+        Fail "config/zellij/ content validation" "Missing expected Zellij 0.46+ context_menu, attention, terminal, compact-bar, or theme blocks"
     }
 
     $zellijCmd = Get-Command zellij -ErrorAction SilentlyContinue
