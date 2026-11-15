@@ -26,7 +26,7 @@ Keep components uniform across shells and tools, and never commit ad-hoc scratch
 1. **Adding or updating a CLI utility**:
    * **PowerShell script**: Implement `bin/<name>.ps1` (`CRLF`) with `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, pipeline input support where applicable, and `--dry-run` for stateful operations.
    * **Batch wrapper**: Add `bin/<name>.cmd` (`CRLF`) invoking `pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0<name>.ps1" %*`.
-   * **Shell integration**: Register a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, export it in `module/WindowsSettings.psd1`, add tab completion in `module/Completions.ps1`, add a `doskey` macro in `config/cmd/autorun.cmd`, and add test coverage in `tests/test_settings.ps1`.
+   * **Shell integration**: Register a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, export it in `module/WindowsSettings.psd1`, add tab completion in `module/Completions.ps1`, add a `doskey` macro in `config/cmd/macros.doskey`, and add test coverage in `tests/test_settings.ps1`.
 2. **Adding or updating a built-in theme palette**:
    * **Palette definition**: Declare all semantic and ANSI slots in `config/themes/<slug>.theme`.
    * **Static asset synchronization**: Run `pwsh -NoProfile -File ./bin/theme.ps1 --sync-assets` to regenerate `config/bat/themes/*-TrueColor.tmTheme`, `config/btop/themes/*.theme`, `config/terminal/windows-settings.json`, and `config/terminal/settings.json`, and update the standalone palette table in `config/vim/_vimrc`.

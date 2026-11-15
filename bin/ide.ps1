@@ -247,8 +247,14 @@ function Get-LiveIdePipeMap {
 function Test-IdePipeLive([string]$PipePath) {
     if (-not $PipePath) { return $false }
     try {
-        $allPipes = [System.IO.Directory]::GetFiles('\\.\pipe\')
-        foreach ($p in $allPipes) {
+        if ([System.IO.File]::Exists($PipePath)) {
+            return $true
+        }
+    } catch {
+        Write-Verbose "Direct pipe existence check skipped: $_"
+    }
+    try {
+        foreach ($p in [System.IO.Directory]::GetFiles('\\.\pipe\')) {
             if ([string]::Equals($p, $PipePath, [System.StringComparison]::OrdinalIgnoreCase)) {
                 return $true
             }
@@ -267,6 +273,16 @@ function Read-SessionState([string]$SessionName) {
     try {
         $raw = Get-Content -LiteralPath $metaPath -Raw
         $obj = $raw | ConvertFrom-Json
+        $agentState = if ($obj.agent_state) { [string]$obj.agent_state } else { 'idle' }
+        $sidecarStatePath = Join-Path (Get-IdeStateDir) "$SessionName.state"
+        if ([System.IO.File]::Exists($sidecarStatePath)) {
+            $sidecarTicks = [System.IO.File]::GetLastWriteTimeUtc($sidecarStatePath).Ticks
+            $metaTicks = [System.IO.File]::GetLastWriteTimeUtc($metaPath).Ticks
+            if ($sidecarTicks -ge $metaTicks) {
+                $fastState = [System.IO.File]::ReadAllText($sidecarStatePath).Trim()
+                if ($fastState) { $agentState = $fastState }
+            }
+        }
         $ht = [ordered]@{
             session       = if ($obj.session) { [string]$obj.session } else { $SessionName }
             root          = if ($obj.root) { [string]$obj.root } else { '' }
@@ -275,7 +291,7 @@ function Read-SessionState([string]$SessionName) {
             layout        = if ($obj.layout) { [string]$obj.layout } else { '3pane' }
             backend       = if ($obj.backend) { [string]$obj.backend } else { 'zellij' }
             ai_cli        = if ($obj.ai_cli) { [string]$obj.ai_cli } else { 'agy' }
-            agent_state   = if ($obj.agent_state) { [string]$obj.agent_state } else { 'idle' }
+            agent_state   = $agentState
             agent_message = if ($obj.agent_message) { [string]$obj.agent_message } else { '' }
             created_at    = if ($obj.created_at) { [string]$obj.created_at } else { '' }
             updated_at    = if ($obj.updated_at) { [string]$obj.updated_at } else { '' }
@@ -294,6 +310,10 @@ function Save-SessionState([System.Collections.IDictionary]$Meta) {
     }
     $json = ($Meta | ConvertTo-Json -Depth 6) + "`n"
     Write-TextUtf8NoBom -Path (Get-SessionStatePath $SessionName) -Content $json
+    $sidecarStatePath = Join-Path (Get-IdeStateDir) "$SessionName.state"
+    if ([System.IO.File]::Exists($sidecarStatePath)) {
+        Remove-Item -LiteralPath $sidecarStatePath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Resolve-TargetSession([string]$ArgValue = '') {
@@ -419,12 +439,16 @@ function Format-Osc7501Spec([string]$StateName, [string]$Message = '', [string]$
 
 function Invoke-AgyHook([string]$HookEventArg) {
     $stdinRaw = ''
-    try {
-        if ([Console]::IsInputRedirected) {
-            $stdinRaw = [Console]::In.ReadToEnd()
+    if ($env:WS_HOOK_STDIN) {
+        $stdinRaw = $env:WS_HOOK_STDIN
+    } else {
+        try {
+            if ([Console]::IsInputRedirected) {
+                $stdinRaw = [Console]::In.ReadToEnd()
+            }
+        } catch {
+            $stdinRaw = ''
         }
-    } catch {
-        $stdinRaw = ''
     }
 
     $hookObj = $null
@@ -701,16 +725,29 @@ function Get-IdeKeysCheatsheetText {
 function Write-IdeKeysCheatsheetCache {
     $esc = [char]27
     $lines = Get-IdeKeysCheatsheetText
-    $cachePath = Join-Path (Get-IdeStateDir) 'keys-cheatsheet.ans'
-    $parent = Split-Path -Parent $cachePath
-    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
-        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    $stateDir = Get-IdeStateDir
+    if (-not (Test-Path -LiteralPath $stateDir)) {
+        New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
     }
+    $cachePath = Join-Path $stateDir 'keys-cheatsheet.ans'
     $payload = "${esc}[?25l" + ($lines -join "`r`n")
     # UTF-16LE with BOM lets cmd.exe's built-in `type` call WriteConsoleW directly
     # without spawning chcp.com or corrupting box-drawing and Nerd Font glyphs under OEM codepages.
     $utf16LeBom = [System.Text.UnicodeEncoding]::new($false, $true)
     [System.IO.File]::WriteAllText($cachePath, $payload, $utf16LeBom)
+
+    # Pre-write raw OSC 7501 byte payloads so ide.cmd --agy-hook runs in pure cmd.exe (<5ms)
+    $oscPayloads = @{
+        'osc-agy-idle.bin'    = "${esc}]7501;state=idle:app=agy${esc}\"
+        'osc-agy-working.bin' = "${esc}]7501;state=working:app=agy${esc}\"
+        'osc-agy-done.bin'    = "${esc}]7501;state=done:app=agy${esc}\"
+        'osc-agy-clear.bin'   = "${esc}]7501;state=clear:app=agy${esc}\"
+        'osc-agy-error.bin'   = "${esc}]7501;state=error:app=agy${esc}\"
+    }
+    foreach ($kv in $oscPayloads.GetEnumerator()) {
+        $oscPath = Join-Path $stateDir $kv.Key
+        [System.IO.File]::WriteAllBytes($oscPath, [System.Text.Encoding]::ASCII.GetBytes($kv.Value))
+    }
 }
 
 function Show-IdeKeysCheatsheet {
@@ -1481,6 +1518,7 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
         $stateDir = Get-IdeStateDir
         foreach ($artifact in @(
             "$sess.json",
+            "$sess.state",
             "$sess.send.txt",
             "$sess.pane-ai",
             "$sess.pane-editor",

@@ -301,7 +301,13 @@ local nvim_init_path = (nvim_init_source and nvim_init_source:sub(1, 1) == "@")
     or (vim.fn.stdpath("config") .. "/init.lua")
 local nvim_init_real = ((vim.uv or vim.loop).fs_realpath(nvim_init_path)) or nvim_init_path
 
+local _cached_repo_roots = nil
+local _cached_cli_bins = {}
+
 local function candidate_repo_roots()
+    if _cached_repo_roots then
+        return _cached_repo_roots
+    end
     local roots = {}
     local function add_root(r)
         if r and r ~= "" then
@@ -323,30 +329,39 @@ local function candidate_repo_roots()
         local real_ide = ((vim.uv or vim.loop).fs_realpath(ide_exe)) or ide_exe
         add_root(vim.fn.fnamemodify(real_ide, ":h:h"))
     end
+    _cached_repo_roots = roots
     return roots
 end
 
 local function resolve_cli_bin(name)
+    if _cached_cli_bins[name] ~= nil then
+        return _cached_cli_bins[name]
+    end
     local exe = vim.fn.exepath(name)
     if exe ~= "" and vim.fn.executable(exe) == 1 then
+        _cached_cli_bins[name] = exe
         return exe
     end
     for _, root in ipairs(candidate_repo_roots()) do
         if is_win32 then
             local cmd_bin = root .. "/bin/" .. name .. ".cmd"
             if vim.fn.executable(cmd_bin) == 1 then
+                _cached_cli_bins[name] = cmd_bin
                 return cmd_bin
             end
         end
         local plain_bin = root .. "/bin/" .. name
         if vim.fn.executable(plain_bin) == 1 then
+            _cached_cli_bins[name] = plain_bin
             return plain_bin
         end
     end
     local local_bin = vim.fn.expand("$HOME/.local/bin/" .. name)
     if vim.fn.executable(local_bin) == 1 then
+        _cached_cli_bins[name] = local_bin
         return local_bin
     end
+    _cached_cli_bins[name] = ""
     return ""
 end
 
@@ -2013,31 +2028,38 @@ lazy.setup({
         lazy = false,
         priority = 900,
         config = function()
-            -- Ensure C/C++ compiler is discoverable and configured for Tree-sitter builds on Windows
-            if is_win32 then
-                if vim.fn.executable("gcc") == 0 then
-                    local local_app_data = vim.fn.getenv("LOCALAPPDATA")
-                    if local_app_data and local_app_data ~= vim.NIL then
-                        local winlibs_pattern = local_app_data .. "\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs*\\mingw64\\bin"
-                        local winlibs_matches = vim.fn.glob(winlibs_pattern, true, true)
-                        if #winlibs_matches > 0 and vim.fn.isdirectory(winlibs_matches[1]) == 1 then
-                            vim.env.PATH = winlibs_matches[1] .. ";" .. (vim.env.PATH or "")
+            local ts_compiler_configured = false
+            local function ensure_ts_compiler_configured()
+                if ts_compiler_configured then
+                    return
+                end
+                ts_compiler_configured = true
+                -- Ensure C/C++ compiler is discoverable and configured for Tree-sitter builds on Windows
+                if is_win32 then
+                    if vim.fn.executable("gcc") == 0 then
+                        local local_app_data = vim.fn.getenv("LOCALAPPDATA")
+                        if local_app_data and local_app_data ~= vim.NIL then
+                            local winlibs_pattern = local_app_data .. "\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs*\\mingw64\\bin"
+                            local winlibs_matches = vim.fn.glob(winlibs_pattern, true, true)
+                            if #winlibs_matches > 0 and vim.fn.isdirectory(winlibs_matches[1]) == 1 then
+                                vim.env.PATH = winlibs_matches[1] .. ";" .. (vim.env.PATH or "")
+                            end
                         end
                     end
-                end
-                if vim.fn.executable("gcc") == 1 then
-                    vim.env.CC = "gcc"
-                    vim.env.CXX = "g++"
-                elseif vim.fn.executable("clang") == 1 then
-                    vim.env.CC = "clang"
-                    vim.env.CXX = "clang++"
-                elseif vim.fn.executable("cl") == 1 then
-                    vim.env.CC = "cl"
-                end
+                    if vim.fn.executable("gcc") == 1 then
+                        vim.env.CC = "gcc"
+                        vim.env.CXX = "g++"
+                    elseif vim.fn.executable("clang") == 1 then
+                        vim.env.CC = "clang"
+                        vim.env.CXX = "clang++"
+                    elseif vim.fn.executable("cl") == 1 then
+                        vim.env.CC = "cl"
+                    end
 
-                local ts_install_ok, ts_install = pcall(require, "nvim-treesitter.install")
-                if ts_install_ok and ts_install.compilers then
-                    ts_install.compilers = { "gcc", "clang", "cl", "zig" }
+                    local ts_install_ok, ts_install = pcall(require, "nvim-treesitter.install")
+                    if ts_install_ok and ts_install.compilers then
+                        ts_install.compilers = { "gcc", "clang", "cl", "zig" }
+                    end
                 end
             end
 
@@ -2065,9 +2087,12 @@ lazy.setup({
                 maintainers = { "@Julian" },
                 tier = 2,
             }
+            local parsers_pinned = false
             local function pin_parsers()
+                ensure_ts_compiler_configured()
                 local parsers_meta_ok, parsers_meta = pcall(require, "nvim-treesitter.parsers")
                 if parsers_meta_ok then
+                    parsers_pinned = true
                     if parsers_meta.css and parsers_meta.css.install_info then
                         parsers_meta.css.install_info.revision = css_pinned_rev
                     end
@@ -2082,16 +2107,16 @@ lazy.setup({
                     end
                 end
             end
-            pin_parsers()
             vim.api.nvim_create_autocmd("User", {
                 group = vim.api.nvim_create_augroup("SolarizedTreesitterPin", { clear = true }),
-                pattern = "TSUpdate",
+                pattern = { "TSUpdate*", "TSInstall*" },
                 callback = pin_parsers,
             })
 
             -- Support legacy nvim-treesitter.configs if present
             local ts_configs_ok, ts_configs = pcall(require, "nvim-treesitter.configs")
             if ts_configs_ok then
+                pin_parsers()
                 ts_configs.setup({
                     ensure_installed = parsers,
                     auto_install = true,
@@ -2106,26 +2131,50 @@ lazy.setup({
             -- Support modern nvim-treesitter rewrite API
             local nts_ok, nts = pcall(require, "nvim-treesitter")
             if nts_ok and nts.setup and type(nts.get_installed) == "function" then
+                local site_dir = vim.fn.stdpath("data") .. "/site"
                 pcall(function()
                     nts.setup({
-                        install_dir = vim.fn.stdpath("data") .. "/site",
+                        install_dir = site_dir,
                     })
                 end)
                 if vim.env.NVIM_TS_SKIP_AUTO_INSTALL ~= "1" then
-                    local ok_inst, inst_list = pcall(nts.get_installed, "parsers")
-                    if not ok_inst or type(inst_list) ~= "table" then
-                        inst_list = nts.get_installed()
-                    end
+                    local uv = vim.uv or vim.loop
                     local installed = {}
-                    for _, p in ipairs(inst_list) do
-                        installed[p] = true
+                    local scan_req = uv.fs_scandir(site_dir .. "/parser")
+                    if scan_req then
+                        while true do
+                            local fname = uv.fs_scandir_next(scan_req)
+                            if not fname then break end
+                            local stem = fname:match("^(.+)%.[%w_]+$")
+                            if stem then
+                                installed[stem] = true
+                            end
+                        end
+                    end
+                    local any_missing_fast = false
+                    for _, p in ipairs(parsers) do
+                        if not installed[p] then
+                            any_missing_fast = true
+                            break
+                        end
+                    end
+                    if any_missing_fast then
+                        local ok_inst, inst_list = pcall(nts.get_installed, "parsers")
+                        if not ok_inst or type(inst_list) ~= "table" then
+                            inst_list = nts.get_installed()
+                        end
+                        for _, p in ipairs(inst_list) do
+                            installed[p] = true
+                        end
                     end
                     local function read_parser_rev(lang)
-                        local rev_file = vim.fn.stdpath("data") .. "/site/parser-info/" .. lang .. ".revision"
-                        if vim.fn.filereadable(rev_file) == 1 then
-                            local rev_lines = vim.fn.readfile(rev_file)
-                            if rev_lines and #rev_lines > 0 then
-                                return vim.trim(rev_lines[1])
+                        local rev_file = site_dir .. "/parser-info/" .. lang .. ".revision"
+                        local fd_rev = uv.fs_open(rev_file, "r", 292)
+                        if fd_rev then
+                            local chunk = uv.fs_read(fd_rev, 128, 0)
+                            uv.fs_close(fd_rev)
+                            if type(chunk) == "string" and chunk ~= "" then
+                                return vim.trim((chunk:match("^[^\r\n]+") or ""))
                             end
                         end
                         return ""
@@ -2143,7 +2192,9 @@ lazy.setup({
                     if need_lean_install then table.insert(pinned_to_install, "lean") end
 
                     if (#to_install > 0 or #pinned_to_install > 0) and type(nts.install) == "function" then
-                        local uv = vim.uv or vim.loop
+                        if not parsers_pinned then
+                            pin_parsers()
+                        end
                         local guard_path = vim.fn.stdpath("data") .. "/ws-ts-auto-install.lock"
                         local acquired_guard = false
 
@@ -2333,6 +2384,7 @@ lazy.setup({
     -- Mason & Language Server Protocol (LSP)
     {
         "williamboman/mason.nvim",
+        cmd = { "Mason", "MasonInstall", "MasonUpdate", "MasonUninstall", "MasonUninstallAll", "MasonLog" },
         opts = {},
     },
     {
@@ -2341,6 +2393,8 @@ lazy.setup({
     },
     {
         "williamboman/mason-lspconfig.nvim",
+        event = { "BufReadPre", "BufNewFile" },
+        cmd = { "LspInfo", "LspStart", "LspRestart" },
         dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
         opts = {
             ensure_installed = {
@@ -2358,27 +2412,6 @@ lazy.setup({
             automatic_enable = false,
         },
         config = function(_, opts)
-            if #vim.api.nvim_list_uis() > 0 then
-                local ok_reg, registry = pcall(require, "mason-registry")
-                if ok_reg then
-                    local retried = {}
-                    registry:on("package:install:failed", function(pkg)
-                        if retried[pkg.name] then return end
-                        retried[pkg.name] = true
-                        local npm_exe = is_win32 and "npm.cmd" or "npm"
-                        if vim.fn.executable(npm_exe) == 1 then
-                            local npm_ver = vim.fn.system({ npm_exe, "view", pkg.name, "dist-tags.latest" }):gsub("%s+$", "")
-                            if vim.v.shell_error == 0 and npm_ver ~= "" then
-                                vim.schedule(function()
-                                    pkg:install({ version = npm_ver })
-                                end)
-                            end
-                        end
-                    end)
-                end
-                require("mason-lspconfig").setup(opts)
-            end
-
             -- Keybindings and Semantic Token cleanup on LSP attach
             vim.api.nvim_create_autocmd("LspAttach", {
                 group = vim.api.nvim_create_augroup("UserLspConfig", { clear = true }),
@@ -2401,7 +2434,7 @@ lazy.setup({
                 end,
             })
 
-            -- Server-specific configuration overrides
+            -- Server-specific configuration overrides (lazy runtime library resolution for lua_ls)
             local server_configs = {
                 clangd = {
                     cmd = {
@@ -2414,13 +2447,21 @@ lazy.setup({
                     },
                 },
                 lua_ls = {
+                    on_init = function(client)
+                        client.config.settings.Lua = vim.tbl_deep_extend("force", client.config.settings.Lua or {}, {
+                            workspace = {
+                                library = vim.api.nvim_get_runtime_file("", true),
+                                checkThirdParty = false,
+                            },
+                        })
+                        client:notify("workspace/didChangeConfiguration", { settings = client.config.settings })
+                    end,
                     settings = {
                         Lua = {
                             diagnostics = {
                                 globals = { "vim" },
                             },
                             workspace = {
-                                library = vim.api.nvim_get_runtime_file("", true),
                                 checkThirdParty = false,
                             },
                             telemetry = { enable = false },
@@ -2474,6 +2515,7 @@ lazy.setup({
                 jsonls = "vscode-json-language-server",
                 leanls = "lake",
             }
+            local uv = vim.uv or vim.loop
             local path_sep = is_win32 and ";" or ":"
             local mason_bin_dir = vim.fn.stdpath("data") .. "/mason/bin"
             if not (vim.env.PATH or ""):find(mason_bin_dir, 1, true) then
@@ -2485,12 +2527,19 @@ lazy.setup({
                 end
             end
             local already_enabled = {}
+            local function is_server_bin_installed(bin)
+                local mason_cand = mason_bin_dir .. "/" .. bin .. (is_win32 and ".cmd" or "")
+                if uv.fs_stat(mason_cand) ~= nil then
+                    return true
+                end
+                return vim.fn.executable(bin) == 1
+            end
             local function enable_installed_servers()
                 local newly_enabled = {}
                 for _, s in ipairs(servers) do
                     if not already_enabled[s] then
                         local bin = server_bins[s] or s
-                        if vim.fn.executable(bin) == 1 or vim.fn.executable(mason_bin_dir .. "/" .. bin) == 1 then
+                        if is_server_bin_installed(bin) then
                             already_enabled[s] = true
                             table.insert(newly_enabled, s)
                         end
@@ -2509,9 +2558,29 @@ lazy.setup({
             end
             enable_installed_servers()
             if #vim.api.nvim_list_uis() > 0 then
-                pcall(function()
-                    local registry = require("mason-registry")
-                    registry:on("package:install:success", vim.schedule_wrap(enable_installed_servers))
+                vim.schedule(function()
+                    pcall(function()
+                        require("mason").setup()
+                        local ok_reg, registry = pcall(require, "mason-registry")
+                        if ok_reg then
+                            local retried = {}
+                            registry:on("package:install:failed", function(pkg)
+                                if retried[pkg.name] then return end
+                                retried[pkg.name] = true
+                                local npm_exe = is_win32 and "npm.cmd" or "npm"
+                                if vim.fn.executable(npm_exe) == 1 then
+                                    local npm_ver = vim.fn.system({ npm_exe, "view", pkg.name, "dist-tags.latest" }):gsub("%s+$", "")
+                                    if vim.v.shell_error == 0 and npm_ver ~= "" then
+                                        vim.schedule(function()
+                                            pkg:install({ version = npm_ver })
+                                        end)
+                                    end
+                                end
+                            end)
+                            registry:on("package:install:success", vim.schedule_wrap(enable_installed_servers))
+                        end
+                        require("mason-lspconfig").setup(opts)
+                    end)
                 end)
             end
         end,

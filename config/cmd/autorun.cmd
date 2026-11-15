@@ -32,128 +32,30 @@ set "FZF_DEFAULT_OPTS=--color=bg+:#073642,bg:#002B36,spinner:#859900,hl:#586E75 
 set "JQ_COLORS=38;2;211;54;130:38;2;211;54;130:38;2;211;54;130:38;2;211;54;130:38;2;42;161;152:38;2;131;148;150:38;2;131;148;150:38;2;133;153;0"
 
 :: -------------------------------------------------------------
-:: 2. Toolchain PATH Initializations
+:: 2. Toolchain PATH Initializations (Zero-Process Substring Checks)
 :: -------------------------------------------------------------
-if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links" (
-    path | find /i "%LOCALAPPDATA%\Microsoft\WinGet\Links" >nul || set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Links;%PATH%"
-)
+call :ws_insert_git_mingw
+call :ws_prepend_path "%LOCALAPPDATA%\Microsoft\WinGet\Links"
 for /d %%D in ("%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs*") do (
-    if exist "%%D\mingw64\bin" (
-        path | find /i "%%D\mingw64\bin" >nul || set "PATH=%%D\mingw64\bin;%PATH%"
-    )
+    call :ws_prepend_path "%%~fD\mingw64\bin"
 )
-if exist "%USERPROFILE%\.local\share\go\bin" (
-    path | find /i "%USERPROFILE%\.local\share\go\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.local\share\go\bin"
-)
-if exist "%USERPROFILE%\go\bin" (
-    path | find /i "%USERPROFILE%\go\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\go\bin"
-)
-if exist "%USERPROFILE%\.local\share\elan\bin" (
-    path | find /i "%USERPROFILE%\.local\share\elan\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.local\share\elan\bin"
-)
-if exist "%USERPROFILE%\.elan\bin" (
-    path | find /i "%USERPROFILE%\.elan\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.elan\bin"
-)
-if exist "%USERPROFILE%\.cargo\bin" (
-    path | find /i "%USERPROFILE%\.cargo\bin" >nul || set "PATH=%PATH%;%USERPROFILE%\.cargo\bin"
-)
-if exist "%LOCALAPPDATA%\mise\shims" (
-    path | find /i "%LOCALAPPDATA%\mise\shims" >nul || set "PATH=%LOCALAPPDATA%\mise\shims;%PATH%"
-)
+call :ws_append_path "%USERPROFILE%\.local\share\go\bin"
+call :ws_append_path "%USERPROFILE%\go\bin"
+call :ws_append_path "%USERPROFILE%\.local\share\elan\bin"
+call :ws_append_path "%USERPROFILE%\.elan\bin"
+call :ws_append_path "%USERPROFILE%\.cargo\bin"
+call :ws_prepend_path "%LOCALAPPDATA%\mise\shims"
+if exist "%LOCALAPPDATA%\cmd\mise_paths.cmd" call "%LOCALAPPDATA%\cmd\mise_paths.cmd"
 
 :: -------------------------------------------------------------
-:: 3. Directory Navigation & Modern Listing Macros (doskey)
+:: 3. Doskey Alias Suite (Single-Process Macrofile Load)
 :: -------------------------------------------------------------
-doskey ls=ls --color=auto $*
-doskey ll=ls --color=auto -alF $*
-doskey la=ls --color=auto -A $*
-doskey l=ls --color=auto -CF $*
-
-doskey e=eza --icons=auto --group-directories-first $*
-doskey el=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso $*
-doskey elm=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso --sort=modified $*
-doskey et=eza --tree --level=2 --icons=auto $*
-doskey lt=eza --tree --level=2 --icons=auto $*
-doskey elt=eza -la --tree --level=2 --icons=auto --git --group --time-style=long-iso $*
-doskey elx=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso -H -i -S --extended $*
-
-:: Modern file viewing (`b` = bat with TrueColor theme; `cat` remains raw coreutils cat)
+:: Clear any legacy `cat` macro so coreutils `cat` runs raw (`b` invokes `bat`)
 doskey cat=
-doskey b=bat $*
+if exist "%~dp0macros.doskey" doskey /macrofile="%~dp0macros.doskey"
 
 :: -------------------------------------------------------------
-:: 4. Git Workflow Macros (doskey)
-:: -------------------------------------------------------------
-doskey gco=git checkout $*
-doskey gcb=git checkout -b $*
-doskey gcd=git checkout develop $*
-doskey ga=git add $*
-doskey gaa=git add --all $*
-doskey gst=git status $*
-doskey gss=git status -s $*
-doskey gd=git diff $*
-doskey gds=git diff --staged $*
-doskey gl=git pull $*
-doskey gp=git push $*
-doskey gb=git branch $*
-doskey gba=git branch -a $*
-doskey gbd=git branch -d $*
-doskey gbD=git branch -D $*
-doskey gsta=git stash push $*
-doskey gstp=git stash pop $*
-doskey gstl=git stash list $*
-doskey glog=git log --oneline --decorate --graph $*
-doskey glo=git log --oneline --decorate $*
-doskey grb=git rebase $*
-doskey grba=git rebase --abort $*
-doskey grbc=git rebase --continue $*
-doskey grbi=git rebase -i $*
-doskey grh=git reset $*
-doskey grhh=git reset --hard $*
-doskey gsw=git switch $*
-doskey gswc=git switch -c $*
-doskey gcp=git cherry-pick $*
-doskey gcpa=git cherry-pick --abort $*
-doskey gcpc=git cherry-pick --continue $*
-doskey gcommit=git add -A $t git commit $*
-doskey gamend=git add -A $t git commit --amend --no-edit $*
-doskey gfetch=git fetch $*
-doskey gpush=git push -u origin HEAD $*
-doskey gpushf=git push -u --force-with-lease origin HEAD $*
-doskey gpull=git pull --rebase --autostash $*
-doskey gup=git pull --rebase --autostash --prune $*
-
-:: -------------------------------------------------------------
-:: 5. Developer Shortcuts, IDE & Utility Macros (doskey)
-:: -------------------------------------------------------------
-doskey vi=nvim $*
-doskey vim=nvim $*
-doskey v=ide --open-or-edit $*
-doskey icd=cd /d $* $t ide --cd .
-doskey tf=terraform $*
-doskey ds=dust $*
-doskey btop=btop4win $*
-doskey update=update-system $*
-doskey ide2=ide --2pane $*
-doskey ide3=ide --3pane $*
-doskey idek=ide --kill $*
-doskey qide=ide --quit $*
-doskey quit=ide --quit $*
-
-doskey go-testall=go test ./... $*
-doskey go-buildall=go build ./... $*
-doskey go-lint=golangci-lint run $*
-doskey yaml-lint=yamllint $*
-
-doskey go_testall=go test ./... $*
-doskey go_buildall=go build ./... $*
-doskey go_lint=golangci-lint run $*
-doskey yaml_lint=yamllint $*
-
-doskey clear=cls
-
-:: -------------------------------------------------------------
-:: 6. Solarized Dark TrueColor Powerline Shelf Prompt & Theme Hook
+:: 4. Solarized Dark TrueColor Powerline Shelf Prompt & Theme Hook
 :: -------------------------------------------------------------
 :: Authentic Base02 dark teal shelf (#073642) matching Oh My Posh:
 :: Base0 Windows icon () + Base01 divider () + Solarized Blue path ( $P) + Base02 wedge cap ()
@@ -163,3 +65,31 @@ if exist "%LOCALAPPDATA%\cmd\theme_env.cmd" call "%LOCALAPPDATA%\cmd\theme_env.c
 if exist "%USERPROFILE%\.config\windows-settings\cmd.d" (
     for %%F in ("%USERPROFILE%\.config\windows-settings\cmd.d\*.cmd") do call "%%F"
 )
+goto :eof
+
+:ws_has_path
+setlocal EnableDelayedExpansion
+set "_P=;!PATH!;"
+set "_T=!_P:*;%~1;=FOUND!"
+if "!_T:~0,5!"=="FOUND" (endlocal & exit /b 0)
+endlocal & exit /b 1
+
+:ws_insert_git_mingw
+if not exist "%ProgramFiles%\Git\mingw64\bin\git.exe" exit /b 0
+call :ws_has_path "%ProgramFiles%\Git\mingw64\bin"
+if errorlevel 1 call set "PATH=%%PATH:%ProgramFiles%\Git\cmd;=%ProgramFiles%\Git\mingw64\bin;%ProgramFiles%\Git\cmd;%%"
+exit /b 0
+
+:ws_prepend_path
+if "%~1"=="" exit /b 0
+if not exist "%~1" exit /b 0
+call :ws_has_path "%~1"
+if errorlevel 1 set "PATH=%~1;%PATH%"
+exit /b 0
+
+:ws_append_path
+if "%~1"=="" exit /b 0
+if not exist "%~1" exit /b 0
+call :ws_has_path "%~1"
+if errorlevel 1 set "PATH=%PATH%;%~1"
+exit /b 0

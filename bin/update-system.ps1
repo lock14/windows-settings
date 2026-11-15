@@ -79,11 +79,58 @@ if (-not $systemOnly) {
     # 2. Mise Developer Runtimes & CLI Tools
     if (Get-Command mise -ErrorAction SilentlyContinue) {
         Invoke-UpdateStep -Title 'Mise Toolchain & CLI Upgrades' `
-            -PreviewText 'mise plugins update && mise upgrade && mise prune -y' `
+            -PreviewText 'mise plugins update && mise upgrade && mise prune -y && refresh mise_paths cache' `
             -Action {
                 & mise plugins update
                 & mise upgrade
                 & mise prune -y
+                $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+                $rawPaths = @(& mise bin-paths 2>$null)
+                $cleanDirs = [System.Collections.Generic.List[string]]::new()
+                foreach ($rp in $rawPaths) {
+                    if (-not $rp -or -not "$rp".Trim()) { continue }
+                    $norm = "$rp".Trim().Replace('/', '\').TrimEnd('\')
+                    if ([System.IO.Directory]::Exists($norm) -and -not $cleanDirs.Contains($norm)) {
+                        $cleanDirs.Add($norm)
+                    }
+                }
+                if ($cleanDirs.Count -gt 0) {
+                    $marker = $cleanDirs[0]
+                    $joined = ($cleanDirs -join ';')
+                    $psCacheFile = Join-Path (Join-Path $userHome '.cache') 'powershell\mise_paths.ps1'
+                    $psParent = Split-Path -Parent $psCacheFile
+                    if (-not [System.IO.Directory]::Exists($psParent)) {
+                        New-Item -ItemType Directory -Force -Path $psParent | Out-Null
+                    }
+                    $psLines = @(
+                        "`$script:_wsMiseMarker = '$($marker.Replace("'", "''"))'",
+                        "`$script:_wsMisePathBlock = '$($joined.Replace("'", "''"))'",
+                        'if ([System.IO.Directory]::Exists($script:_wsMiseMarker) -and -not $env:Path.Contains($script:_wsMiseMarker, [System.StringComparison]::OrdinalIgnoreCase)) {',
+                        '    $env:Path = "$script:_wsMisePathBlock;$env:Path"',
+                        '}'
+                    )
+                    [System.IO.File]::WriteAllText($psCacheFile, ($psLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+                    if ($env:LOCALAPPDATA) {
+                        $cmdCacheFile = Join-Path (Join-Path $env:LOCALAPPDATA 'cmd') 'mise_paths.cmd'
+                        $cmdParent = Split-Path -Parent $cmdCacheFile
+                        if (-not [System.IO.Directory]::Exists($cmdParent)) {
+                            New-Item -ItemType Directory -Force -Path $cmdParent | Out-Null
+                        }
+                        $cmdLines = @(
+                            "@if not exist `"$marker`" exit /b 0",
+                            "@call :ws_mise_has `"$marker`"",
+                            "@if errorlevel 1 set `"PATH=$joined;%PATH%`"",
+                            '@exit /b 0',
+                            ':ws_mise_has',
+                            '@setlocal EnableDelayedExpansion',
+                            '@set "_P=;!PATH!;"',
+                            '@set "_T=!_P:*;%~1;=FOUND!"',
+                            '@if "!_T:~0,5!"=="FOUND" (endlocal & exit /b 0)',
+                            '@endlocal & exit /b 1'
+                        )
+                        [System.IO.File]::WriteAllText($cmdCacheFile, ($cmdLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+                    }
+                }
             }
     }
 

@@ -5,7 +5,7 @@ Explain the problem or limitation in the prior code and why this design was chos
 ## Architecture and safety checklist
 
 - [ ] **Portability and zero personal paths**: Uses canonical environment variables (`$HOME`, `$env:LOCALAPPDATA`, `$env:APPDATA`, `$PROFILE`) and `Join-Path`; contains zero hardcoded personal paths.
-- [ ] **Line-ending discipline**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` use `LF`.
+- [ ] **Line-ending discipline**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` use `LF`.
 - [ ] **Idempotency, backups, and dry-run**: Provisioning, theme, IDE, and update mutations preserve unrelated user settings, create `.bak_<timestamp>` backups only when content differs, and honor `-DryRun` or `--dry-run`.
 - [ ] **Dual-execution and shell parity**: Any `bin/` utility changes keep `<name>.ps1`, `<name>.cmd`, PowerShell wrappers, tab completions, and `cmd.exe` `doskey` macros synchronized.
 - [ ] **Shell startup performance**: Introduces zero `Get-ChildItem -Recurse` traversals, `Get-Command` `PATH` scans, or synchronous child-process spawns on the `WindowsSettings` module import path.

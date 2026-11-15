@@ -702,10 +702,11 @@ if (Test-Path $sampleCodeDir) {
     }
 }
 
-# Test config/cmd/autorun.cmd
+# Test config/cmd/autorun.cmd and config/cmd/macros.doskey
 $cmdAutorunPath = Join-Path $RootDir "config\cmd\autorun.cmd"
-if (Test-Path $cmdAutorunPath) {
-    Pass "CMD AutoRun script exists: config/cmd/autorun.cmd"
+$cmdMacrosPath  = Join-Path $RootDir "config\cmd\macros.doskey"
+if ((Test-Path $cmdAutorunPath) -and (Test-Path $cmdMacrosPath)) {
+    Pass "CMD AutoRun script and macro file exist: config/cmd/autorun.cmd and config/cmd/macros.doskey"
     $cmdOutput = & cmd.exe /d /c "call `"$cmdAutorunPath`" && set COLORTERM && set FORCE_HYPERLINK && set BAT_THEME && set CC && set CXX && set PROMPT && doskey /macros"
     $hasColorTerm = [bool]($cmdOutput -match 'COLORTERM=truecolor')
     $hasHyperlink = [bool]($cmdOutput -match 'FORCE_HYPERLINK=1')
@@ -853,7 +854,10 @@ if ($env:CC -eq 'gcc' -and $env:CXX -eq 'g++') {
 # Test PSReadLine TrueColor syntax colors
 $wsModule = Join-Path $RootDir "module\WindowsSettings.psm1"
 $psm1Content = Get-Content $wsModule -Raw
-if ($psm1Content -match 'Keyword\s*=\s*"`e\[38;2;181;137;0m"' -and $psm1Content -match 'Command\s*=\s*"`e\[38;2;133;153;0m"') {
+if ($psm1Content -match '\$cYellow\s*=.*"`e\[38;2;181;137;0m"' -and
+    $psm1Content -match '\$cGreen\s*=.*"`e\[38;2;133;153;0m"' -and
+    $psm1Content -match 'Keyword\s*=\s*\$cYellow' -and
+    $psm1Content -match 'Command\s*=\s*\$cGreen') {
     Pass "PSReadLine TrueColor syntax colors configured (Control Flow Keyword in Solarized Yellow #B58900, Command in Solarized Green #859900)"
 } else {
     Fail "PSReadLine syntax colors" "Keyword is not Solarized Yellow #B58900 or Command is not Solarized Green #859900"
@@ -1090,6 +1094,14 @@ try {
         Pass "ide.ps1 --agy-hook emits valid Antigravity PreInvocation & Stop JSON responses"
     } else {
         Fail "ide.ps1 --agy-hook" "Unexpected hook JSON: Pre='$hookPre', Stop='$hookStop'"
+    }
+    $ideCmdScript = Join-Path $RootDir 'bin\ide.cmd'
+    $cmdHookPre = ('{"session_id":"test"}' | & cmd.exe /d /c "`"$ideCmdScript`" --agy-hook PreInvocation" | Out-String).Trim()
+    $cmdHookStop = ('{"session_id":"test","error":null}' | & cmd.exe /d /c "`"$ideCmdScript`" --agy-hook Stop" | Out-String).Trim()
+    if ($cmdHookPre -eq '{}' -and $cmdHookStop -eq '{"decision":"allow"}') {
+        Pass "ide.cmd --agy-hook fast path emits valid Antigravity PreInvocation & Stop JSON responses"
+    } else {
+        Fail "ide.cmd --agy-hook" "Unexpected batch hook JSON: Pre='$cmdHookPre', Stop='$cmdHookStop'"
     }
 } finally {
     $env:WS_AGY_HOOK_NO_TTY = $prevNoTty
@@ -1453,7 +1465,7 @@ if (-not $hardcodedFound) {
 }
 
 # 7.1b Byte-level CRLF / LF line-ending discipline & module startup hygiene
-$crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat')
+$crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat', '.doskey')
 $lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
 $eolViolation = $false
 foreach ($f in (Get-ChildItem -Path $RootDir -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' })) {

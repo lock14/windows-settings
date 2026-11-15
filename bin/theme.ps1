@@ -414,6 +414,55 @@ function Get-CurrentThemeSlug([hashtable]$Themes) {
     return 'solarized-dark'
 }
 
+function Resolve-SingleThemeFast([string]$RawSlug) {
+    if (-not $RawSlug -or -not $RawSlug.Trim()) { return $null }
+    $slug = $RawSlug.Trim().ToLowerInvariant().Replace('_', '-')
+    $snake = $slug.Replace('-', '_')
+    foreach ($udir in (Get-UserThemeDirList)) {
+        if (-not [System.IO.Directory]::Exists($udir)) { continue }
+        foreach ($candName in @("$slug.theme", "$snake.theme", "$slug.conf", "$snake.conf")) {
+            $up = Join-Path $udir $candName
+            if ([System.IO.File]::Exists($up)) {
+                $t = Read-ThemeFile -Path $up -DefaultSlug $slug -Source 'user'
+                if ($t['THEME_ID'] -eq $slug) { return $t }
+            }
+        }
+    }
+    $managedPath = Join-Path (Join-Path (Join-Path $RepoDir 'config') 'themes') "$slug.theme"
+    if ([System.IO.File]::Exists($managedPath)) {
+        return (Read-ThemeFile -Path $managedPath -DefaultSlug $slug -Source 'builtin')
+    }
+    $all = Get-DiscoveredThemeMap
+    if ($all.ContainsKey($slug)) { return $all[$slug] }
+    return $null
+}
+
+function Resolve-CurrentSlugFast {
+    $cfg = Get-XdgConfigHome
+    $managedDir = Join-Path (Join-Path $RepoDir 'config') 'themes'
+    foreach ($sf in @(
+            (Join-Path (Join-Path $cfg 'windows-settings') 'theme'),
+            (Join-Path (Join-Path $cfg 'home-settings') 'theme')
+        )) {
+        if ([System.IO.File]::Exists($sf)) {
+            $saved = (Get-Content -LiteralPath $sf -TotalCount 1 -ErrorAction SilentlyContinue)
+            if ($saved) {
+                $norm = $saved.Trim().ToLowerInvariant().Replace('_', '-')
+                if ([System.IO.File]::Exists((Join-Path $managedDir "$norm.theme"))) { return $norm }
+                if ($null -ne (Resolve-SingleThemeFast $norm)) { return $norm }
+            }
+        }
+    }
+    foreach ($ev in @($env:WINDOWS_SETTINGS_THEME, $env:HOME_SETTINGS_THEME)) {
+        if ($ev -and $ev.Trim()) {
+            $norm = $ev.Trim().ToLowerInvariant().Replace('_', '-')
+            if ([System.IO.File]::Exists((Join-Path $managedDir "$norm.theme"))) { return $norm }
+            if ($null -ne (Resolve-SingleThemeFast $norm)) { return $norm }
+        }
+    }
+    return 'solarized-dark'
+}
+
 function Write-TextUtf8NoBom([string]$Path, [string]$Content) {
     $parent = Split-Path -Parent $Path
     if ($parent -and -not (Test-Path -LiteralPath $parent)) {
@@ -1224,8 +1273,19 @@ function Send-LiveOscSequence([hashtable]$Theme) {
 
 function Send-LiveNeovimReload {
     if ($env:THEME_LIVE_NVIM -eq '0') { return }
-    $nvimCmd = Get-Command nvim -ErrorAction SilentlyContinue
+    $nvimCmd = Get-Command nvim.exe, nvim -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $nvimCmd) { return }
+    $nvimExe = $nvimCmd.Source
+    if ($nvimExe -match '(?i)[\\/]mise[\\/]shims[\\/]') {
+        $miseRoot = Split-Path -Parent (Split-Path -Parent $nvimExe)
+        $nvimInstDir = Join-Path (Join-Path $miseRoot 'installs') 'neovim'
+        if ([System.IO.Directory]::Exists($nvimInstDir)) {
+            $directHit = Get-ChildItem -LiteralPath $nvimInstDir -Filter 'nvim.exe' -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+            if ($directHit) { $nvimExe = $directHit.FullName }
+        }
+    }
 
     $skipPipe = if ($env:THEME_SKIP_NVIM_SOCKET) { $env:THEME_SKIP_NVIM_SOCKET.Trim() } else { '' }
     $pipes = [System.Collections.Generic.List[string]]::new()
@@ -1246,7 +1306,7 @@ function Send-LiveNeovimReload {
         if ($skipPipe -and $pipe -eq $skipPipe) { continue }
         try {
             $psi = [System.Diagnostics.ProcessStartInfo]::new()
-            $psi.FileName = $nvimCmd.Source
+            $psi.FileName = $nvimExe
             $psi.ArgumentList.Add('--headless')
             $psi.ArgumentList.Add('--server')
             $psi.ArgumentList.Add($pipe)
@@ -1352,51 +1412,79 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
     New-Item -ItemType Directory -Force -Path $btopThemesDir | Out-Null
     $repoBtopDir = Join-Path (Join-Path $RepoDir 'config') 'btop'
     $repoBtopConf = Join-Path $repoBtopDir 'btop.conf'
-    if (Test-Path -LiteralPath (Join-Path $repoBtopDir 'themes')) {
-        Get-ChildItem -LiteralPath (Join-Path $repoBtopDir 'themes') -Filter '*.theme' -File | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $btopThemesDir $_.Name) -Force
+    $repoBtopThemesDir = Join-Path $repoBtopDir 'themes'
+    if ([System.IO.Directory]::Exists($repoBtopThemesDir)) {
+        foreach ($btFile in [System.IO.Directory]::GetFiles($repoBtopThemesDir, '*.theme')) {
+            $btDst = Join-Path $btopThemesDir ([System.IO.Path]::GetFileName($btFile))
+            if (-not [System.IO.File]::Exists($btDst) -or ([System.IO.FileInfo]::new($btDst)).Length -ne ([System.IO.FileInfo]::new($btFile)).Length) {
+                Copy-Item -LiteralPath $btFile -Destination $btDst -Force
+            }
         }
     }
     $targetBtopTheme = Join-Path $btopThemesDir "$($Theme['BTOP_THEME_NAME']).theme"
-    if ($Theme['SOURCE'] -eq 'user' -or -not (Test-Path -LiteralPath $targetBtopTheme)) {
+    if ($Theme['SOURCE'] -eq 'user' -or -not [System.IO.File]::Exists($targetBtopTheme)) {
         Write-TextUtf8NoBom -Path $targetBtopTheme -Content (Build-BtopThemeText $Theme)
     }
-    if (Test-Path -LiteralPath $repoBtopConf) {
+    if ([System.IO.File]::Exists($repoBtopConf)) {
         $rawBtop = Get-Content -LiteralPath $repoBtopConf -Raw
         $updatedBtop = [regex]::Replace($rawBtop, '(?m)^color_theme\s*=\s*"[^"]*"', "color_theme = `"$($Theme['BTOP_THEME_NAME'])`"")
         $updatedBtop = [regex]::Replace($updatedBtop, '(?m)^cpu_graph_upper\s*=\s*"Auto"', 'cpu_graph_upper = "total"')
         $updatedBtop = [regex]::Replace($updatedBtop, '(?m)^cpu_graph_lower\s*=\s*"Auto"', 'cpu_graph_lower = "gpu"')
         Write-TextUtf8NoBom -Path (Join-Path $btopXdgDir 'btop.conf') -Content $updatedBtop
         if ($env:LOCALAPPDATA) {
-            $wingetBtopDirs = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages') -Directory -Filter 'aristocratos.btop4win*' -ErrorAction SilentlyContinue)
-            foreach ($wdir in $wingetBtopDirs) {
-                $exeHit = Get-ChildItem -LiteralPath $wdir.FullName -Filter 'btop4win.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($exeHit) {
-                    $b4wRoot = $exeHit.DirectoryName
-                    $b4wThemes = Join-Path $b4wRoot 'themes'
-                    New-Item -ItemType Directory -Force -Path $b4wThemes -ErrorAction SilentlyContinue | Out-Null
-                    Copy-Item -Path (Join-Path $btopThemesDir '*.theme') -Destination $b4wThemes -Force -ErrorAction SilentlyContinue
-                    Write-TextUtf8NoBom -Path (Join-Path $b4wRoot 'btop.conf') -Content $updatedBtop
+            $wingetPkgsRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+            if ([System.IO.Directory]::Exists($wingetPkgsRoot)) {
+                foreach ($wdirPath in [System.IO.Directory]::GetDirectories($wingetPkgsRoot, 'aristocratos.btop4win*')) {
+                    $directB4w = Join-Path $wdirPath 'btop4win\btop4win.exe'
+                    $b4wRoot = if ([System.IO.File]::Exists($directB4w)) {
+                        Split-Path -Parent $directB4w
+                    } else {
+                        $exeHit = Get-ChildItem -LiteralPath $wdirPath -Filter 'btop4win.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if ($exeHit) { $exeHit.DirectoryName } else { '' }
+                    }
+                    if ($b4wRoot) {
+                        $b4wThemes = Join-Path $b4wRoot 'themes'
+                        if (-not [System.IO.Directory]::Exists($b4wThemes)) {
+                            New-Item -ItemType Directory -Force -Path $b4wThemes -ErrorAction SilentlyContinue | Out-Null
+                        }
+                        foreach ($srcBt in [System.IO.Directory]::GetFiles($btopThemesDir, '*.theme')) {
+                            $dstBt = Join-Path $b4wThemes ([System.IO.Path]::GetFileName($srcBt))
+                            if (-not [System.IO.File]::Exists($dstBt) -or ([System.IO.FileInfo]::new($dstBt)).Length -ne ([System.IO.FileInfo]::new($srcBt)).Length) {
+                                Copy-Item -LiteralPath $srcBt -Destination $dstBt -Force -ErrorAction SilentlyContinue
+                            }
+                        }
+                        Write-TextUtf8NoBom -Path (Join-Path $b4wRoot 'btop.conf') -Content $updatedBtop
+                    }
                 }
             }
         }
     }
 
-    # Oh My Posh theme remap & compiled cache update
+    # Oh My Posh theme remap & compiled cache update (skip init rebuild when streaming cache already exists)
     $repoOmp = Join-Path (Join-Path (Join-Path $RepoDir 'config') 'powershell') 'p10k_single_line.omp.json'
-    if (Test-Path -LiteralPath $repoOmp) {
+    if ([System.IO.File]::Exists($repoOmp)) {
         $rawOmp = Get-Content -LiteralPath $repoOmp -Raw
         $remappedOmp = Convert-SolarizedHexString -InputText $rawOmp -Theme $Theme -Lowercase $true
         Write-TextUtf8NoBom -Path $ompDest -Content $remappedOmp
-        $ompCmd = Get-Command oh-my-posh -ErrorAction SilentlyContinue
-        if ($ompCmd) {
-            try {
-                $ompInit = (& $ompCmd.Source init pwsh --config $ompDest --print) -join "`n"
-                if ($ompInit) {
-                    Write-TextUtf8NoBom -Path (Join-Path $psCacheDir 'omp_init.ps1') -Content $ompInit
+        $ompInitPath = Join-Path $psCacheDir 'omp_init.ps1'
+        $needOmpInit = -not [System.IO.File]::Exists($ompInitPath)
+        if (-not $needOmpInit) {
+            $cachedOmpText = [System.IO.File]::ReadAllText($ompInitPath)
+            if ($cachedOmpText -notmatch 'Enable-PoshStreaming') {
+                $needOmpInit = $true
+            }
+        }
+        if ($needOmpInit) {
+            $ompCmd = Get-Command oh-my-posh -ErrorAction SilentlyContinue
+            if ($ompCmd) {
+                try {
+                    $ompInit = (& $ompCmd.Source init pwsh --config $ompDest --print) -join "`n"
+                    if ($ompInit) {
+                        Write-TextUtf8NoBom -Path $ompInitPath -Content $ompInit
+                    }
+                } catch {
+                    Write-Verbose "Oh My Posh cache rebuild skipped: $_"
                 }
-            } catch {
-                Write-Verbose "Oh My Posh cache rebuild skipped: $_"
             }
         }
     }
@@ -1462,10 +1550,18 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
         $streamState = Get-Variable -Name _ompStreamingState -Scope Global -ValueOnly -ErrorAction SilentlyContinue
         if ($null -ne $streamState) {
             try {
+                if ($null -ne $streamState.StdIn) {
+                    try {
+                        $streamState.StdIn.WriteLine('{"command":"quit"}')
+                        $streamState.StdIn.Write([char]0)
+                        $streamState.StdIn.Flush()
+                    } catch { $null = $_ }
+                }
                 if ($null -ne $streamState.ServeProcess -and -not $streamState.ServeProcess.HasExited) {
                     try { $streamState.ServeProcess.Kill() } catch { $null = $_ }
                 }
                 $streamState.ServeProcess = $null
+                $streamState.FailureCount = 0
                 $streamState.Prompt = ''
                 $streamState.Transient = ''
                 $streamState.Dirty = $false
@@ -1941,6 +2037,45 @@ $endOfOpts = $false
     if (-not $action) { $action = 'set' }
 }
 
+$script:ExitCode = 0
+
+if ($action -eq 'path') {
+    Write-Output (Get-UserThemeDirList)[0]
+    exit 0
+}
+if ($action -eq 'current') {
+    try {
+        Write-Output (Resolve-CurrentSlugFast)
+        exit 0
+    } catch {
+        [Console]::Error.WriteLine("theme: $($_.Exception.Message)")
+        exit 1
+    }
+}
+if ($action -in @('preview', 'env', 'set') -or ($dryRun -and $null -ne $targetName -and $action -notin @('list', 'create', 'sync-assets'))) {
+    try {
+        $rawTarget = if ($null -eq $targetName) { Resolve-CurrentSlugFast } else { $targetName }
+        $singleTheme = Resolve-SingleThemeFast $rawTarget
+    } catch {
+        [Console]::Error.WriteLine("theme: $($_.Exception.Message)")
+        exit 1
+    }
+    if ($null -eq $singleTheme) {
+        [Console]::Error.WriteLine("theme: unknown theme '$rawTarget' (run 'theme --list' to see available themes)")
+        exit 1
+    }
+    if ($action -eq 'preview') {
+        Show-ThemePreview -Theme $singleTheme
+        exit $script:ExitCode
+    }
+    if ($action -eq 'env') {
+        Write-Output (Build-PowerShellThemeEnv -Theme $singleTheme)
+        exit 0
+    }
+    Invoke-ApplyTheme -Theme $singleTheme -AllThemes @{} -DryRun $dryRun -NoLive $noLive
+    exit $script:ExitCode
+}
+
 try {
     $themes = Get-DiscoveredThemeMap
 } catch {
@@ -1948,20 +2083,11 @@ try {
     exit 1
 }
 
-$script:ExitCode = 0
 $currentSlug = Get-CurrentThemeSlug -Themes $themes
 
 if ($action -eq 'list') {
     Show-ThemeList -Themes $themes -CurrentSlug $currentSlug -Plain $plain
     exit $script:ExitCode
-}
-if ($action -eq 'current') {
-    Write-Output $currentSlug
-    exit 0
-}
-if ($action -eq 'path') {
-    Write-Output (Get-UserThemeDirList)[0]
-    exit 0
 }
 if ($action -eq 'sync-assets') {
     $repoZellijTheme = Join-Path (Join-Path (Join-Path (Join-Path $RepoDir 'config') 'zellij') 'themes') 'windows-settings.kdl'
@@ -1978,30 +2104,6 @@ if ($action -eq 'sync-assets') {
 }
 if ($action -eq 'create') {
     Initialize-CustomUserTheme -NewName $targetName -BaseSlug $baseName -Themes $themes -Force $force
-    exit $script:ExitCode
-}
-if ($action -in @('preview', 'env')) {
-    $rawTarget = if ($null -eq $targetName) { $currentSlug } else { $targetName }
-    $slug = $rawTarget.Trim().ToLowerInvariant().Replace('_', '-')
-    if (-not $themes.ContainsKey($slug)) {
-        [Console]::Error.WriteLine("theme: unknown theme '$rawTarget' (run 'theme --list' to see available themes)")
-        exit 1
-    }
-    if ($action -eq 'preview') {
-        Show-ThemePreview -Theme $themes[$slug]
-        exit $script:ExitCode
-    }
-    Write-Output (Build-PowerShellThemeEnv -Theme $themes[$slug])
-    exit 0
-}
-if ($action -eq 'set' -or ($dryRun -and $null -ne $targetName)) {
-    $rawTarget = if ($null -eq $targetName) { $currentSlug } else { $targetName }
-    $slug = $rawTarget.Trim().ToLowerInvariant().Replace('_', '-')
-    if (-not $themes.ContainsKey($slug)) {
-        [Console]::Error.WriteLine("theme: unknown theme '$rawTarget' (run 'theme --list' to see available themes)")
-        exit 1
-    }
-    Invoke-ApplyTheme -Theme $themes[$slug] -AllThemes $themes -DryRun $dryRun -NoLive $noLive
     exit $script:ExitCode
 }
 if ($dryRun -and $null -eq $targetName) {

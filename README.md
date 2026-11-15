@@ -140,7 +140,7 @@ windows-settings/
 │   │   └── syntaxes/              # 37 standalone Sublime Text and bat syntax grammars
 │   ├── btop/                      # btop4win config (btop.conf) and 17 TrueColor themes
 │   ├── clangd/                    # C and C++ language server configuration (config.yaml)
-│   ├── cmd/                       # Native cmd.exe AutoRun, Powerline shelf prompt, and doskey macros (autorun.cmd)
+│   ├── cmd/                       # Native cmd.exe AutoRun, Powerline shelf prompt, and doskey macros (autorun.cmd, macros.doskey)
 │   ├── colors/                    # 40-language calibrated GNU dircolors (LS_COLORS)
 │   ├── git/                       # TrueColor Git delta diff viewer config (delta.gitconfig)
 │   ├── nvim/                      # Lua Neovim 0.11+ and 0.12+ (Native LSP, Named Pipe RPC, :Theme)
@@ -230,12 +230,12 @@ The following table indexes keyboard shortcuts, editor commands, shell wrappers,
 
 Interactive PowerShell and Command Prompt sessions are configured for low startup latency, predictive completion, and visual parity:
 
-- **PowerShell module**: `WindowsSettings` is deployed to `$HOME\Documents\PowerShell\Modules\WindowsSettings` and imported via a 1-line `$PROFILE` (`Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue`), compiling `oh-my-posh`, `zoxide`, `gh` completion, and `theme_env.ps1` initializers to `$HOME\.cache\powershell\` for sub-10ms warm startup.
+- **PowerShell module**: `WindowsSettings` is deployed to `$HOME\Documents\PowerShell\Modules\WindowsSettings` and imported via a 1-line `$PROFILE` (`Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue`), compiling `oh-my-posh`, `mise` binary paths, `zoxide`, `gh` completion, and `theme_env.ps1` initializers to `$HOME\.cache\powershell\` for fast warm startup.
 - **Single-line Oh My Posh shelf prompt**: Configured in `config/powershell/p10k_single_line.omp.json`:
-  - Renders on the active theme's `BASE02` shelf (`#073642` in Solarized Dark) with the OS icon in calm `BASE0` (shifting automatically to seasonal glyphs when a US Holiday theme is active).
+  - Renders via a persistent streaming daemon on the active theme's `BASE02` shelf (`#073642` in Solarized Dark) with the OS icon in calm `BASE0` (shifting automatically to seasonal glyphs when a US Holiday theme is active).
   - Resolves and caches GitHub and GitLab pull and merge request numbers asynchronously in the background, rendering clickable OSC 8 `<branch>@<N>` badges next to the Git branch without blocking prompt redraws.
   - Anchors right-prompt command status (Green on success and Red on error) alongside execution duration, active language toolchains, and cloud context.
-- **Windows Command Prompt AutoRun**: `config/cmd/autorun.cmd` is registered in `HKCU\Software\Microsoft\Command Processor\AutoRun` to enable UTF-8 (`chcp 65001`), `COLORTERM=truecolor`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, dynamic `theme_env.cmd` palette hooks, and full `doskey` shortcut parity with zero external process spawns.
+- **Windows Command Prompt AutoRun**: `config/cmd/autorun.cmd` and `config/cmd/macros.doskey` are deployed to `%LOCALAPPDATA%\cmd\` and registered in `HKCU\Software\Microsoft\Command Processor\AutoRun` to enable UTF-8 (`chcp 65001`), `COLORTERM=truecolor`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, dynamic `theme_env.cmd` and `mise_paths.cmd` hooks, and single-load `doskey /macrofile` shortcut parity.
 
 ## Developer toolchains and modern CLI suite
 
@@ -279,7 +279,7 @@ Keep machine-local or private settings in untracked drop-in hooks so repository 
 
 ## Git and shell shortcuts
 
-Functions and aliases in `module/` (mirrored as `doskey` macros in `config/cmd/autorun.cmd`) provide shortcuts for navigation, IDE control, directory listings, Git workflows, and polyglot builds:
+Functions and aliases in `module/` (mirrored as `doskey` macros in `config/cmd/macros.doskey`) provide shortcuts for navigation, IDE control, directory listings, Git workflows, and polyglot builds:
 
 | Shortcut | Description |
 | :--- | :--- |

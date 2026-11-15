@@ -1,0 +1,72 @@
+ls=ls --color=auto $*
+ll=ls --color=auto -alF $*
+la=ls --color=auto -A $*
+l=ls --color=auto -CF $*
+e=eza --icons=auto --group-directories-first $*
+el=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso $*
+elm=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso --sort=modified $*
+et=eza --tree --level=2 --icons=auto $*
+lt=eza --tree --level=2 --icons=auto $*
+elt=eza -la --tree --level=2 --icons=auto --git --group --time-style=long-iso $*
+elx=eza -la --icons=auto --git --header --group --group-directories-first --time-style=long-iso -H -i -S --extended $*
+b=bat $*
+gco=git checkout $*
+gcb=git checkout -b $*
+gcd=git checkout develop $*
+ga=git add $*
+gaa=git add --all $*
+gst=git status $*
+gss=git status -s $*
+gd=git diff $*
+gds=git diff --staged $*
+gl=git pull $*
+gp=git push $*
+gb=git branch $*
+gba=git branch -a $*
+gbd=git branch -d $*
+gbD=git branch -D $*
+gsta=git stash push $*
+gstp=git stash pop $*
+gstl=git stash list $*
+glog=git log --oneline --decorate --graph $*
+glo=git log --oneline --decorate $*
+grb=git rebase $*
+grba=git rebase --abort $*
+grbc=git rebase --continue $*
+grbi=git rebase -i $*
+grh=git reset $*
+grhh=git reset --hard $*
+gsw=git switch $*
+gswc=git switch -c $*
+gcp=git cherry-pick $*
+gcpa=git cherry-pick --abort $*
+gcpc=git cherry-pick --continue $*
+gcommit=git add -A $t git commit $*
+gamend=git add -A $t git commit --amend --no-edit $*
+gfetch=git fetch $*
+gpush=git push -u origin HEAD $*
+gpushf=git push -u --force-with-lease origin HEAD $*
+gpull=git pull --rebase --autostash $*
+gup=git pull --rebase --autostash --prune $*
+vi=nvim $*
+vim=nvim $*
+v=ide --open-or-edit $*
+icd=cd /d $* $t ide --cd .
+tf=terraform $*
+ds=dust $*
+btop=btop4win $*
+update=update-system $*
+ide2=ide --2pane $*
+ide3=ide --3pane $*
+idek=ide --kill $*
+qide=ide --quit $*
+quit=ide --quit $*
+go-testall=go test ./... $*
+go-buildall=go build ./... $*
+go-lint=golangci-lint run $*
+yaml-lint=yamllint $*
+go_testall=go test ./... $*
+go_buildall=go build ./... $*
+go_lint=golangci-lint run $*
+yaml_lint=yamllint $*
+clear=cls

@@ -1,12 +1,73 @@
 @echo off
 setlocal
 
+if /i "%~1"=="--agy-hook" if not "%~2"=="" if "%~3"=="" goto :agy_hook
 if /i "%~1"=="--run-btop" goto :run_btop
 if /i "%~1"=="--run-keys" goto :run_keys
 if /i "%~1"=="--toggle-monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if defined ZELLIJ goto :toggle_monitor
 if /i "%~1"=="--toggle-keys" if "%~2"=="" if defined ZELLIJ goto :toggle_keys
 if /i "%~1"=="--monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if not "%IDE_MONITOR_ONCE%"=="1" goto :direct_monitor
 goto :run_pwsh
+
+:agy_hook
+set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
+if /i "%~2"=="SessionStart" (
+    set "OSC_FILE=%STATE_DIR%\osc-agy-idle.bin"
+    set "MAPPED_STATE=idle"
+    set "JSON_REPLY={}"
+    goto :agy_hook_emit
+)
+if /i "%~2"=="PreInvocation" (
+    set "OSC_FILE=%STATE_DIR%\osc-agy-working.bin"
+    set "MAPPED_STATE=running"
+    set "JSON_REPLY={}"
+    goto :agy_hook_emit
+)
+if /i "%~2"=="Stop" goto :agy_hook_stop
+goto :run_pwsh
+
+:agy_hook_stop
+if not exist "%STATE_DIR%\osc-agy-done.bin" call :exec_pwsh --write-keys-cache >nul 2>nul <nul
+if not exist "%STATE_DIR%\osc-agy-done.bin" goto :run_pwsh
+setlocal enabledelayedexpansion
+set "HOOK_IN="
+set /p HOOK_IN=
+set "OSC_NAME=osc-agy-done.bin"
+set "MAPPED_STATE=done"
+set "NEED_PWSH=0"
+if defined HOOK_IN (
+    if not "!HOOK_IN:USER_CANCELED=!"=="!HOOK_IN!" (
+        set "OSC_NAME=osc-agy-clear.bin"
+        set "MAPPED_STATE=idle"
+    ) else (
+        if /i not "!HOOK_IN:error=!"=="!HOOK_IN!" set "NEED_PWSH=1"
+        if /i not "!HOOK_IN:fail=!"=="!HOOK_IN!" set "NEED_PWSH=1"
+        if /i not "!HOOK_IN:abort=!"=="!HOOK_IN!" set "NEED_PWSH=1"
+    )
+)
+if "!NEED_PWSH!"=="1" (
+    set "WS_HOOK_STDIN=!HOOK_IN!"
+    call :exec_pwsh --agy-hook Stop <nul
+    exit /b !ERRORLEVEL!
+)
+for %%A in ("!OSC_NAME!") do for %%B in ("!MAPPED_STATE!") do (
+    endlocal
+    set "OSC_FILE=%STATE_DIR%\%%~A"
+    set "MAPPED_STATE=%%~B"
+)
+set "JSON_REPLY={"decision":"allow"}"
+
+:agy_hook_emit
+if not exist "%OSC_FILE%" call :exec_pwsh --write-keys-cache >nul 2>nul <nul
+if not exist "%OSC_FILE%" goto :run_pwsh
+if not "%WS_AGY_HOOK_NO_TTY%"=="1" type "%OSC_FILE%" >CONOUT$ 2>nul
+set "HOOK_SESS=%ZELLIJ_SESSION_NAME%"
+if not defined HOOK_SESS set "HOOK_SESS=%IDE_SESSION%"
+if defined HOOK_SESS (
+    if exist "%STATE_DIR%\%HOOK_SESS%.json" >"%STATE_DIR%\%HOOK_SESS%.state" echo %MAPPED_STATE%
+)
+echo %JSON_REPLY%
+exit /b 0
 
 :direct_monitor
 call :find_btop

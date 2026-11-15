@@ -9,30 +9,41 @@ param()
 # -------------------------------------------------------------
 # 1. High-Speed PATH & Environment Initialization
 # -------------------------------------------------------------
+if ($env:ProgramFiles) {
+    $gitMingwBin = Join-Path $env:ProgramFiles 'Git\mingw64\bin'
+    $gitCmdBin = Join-Path $env:ProgramFiles 'Git\cmd'
+    if ([System.IO.File]::Exists((Join-Path $gitMingwBin 'git.exe')) -and -not $env:Path.Contains($gitMingwBin, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $idxGitCmd = $env:Path.IndexOf($gitCmdBin, [System.StringComparison]::OrdinalIgnoreCase)
+        if ($idxGitCmd -ge 0) {
+            $env:Path = $env:Path.Substring(0, $idxGitCmd) + "$gitMingwBin;" + $env:Path.Substring($idxGitCmd)
+        }
+    }
+}
+
 if ($env:LOCALAPPDATA) {
     $wingetLinksDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
-    if ([System.IO.Directory]::Exists($wingetLinksDir) -and $env:Path -notlike "*$wingetLinksDir*") {
+    if ([System.IO.Directory]::Exists($wingetLinksDir) -and -not $env:Path.Contains($wingetLinksDir, [System.StringComparison]::OrdinalIgnoreCase)) {
         $env:Path = "$wingetLinksDir;$env:Path"
     }
 }
 
 $localUserBin = Join-Path $HOME '.local\bin'
-if ([System.IO.Directory]::Exists($localUserBin) -and $env:Path -notlike "*$localUserBin*") {
+if ([System.IO.Directory]::Exists($localUserBin) -and -not $env:Path.Contains($localUserBin, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$localUserBin;$env:Path"
 }
 
 $repoBinCandidate = Join-Path (Split-Path -Parent $PSScriptRoot) 'bin'
-if ([System.IO.Directory]::Exists($repoBinCandidate) -and $env:Path -notlike "*$repoBinCandidate*") {
+if ([System.IO.Directory]::Exists($repoBinCandidate) -and -not $env:Path.Contains($repoBinCandidate, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$repoBinCandidate;$env:Path"
 }
 
 # Go binary directories (GOBIN, GOPATH/bin, ~/.local/share/go/bin, ~/go/bin)
 $goBinPrimary = if ($env:GOBIN) { $env:GOBIN } elseif ($env:GOPATH) { Join-Path $env:GOPATH 'bin' } else { Join-Path $HOME 'go\bin' }
-if ($env:Path -notlike "*$goBinPrimary*") {
+if (-not $env:Path.Contains($goBinPrimary, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$env:Path;$goBinPrimary"
 }
 $goXdgBin = Join-Path $HOME '.local\share\go\bin'
-if ([System.IO.Directory]::Exists($goXdgBin) -and $env:Path -notlike "*$goXdgBin*") {
+if ([System.IO.Directory]::Exists($goXdgBin) -and -not $env:Path.Contains($goXdgBin, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$env:Path;$goXdgBin"
 }
 
@@ -42,18 +53,123 @@ foreach ($toolBin in @(
     (Join-Path $HOME '.local\share\elan\bin'),
     (Join-Path $HOME '.elan\bin')
 )) {
-    if ([System.IO.Directory]::Exists($toolBin) -and $env:Path -notlike "*$toolBin*") {
+    if ([System.IO.Directory]::Exists($toolBin) -and -not $env:Path.Contains($toolBin, [System.StringComparison]::OrdinalIgnoreCase)) {
         $env:Path = "$env:Path;$toolBin"
     }
 }
 
-# Mise shims binary directory
+# Mise shims fallback + pre-compiled direct Mise binary paths (ahead of shims to bypass ~180ms shim tax)
+$psCacheDir = Join-Path $HOME '.cache\powershell'
 $miseShims = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'mise\shims' } else { '' }
 $miseFallback = Join-Path $HOME '.local\share\mise\shims'
-if ($miseShims -and [System.IO.Directory]::Exists($miseShims) -and $env:Path -notlike "*$miseShims*") {
+if ($miseShims -and [System.IO.Directory]::Exists($miseShims) -and -not $env:Path.Contains($miseShims, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$miseShims;$env:Path"
-} elseif ([System.IO.Directory]::Exists($miseFallback) -and $env:Path -notlike "*$miseFallback*") {
+} elseif ([System.IO.Directory]::Exists($miseFallback) -and -not $env:Path.Contains($miseFallback, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$miseFallback;$env:Path"
+}
+
+$misePathsCache = Join-Path $psCacheDir 'mise_paths.ps1'
+if ([System.IO.File]::Exists($misePathsCache)) {
+    . $misePathsCache
+}
+if ($env:LOCALAPPDATA -and $env:WS_DISABLE_ASYNC_MISE_CACHE -ne '1') {
+    $miseInstallsRoot = Join-Path $env:LOCALAPPDATA 'mise\installs'
+    if ([System.IO.Directory]::Exists($miseInstallsRoot)) {
+        $needMiseRefresh = -not [System.IO.File]::Exists($misePathsCache)
+        if (-not $needMiseRefresh) {
+            $instTicks = [System.IO.Directory]::GetLastWriteTimeUtc($miseInstallsRoot).Ticks
+            $cacheTicks = [System.IO.File]::GetLastWriteTimeUtc($misePathsCache).Ticks
+            if ($instTicks -gt $cacheTicks) { $needMiseRefresh = $true }
+        }
+        $miseLockFile = Join-Path $psCacheDir 'mise_paths.lock'
+        if ($needMiseRefresh -and [System.IO.File]::Exists($miseLockFile)) {
+            $lockAge = ([DateTime]::UtcNow - [System.IO.File]::GetLastWriteTimeUtc($miseLockFile)).TotalSeconds
+            if ($lockAge -lt 60) { $needMiseRefresh = $false }
+        }
+        if ($needMiseRefresh) {
+            try {
+                if (-not [System.IO.Directory]::Exists($psCacheDir)) {
+                    [System.IO.Directory]::CreateDirectory($psCacheDir) | Out-Null
+                }
+                [System.IO.File]::WriteAllText($miseLockFile, '')
+                $pwshExeMise = (Get-Process -Id $PID).Path
+                if ($pwshExeMise) {
+                    $cmdCacheTarget = Join-Path (Join-Path $env:LOCALAPPDATA 'cmd') 'mise_paths.cmd'
+                    $bgMiseScript = @'
+param([string]$PsCache, [string]$CmdCache, [string]$LockFile)
+try {
+    $rawPaths = @(mise bin-paths 2>$null)
+    $cleanDirs = [System.Collections.Generic.List[string]]::new()
+    foreach ($rp in $rawPaths) {
+        if (-not $rp -or -not "$rp".Trim()) { continue }
+        $norm = "$rp".Trim().Replace('/', '\').TrimEnd('\')
+        if ([System.IO.Directory]::Exists($norm) -and -not $cleanDirs.Contains($norm)) {
+            $cleanDirs.Add($norm)
+        }
+    }
+    if ($cleanDirs.Count -gt 0) {
+        $marker = $cleanDirs[0]
+        $joined = ($cleanDirs -join ';')
+        $escMarker = $marker.Replace("'", "''")
+        $escJoined = $joined.Replace("'", "''")
+        $psLines = @(
+            "`$script:_wsMiseMarker = '$escMarker'",
+            "`$script:_wsMisePathBlock = '$escJoined'",
+            'if ([System.IO.Directory]::Exists($script:_wsMiseMarker) -and -not $env:Path.Contains($script:_wsMiseMarker, [System.StringComparison]::OrdinalIgnoreCase)) {',
+            '    $env:Path = "$script:_wsMisePathBlock;$env:Path"',
+            '}'
+        )
+        [System.IO.File]::WriteAllText($PsCache, ($psLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+        $cmdDir = Split-Path -Parent $CmdCache
+        if (-not [System.IO.Directory]::Exists($cmdDir)) { [System.IO.Directory]::CreateDirectory($cmdDir) | Out-Null }
+        $cmdLines = @(
+            "@if not exist `"$marker`" exit /b 0",
+            "@call :ws_mise_has `"$marker`"",
+            "@if errorlevel 1 set `"PATH=$joined;%PATH%`"",
+            '@exit /b 0',
+            ':ws_mise_has',
+            '@setlocal EnableDelayedExpansion',
+            '@set "_P=;!PATH!;"',
+            '@set "_T=!_P:*;%~1;=FOUND!"',
+            '@if "!_T:~0,5!"=="FOUND" (endlocal & exit /b 0)',
+            '@endlocal & exit /b 1'
+        )
+        [System.IO.File]::WriteAllText($CmdCache, ($cmdLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+    }
+} finally {
+    Remove-Item -LiteralPath $LockFile -Force -ErrorAction SilentlyContinue
+}
+'@
+                    $psiM = [System.Diagnostics.ProcessStartInfo]::new()
+                    $psiM.FileName = $pwshExeMise
+                    $psiM.ArgumentList.Add('-NoLogo')
+                    $psiM.ArgumentList.Add('-NoProfile')
+                    $psiM.ArgumentList.Add('-NonInteractive')
+                    $psiM.ArgumentList.Add('-Command')
+                    $psiM.ArgumentList.Add("& { $bgMiseScript } -PsCache '$($misePathsCache.Replace("'", "''"))' -CmdCache '$($cmdCacheTarget.Replace("'", "''"))' -LockFile '$($miseLockFile.Replace("'", "''"))'")
+                    $psiM.CreateNoWindow = $true
+                    $psiM.UseShellExecute = $false
+                    [void][System.Diagnostics.Process]::Start($psiM)
+                }
+            } catch {
+                $null = $_
+            }
+        }
+    }
+}
+
+$script:_wsPathDirs = $env:Path.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries)
+function Test-WsExeOnPath([string]$ExeName) {
+    foreach ($dir in $script:_wsPathDirs) {
+        try {
+            if ([System.IO.File]::Exists((Join-Path $dir $ExeName))) {
+                return $true
+            }
+        } catch {
+            $null = $_
+        }
+    }
+    return $false
 }
 
 # Solarized Dark LS_COLORS (Calibrated 40-language unbolded GNU dircolors baseline)
@@ -88,17 +204,16 @@ $env:FZF_DEFAULT_OPTS = '--color=bg+:#073642,bg:#002B36,spinner:#859900,hl:#586E
 $env:_ZO_FZF_OPTS = $env:FZF_DEFAULT_OPTS
 
 if (-not $env:FZF_DEFAULT_COMMAND) {
-    if (Get-Command rg -ErrorAction SilentlyContinue) {
+    if (Test-WsExeOnPath 'rg.exe') {
         $env:FZF_DEFAULT_COMMAND = 'rg --files --hidden --glob !.git'
         $env:FZF_CTRL_T_COMMAND = $env:FZF_DEFAULT_COMMAND
-    } elseif (Get-Command fd -ErrorAction SilentlyContinue) {
+    } elseif (Test-WsExeOnPath 'fd.exe') {
         $env:FZF_DEFAULT_COMMAND = 'fd --type f --strip-cwd-prefix --hidden --follow --exclude .git'
         $env:FZF_CTRL_T_COMMAND = $env:FZF_DEFAULT_COMMAND
     }
 }
 
 # Pre-compiled active color theme overrides (<1ms disk cache load)
-$psCacheDir = Join-Path $HOME '.cache\powershell'
 $themeEnvCache = Join-Path $psCacheDir 'theme_env.ps1'
 $wsConfigDir = Join-Path $HOME '.config\windows-settings'
 $themeSlugFile = Join-Path $wsConfigDir 'theme'
@@ -133,6 +248,7 @@ function Resolve-WsBinScript([string]$ScriptName) {
 }
 
 function Sync-PSReadLineThemePalette {
+    if ($null -eq (Get-Module -Name 'PSReadLine')) { return }
     $cBase0   = if ($env:_HS_ESC_BASE0)   { $env:_HS_ESC_BASE0 }   else { "`e[38;2;131;148;150m" }
     $cBase01  = if ($env:_HS_ESC_BASE01)  { $env:_HS_ESC_BASE01 }  else { "`e[38;2;88;110;117m" }
     $cBase02B = if ($env:_HS_ESC_BG_BASE02) { $env:_HS_ESC_BG_BASE02 } else { "`e[48;2;7;54;66m" }
@@ -219,10 +335,18 @@ function Sync-OhMyPoshPromptCache {
     $streamState = Get-Variable -Name _ompStreamingState -Scope Global -ValueOnly -ErrorAction SilentlyContinue
     if ($null -ne $streamState) {
         try {
+            if ($null -ne $streamState.StdIn) {
+                try {
+                    $streamState.StdIn.WriteLine('{"command":"quit"}')
+                    $streamState.StdIn.Write([char]0)
+                    $streamState.StdIn.Flush()
+                } catch { $null = $_ }
+            }
             if ($null -ne $streamState.ServeProcess -and -not $streamState.ServeProcess.HasExited) {
                 try { $streamState.ServeProcess.Kill() } catch { $null = $_ }
             }
             $streamState.ServeProcess = $null
+            $streamState.FailureCount = 0
             $streamState.Prompt = ''
             $streamState.Transient = ''
             $streamState.Dirty = $false
@@ -233,27 +357,61 @@ function Sync-OhMyPoshPromptCache {
     }
 }
 
-if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
-    . $ompInit
-} elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-    if ([System.IO.File]::Exists($themePath)) {
-        if (-not [System.IO.Directory]::Exists($psCacheDir)) {
-            New-Item -ItemType Directory -Force -Path $psCacheDir | Out-Null
-        }
-        oh-my-posh init pwsh --config $themePath --print | Out-File -FilePath $ompInit -Encoding utf8 -Force
-        if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
-            . $ompInit
-        }
-    } else {
-        oh-my-posh init pwsh | Invoke-Expression
-    }
-}
-
 if ([System.IO.File]::Exists($themePath)) {
     $env:POSH_CONFIG = $themePath
     $script:LoadedOmpMtimeTicks = [System.IO.File]::GetLastWriteTimeUtc($themePath).Ticks
 }
-$env:POSH_SESSION_ID = [guid]::NewGuid().ToString()
+if (-not $env:POSH_SESSION_ID) {
+    $env:POSH_SESSION_ID = [guid]::NewGuid().ToString()
+}
+
+function Initialize-WsOhMyPosh {
+    $global:_wsOmpInitialized = $true
+    if ($null -eq (Get-Module -Name 'oh-my-posh-core')) {
+        function global:prompt {
+            "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
+        }
+        if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
+            . $ompInit
+        } elseif (Test-WsExeOnPath 'oh-my-posh.exe') {
+            if ([System.IO.File]::Exists($themePath)) {
+                if (-not [System.IO.Directory]::Exists($psCacheDir)) {
+                    New-Item -ItemType Directory -Force -Path $psCacheDir | Out-Null
+                }
+                oh-my-posh init pwsh --config $themePath --print | Out-File -FilePath $ompInit -Encoding utf8 -Force
+                if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
+                    . $ompInit
+                }
+            } else {
+                oh-my-posh init pwsh | Invoke-Expression
+            }
+        }
+        if ([System.IO.File]::Exists($themePath)) {
+            $env:POSH_CONFIG = $themePath
+            $script:LoadedOmpMtimeTicks = [System.IO.File]::GetLastWriteTimeUtc($themePath).Ticks
+        }
+        $env:POSH_SESSION_ID = [guid]::NewGuid().ToString()
+    }
+
+    $ompPromptCmd = Get-Command prompt -CommandType Function -ErrorAction SilentlyContinue
+    if ($ompPromptCmd -and $ompPromptCmd.ScriptBlock.ToString() -notmatch 'Sync-PromptDynamicState') {
+        $global:_wsOriginalOmpPrompt = $ompPromptCmd.ScriptBlock
+    }
+    function global:prompt {
+        if (-not $global:_wsOmpInitialized) {
+            Initialize-WsOhMyPosh
+        }
+        if (-not $script:_wsPSReadLineConfigured) {
+            Initialize-WsPSReadLine
+        }
+        Sync-PromptDynamicState
+        if ($global:_wsOriginalOmpPrompt) {
+            & $global:_wsOriginalOmpPrompt
+        } else {
+            "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
+        }
+    }
+}
 
 function Find-GitHeadFast([string]$StartDir) {
     $cur = $StartDir
@@ -392,78 +550,76 @@ Remove-Item -LiteralPath '$($lockFile.Replace("'", "''"))' -Force -ErrorAction S
 }
 
 $existingPromptCmd = Get-Command prompt -CommandType Function -ErrorAction SilentlyContinue
-if ($existingPromptCmd) {
-    if ($existingPromptCmd.ScriptBlock.ToString() -notmatch 'Sync-PromptDynamicState') {
-        $global:_wsOriginalOmpPrompt = $existingPromptCmd.ScriptBlock
-    }
-    if ($global:_wsOriginalOmpPrompt) {
-        function global:prompt {
-            Sync-PromptDynamicState
-            & $global:_wsOriginalOmpPrompt
-        }
-    }
+if ($existingPromptCmd -and ($null -ne (Get-Module -Name 'oh-my-posh-core')) -and $existingPromptCmd.ScriptBlock.ToString() -notmatch 'Sync-PromptDynamicState') {
+    $global:_wsOriginalOmpPrompt = $existingPromptCmd.ScriptBlock
+    $global:_wsOmpInitialized = $true
+} elseif ($null -eq (Get-Module -Name 'oh-my-posh-core')) {
+    $global:_wsOmpInitialized = $false
 }
-
 # -------------------------------------------------------------
 # 4. PSReadLine & Predictive IntelliSense (Solarized Dark / Active Theme)
 # -------------------------------------------------------------
-try {
-    Import-Module PSReadLine -ErrorAction SilentlyContinue
-    Set-PSReadLineOption -Colors @{
-        Default                 = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - standard arguments/paths/text)
-        Command                 = "`e[38;2;133;153;0m"    # Solarized Green (#859900)
-        Parameter               = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained options/parameters)
-        Operator                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained operators/pipes)
-        Variable                = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496 - restrained variables)
-        String                  = "`e[38;2;42;161;152m"   # Solarized Cyan (#2AA198)
-        Number                  = "`e[38;2;211;54;130m"   # Solarized Magenta (#D33682)
-        Type                    = "`e[38;2;133;153;0m"    # Solarized Green (#859900 - primitive types & core built-ins)
-        Comment                 = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
-        Keyword                 = "`e[38;2;181;137;0m"    # Solarized Yellow (#B58900 - uncontested control flow & jumps)
-        Member                  = "`e[38;2;131;148;150m"  # Solarized Base0 (#839496)
-        Emphasis                = "`e[38;2;38;139;210m"   # Solarized Blue (#268BD2)
-        Error                   = "`e[38;2;220;50;47m"    # Solarized Red (#DC322F)
-        Selection               = "`e[48;2;7;54;66m"      # Solarized Base02 (#073642 bg)
-        InlinePrediction        = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75 muted prediction)
-        ListPrediction          = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
-        ListPredictionSelected  = "`e[48;2;7;54;66m"      # Solarized Base02 (#073642 bg)
-        ListPredictionTooltip   = "`e[38;2;88;110;117m"   # Solarized Base01 (#586E75)
-    } -ErrorAction SilentlyContinue
-
-    if ($env:_HS_ESC_GREEN) {
-        Sync-PSReadLineThemePalette
-    }
-
+$script:_wsPSReadLineConfigured = $false
+function Initialize-WsPSReadLine {
+    if ($script:_wsPSReadLineConfigured) { return }
+    if ([Console]::IsOutputRedirected -or [Console]::IsInputRedirected) { return }
+    $script:_wsPSReadLineConfigured = $true
     try {
-        Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction Stop
-        Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
+        if ($null -eq (Get-Module -Name 'PSReadLine')) {
+            Import-Module PSReadLine -ErrorAction SilentlyContinue
+        }
+        Sync-PSReadLineThemePalette
+
+        try {
+            Set-PSReadLineOption -PredictionSource HistoryAndPlugin -ErrorAction Stop
+            Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction Stop
+        } catch {
+            $null = $_
+        }
+
+        Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction SilentlyContinue
+        Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction SilentlyContinue
+        Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward -ErrorAction SilentlyContinue
+
+        # Interactive FZF History Search (Ctrl+R)
+        Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock {
+            if (Get-Command fzf -ErrorAction SilentlyContinue) {
+                $historyFile = (Get-PSReadLineOption).HistorySavePath
+                if (Test-Path $historyFile) {
+                    $selected = Get-Content $historyFile -Encoding UTF8 |
+                                Select-Object -Unique |
+                                fzf --tac --no-sort --reverse --prompt="History > "
+                    if ($selected) {
+                        [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+                        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+                    }
+                }
+            } else {
+                [Microsoft.PowerShell.PSConsoleReadLine]::ReverseSearchHistory()
+            }
+        } -ErrorAction SilentlyContinue
     } catch {
         $null = $_
     }
+}
 
-    Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete -ErrorAction SilentlyContinue
-    Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward -ErrorAction SilentlyContinue
-    Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward -ErrorAction SilentlyContinue
+if ($null -ne (Get-Module -Name 'PSReadLine')) {
+    Initialize-WsPSReadLine
+}
 
-    # Interactive FZF History Search (Ctrl+R)
-    Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock {
-        if (Get-Command fzf -ErrorAction SilentlyContinue) {
-            $historyFile = (Get-PSReadLineOption).HistorySavePath
-            if (Test-Path $historyFile) {
-                $selected = Get-Content $historyFile -Encoding UTF8 |
-                            Select-Object -Unique |
-                            fzf --tac --no-sort --reverse --prompt="History > "
-                if ($selected) {
-                    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
-                }
-            }
-        } else {
-            [Microsoft.PowerShell.PSConsoleReadLine]::ReverseSearchHistory()
-        }
-    } -ErrorAction SilentlyContinue
-} catch {
-    $null = $_
+function global:prompt {
+    if (-not $global:_wsOmpInitialized) {
+        Initialize-WsOhMyPosh
+    }
+    if (-not $script:_wsPSReadLineConfigured) {
+        Initialize-WsPSReadLine
+    }
+    Sync-PromptDynamicState
+    if ($global:_wsOriginalOmpPrompt) {
+        & $global:_wsOriginalOmpPrompt
+    } else {
+        "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
+    }
 }
 
 # -------------------------------------------------------------
