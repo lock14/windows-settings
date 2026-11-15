@@ -2,7 +2,9 @@
 setlocal
 
 if /i "%~1"=="--run-btop" goto :run_btop
+if /i "%~1"=="--run-keys" goto :run_keys
 if /i "%~1"=="--toggle-monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if defined ZELLIJ goto :toggle_monitor
+if /i "%~1"=="--toggle-keys" if "%~2"=="" if defined ZELLIJ goto :toggle_keys
 if /i "%~1"=="--monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if not "%IDE_MONITOR_ONCE%"=="1" goto :direct_monitor
 goto :run_pwsh
 
@@ -31,6 +33,23 @@ del /f /q "%LOCK_FILE%" "%PANE_FILE%" >nul 2>nul
 call :exec_pwsh --monitor
 exit /b %ERRORLEVEL%
 
+:run_keys
+call :init_keys_state
+if not exist "%KEYS_CACHE%" call :exec_pwsh --write-keys-cache >nul 2>nul
+if not exist "%KEYS_CACHE%" goto :run_pwsh_keys
+9>"%KEYS_LOCK_FILE%" (
+    type "%KEYS_CACHE%"
+    pause >nul
+)
+del /f /q "%KEYS_LOCK_FILE%" "%KEYS_PANE_FILE%" >nul 2>nul
+exit /b 0
+
+:run_pwsh_keys
+call :init_keys_state
+del /f /q "%KEYS_LOCK_FILE%" "%KEYS_PANE_FILE%" >nul 2>nul
+call :exec_pwsh --keys
+exit /b %ERRORLEVEL%
+
 :toggle_monitor
 call :find_btop
 if not defined BTOP_EXE goto :run_pwsh
@@ -54,6 +73,28 @@ del /f /q "%PANE_FILE%" >nul 2>nul
 "%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 5%% -y 5%% --width 90%% --height 90%% --name "System Monitor" --cwd "%BTOP_DIR%" -- cmd.exe /d /c "%~f0" --run-btop >"%PANE_FILE%" 2>nul
 exit /b 0
 
+:toggle_keys
+call :find_zellij
+if not defined ZELLIJ_EXE goto :run_pwsh
+call :init_keys_state
+if not exist "%KEYS_CACHE%" call :exec_pwsh --write-keys-cache >nul 2>nul
+
+if not exist "%KEYS_PANE_FILE%" goto :open_keys
+set "KEYS_PANE="
+set /p KEYS_PANE=<"%KEYS_PANE_FILE%"
+del /f /q "%KEYS_LOCK_FILE%" >nul 2>nul
+if not exist "%KEYS_LOCK_FILE%" goto :stale_keys
+if defined KEYS_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %KEYS_PANE% >nul 2>nul
+del /f /q "%KEYS_PANE_FILE%" "%KEYS_LOCK_FILE%" >nul 2>nul
+exit /b 0
+
+:stale_keys
+del /f /q "%KEYS_PANE_FILE%" >nul 2>nul
+
+:open_keys
+"%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 6%% -y 10%% --width 88%% --height 80%% --name "Keybindings" -- cmd.exe /d /c "%~f0" --run-keys >"%KEYS_PANE_FILE%" 2>nul
+exit /b 0
+
 :init_state
 set "SESS=%ZELLIJ_SESSION_NAME%"
 if not defined SESS set "SESS=default"
@@ -61,6 +102,16 @@ set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
 if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
 set "PANE_FILE=%STATE_DIR%\monitor-%SESS%.pane"
 set "LOCK_FILE=%STATE_DIR%\monitor-%SESS%.lock"
+exit /b 0
+
+:init_keys_state
+set "SESS=%ZELLIJ_SESSION_NAME%"
+if not defined SESS set "SESS=default"
+set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
+if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
+set "KEYS_PANE_FILE=%STATE_DIR%\keys-%SESS%.pane"
+set "KEYS_LOCK_FILE=%STATE_DIR%\keys-%SESS%.lock"
+set "KEYS_CACHE=%STATE_DIR%\keys-cheatsheet.ans"
 exit /b 0
 
 :find_btop

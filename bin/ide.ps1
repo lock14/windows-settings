@@ -636,68 +636,91 @@ function Exit-ZellijFloatingModal([string]$ModalFile) {
     }
 }
 
+function Get-IdeKeysCheatsheetText {
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    $themeEnvPs1 = Join-Path (Join-Path (Join-Path $userHome '.cache') 'powershell') 'theme_env.ps1'
+    if (Test-Path -LiteralPath $themeEnvPs1 -PathType Leaf) {
+        try { . $themeEnvPs1 } catch { Write-Verbose "Theme env load skipped: $_" }
+    }
+    $esc = [char]27
+    $cOrange = if ($env:_HS_ESC_ORANGE) { $env:_HS_ESC_ORANGE } else { "${esc}[38;2;203;75;22m" }
+    $cBlue   = if ($env:_HS_ESC_BLUE)   { $env:_HS_ESC_BLUE }   else { "${esc}[38;2;38;139;210m" }
+    $cCyan   = if ($env:_HS_ESC_CYAN)   { $env:_HS_ESC_CYAN }   else { "${esc}[38;2;42;161;152m" }
+    $cBase0  = if ($env:_HS_ESC_BASE0)  { $env:_HS_ESC_BASE0 }  else { "${esc}[38;2;131;148;150m" }
+    $cBase01 = if ($env:_HS_ESC_BASE01) { $env:_HS_ESC_BASE01 } else { "${esc}[38;2;88;110;117m" }
+    $cReset  = "${esc}[0m"
+    $rule    = '─' * 98
+
+    $rowsPanes = @(
+        @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
+        @('Alt+a / e / t', 'Jump to AI / Editor / Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
+        @('Alt+; / Space a', 'Bounce last focused pane', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
+        @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
+        @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
+        @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
+        @('Alt+? / Alt+m', 'Toggle keys / system monitor', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
+        @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
+    )
+    $rowsEditor = @(
+        @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
+        @('Space fg', 'Search text (live grep)', 'Alt+c', 'Copy & clear highlight'),
+        @('Space gs', 'Review Git status', 'Alt+v', 'Paste from clipboard'),
+        @('Space m', 'Toggle Markdown preview', 'Ctrl+Click', 'Open URL, #heading, or file'),
+        @('H / L  (Normal)', 'Prev / next buffer', 'Alt+Click', 'Jump to LSP definition'),
+        @('Ctrl+h / j / k / l', 'Move between Neovim splits', 'Mouse4/5 or C-o/i', 'Jump back or forward')
+    )
+    $rowsTree = @(
+        @('Space e / Space E', 'Open mini.files tree', 'Space a  (Visual)', 'Paste selected ref into AI'),
+        @('h/l or Left/Right', 'Parent dir / open item', 'Space il (Normal)', 'Paste current line ref to AI'),
+        @('Enter  (in tree)', 'Open file or enter dir', 'Space id (Normal)', 'Paste buffer diagnostics'),
+        @('=      (in tree)', 'Apply file edits', ':IdeSend[!] [ws]', 'Paste selection to session'),
+        @('g? / q (in tree)', 'Tree help / close tree', ':Theme [slug]', 'Live-switch 17 color themes')
+    )
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('')
+    $lines.Add(("  {0} IDE Workspace & Agent Fleet Keybindings (Zellij 0.46+ + Neovim){1}                [Any key / Alt+?]{2}" -f $cOrange, $cBase01, $cReset))
+    $lines.Add(("  {0}{1}{2}" -f $cBase01, $rule, $cReset))
+    $lines.Add(("  {0}{1,-51}{2}SESSIONS & ATTENTION INBOX{3}" -f $cBlue, 'PANES & ROLES (Zellij Layer 2)', $cBlue, $cReset))
+    foreach ($r in $rowsPanes) {
+        $lines.Add(("  {0}{1,-20}{2} {3,-28}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset))
+    }
+    $lines.Add('')
+    $lines.Add(("  {0}{1,-51}{2}CLIPBOARD & LINKS{3}" -f $cBlue, 'EDITOR (Space = Leader)', $cBlue, $cReset))
+    foreach ($r in $rowsEditor) {
+        $lines.Add(("  {0}{1,-20}{2} {3,-28}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset))
+    }
+    $lines.Add('')
+    $lines.Add(("  {0}{1,-51}{2}DIRECT AI PASTE & THEMES{3}" -f $cBlue, 'FILE TREE (mini.files)', $cBlue, $cReset))
+    foreach ($r in $rowsTree) {
+        $lines.Add(("  {0}{1,-20}{2} {3,-28}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset))
+    }
+    return ,$lines.ToArray()
+}
+
+function Write-IdeKeysCheatsheetCache {
+    $esc = [char]27
+    $lines = Get-IdeKeysCheatsheetText
+    $cachePath = Join-Path (Get-IdeStateDir) 'keys-cheatsheet.ans'
+    $parent = Split-Path -Parent $cachePath
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $payload = "${esc}[?25l" + ($lines -join "`r`n")
+    # UTF-16LE with BOM lets cmd.exe's built-in `type` call WriteConsoleW directly
+    # without spawning chcp.com or corrupting box-drawing and Nerd Font glyphs under OEM codepages.
+    $utf16LeBom = [System.Text.UnicodeEncoding]::new($false, $true)
+    [System.IO.File]::WriteAllText($cachePath, $payload, $utf16LeBom)
+}
+
 function Show-IdeKeysCheatsheet {
     $modalFile = ''
     if ($env:IDE_KEYS_NO_WAIT -ne '1') {
         $modalFile = Enter-ZellijFloatingModal -ModalName 'keys' -X '6%' -Y '10%' -Width '88%' -Height '80%'
     }
     try {
-        $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
-        $themeEnvPs1 = Join-Path (Join-Path (Join-Path $userHome '.cache') 'powershell') 'theme_env.ps1'
-        if (Test-Path -LiteralPath $themeEnvPs1 -PathType Leaf) {
-            try { . $themeEnvPs1 } catch { Write-Verbose "Theme env load skipped: $_" }
-        }
-        $esc = [char]27
-        $cOrange = if ($env:_HS_ESC_ORANGE) { $env:_HS_ESC_ORANGE } else { "${esc}[38;2;203;75;22m" }
-        $cBlue   = if ($env:_HS_ESC_BLUE)   { $env:_HS_ESC_BLUE }   else { "${esc}[38;2;38;139;210m" }
-        $cCyan   = if ($env:_HS_ESC_CYAN)   { $env:_HS_ESC_CYAN }   else { "${esc}[38;2;42;161;152m" }
-        $cBase0  = if ($env:_HS_ESC_BASE0)  { $env:_HS_ESC_BASE0 }  else { "${esc}[38;2;131;148;150m" }
-        $cBase01 = if ($env:_HS_ESC_BASE01) { $env:_HS_ESC_BASE01 } else { "${esc}[38;2;88;110;117m" }
-        $cReset  = "${esc}[0m"
-        $rule    = '─' * 86
-
-        $rowsPanes = @(
-            @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
-            @('Alt+a / e / t', 'Jump to AI / Editor / Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
-            @('Alt+; / Space a', 'Bounce last focused pane', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
-            @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
-            @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
-            @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
-            @('Alt+? / Alt+m', 'Toggle keys / system monitor', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
-            @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
-        )
-        $rowsEditor = @(
-            @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
-            @('Space fg', 'Search text (live grep)', 'Alt+c', 'Copy & clear highlight'),
-            @('Space gs', 'Review Git status', 'Alt+v', 'Paste from clipboard'),
-            @('Space m', 'Toggle Markdown preview', 'Ctrl+Click', 'Open URL, #heading, or file'),
-            @('H / L  (Normal)', 'Prev / next buffer', 'Alt+Click', 'Jump to LSP definition'),
-            @('Ctrl+h / j / k / l', 'Move between Neovim splits', 'Mouse4/5 or C-o/i', 'Jump back or forward')
-        )
-        $rowsTree = @(
-            @('Space e / Space E', 'Open mini.files tree', 'Space a  (Visual)', 'Paste selected ref into AI'),
-            @('h/l or Left/Right', 'Parent dir / open item', 'Space il (Normal)', 'Paste current line ref to AI'),
-            @('Enter  (in tree)', 'Open file or enter dir', 'Space id (Normal)', 'Paste buffer diagnostics'),
-            @('=      (in tree)', 'Apply file edits', ':IdeSend[!] [ws]', 'Paste selection to session'),
-            @('g? / q (in tree)', 'Tree help / close tree', ':Theme [slug]', 'Live-switch 17 color themes')
-        )
-
-        Write-Output ''
-        Write-Output ("  {0} IDE Workspace & Agent Fleet Keybindings (Zellij 0.46+ + Neovim){1}  [q / Esc / Alt+?]{2}" -f $cOrange, $cBase01, $cReset)
-        Write-Output ("  {0}{1}{2}" -f $cBase01, $rule, $cReset)
-        Write-Output ("  {0}{1,-45}{2}SESSIONS & ATTENTION INBOX{3}" -f $cBlue, 'PANES & ROLES (Zellij Layer 2)', $cBlue, $cReset)
-        foreach ($r in $rowsPanes) {
-            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
-        }
-        Write-Output ''
-        Write-Output ("  {0}{1,-45}{2}CLIPBOARD & LINKS{3}" -f $cBlue, 'EDITOR (Space = Leader)', $cBlue, $cReset)
-        foreach ($r in $rowsEditor) {
-            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
-        }
-        Write-Output ''
-        Write-Output ("  {0}{1,-45}{2}DIRECT AI PASTE & THEMES{3}" -f $cBlue, 'FILE TREE (mini.files)', $cBlue, $cReset)
-        foreach ($r in $rowsTree) {
-            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
+        foreach ($ln in (Get-IdeKeysCheatsheetText)) {
+            Write-Output $ln
         }
 
         if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and $env:IDE_KEYS_NO_WAIT -ne '1') {
@@ -1570,6 +1593,10 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         }
         { $_ -in @('--keys', '--help-keys') } {
             Show-IdeKeysCheatsheet
+            exit 0
+        }
+        '--write-keys-cache' {
+            Write-IdeKeysCheatsheetCache
             exit 0
         }
         '--toggle-keys' {

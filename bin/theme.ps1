@@ -1312,6 +1312,15 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
     $psEnvText = Build-PowerShellThemeEnv $Theme
     Write-TextUtf8NoBom -Path (Join-Path $wsStateDir 'theme-env.ps1') -Content $psEnvText
     Write-TextUtf8NoBom -Path (Join-Path $psCacheDir 'theme_env.ps1') -Content $psEnvText
+    $ideScriptPath = Join-Path (Join-Path $RepoDir 'bin') 'ide.ps1'
+    if (Test-Path -LiteralPath $ideScriptPath -PathType Leaf) {
+        try {
+            . (Join-Path $psCacheDir 'theme_env.ps1')
+            & $ideScriptPath --write-keys-cache *> $null
+        } catch {
+            Write-Verbose "IDE cheatsheet cache refresh skipped: $_"
+        }
+    }
 
     $cmdEnvText = Build-CmdThemeEnv $Theme
     Write-TextUtf8NoBom -Path (Join-Path $wsStateDir 'theme_env.cmd') -Content $cmdEnvText
