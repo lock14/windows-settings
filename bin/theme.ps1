@@ -1555,13 +1555,16 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
                         $streamState.StdIn.WriteLine('{"command":"quit"}')
                         $streamState.StdIn.Write([char]0)
                         $streamState.StdIn.Flush()
+                        $streamState.StdIn.Close()
                     } catch { $null = $_ }
                 }
                 if ($null -ne $streamState.ServeProcess -and -not $streamState.ServeProcess.HasExited) {
                     try { $streamState.ServeProcess.Kill() } catch { $null = $_ }
                 }
                 $streamState.ServeProcess = $null
+                $streamState.StdIn = $null
                 $streamState.FailureCount = 0
+                $streamState.CycleStarted = $false
                 $streamState.Prompt = ''
                 $streamState.Transient = ''
                 $streamState.Dirty = $false

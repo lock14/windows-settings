@@ -340,13 +340,16 @@ function Sync-OhMyPoshPromptCache {
                     $streamState.StdIn.WriteLine('{"command":"quit"}')
                     $streamState.StdIn.Write([char]0)
                     $streamState.StdIn.Flush()
+                    $streamState.StdIn.Close()
                 } catch { $null = $_ }
             }
             if ($null -ne $streamState.ServeProcess -and -not $streamState.ServeProcess.HasExited) {
                 try { $streamState.ServeProcess.Kill() } catch { $null = $_ }
             }
             $streamState.ServeProcess = $null
+            $streamState.StdIn = $null
             $streamState.FailureCount = 0
+            $streamState.CycleStarted = $false
             $streamState.Prompt = ''
             $streamState.Transient = ''
             $streamState.Dirty = $false
@@ -367,13 +370,16 @@ if (-not $env:POSH_SESSION_ID) {
 
 function Initialize-WsOhMyPosh {
     $global:_wsOmpInitialized = $true
+    if ([Console]::IsOutputRedirected -or [Console]::IsInputRedirected) {
+        $env:POSH_DISABLE_STREAMING = '1'
+    }
     if ($null -eq (Get-Module -Name 'oh-my-posh-core')) {
         function global:prompt {
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
         if ([System.IO.File]::Exists($ompInit) -and ([System.IO.FileInfo]::new($ompInit)).Length -gt 0) {
             . $ompInit
-        } elseif (Test-WsExeOnPath 'oh-my-posh.exe') {
+        } elseif (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
             if ([System.IO.File]::Exists($themePath)) {
                 if (-not [System.IO.Directory]::Exists($psCacheDir)) {
                     New-Item -ItemType Directory -Force -Path $psCacheDir | Out-Null
@@ -399,12 +405,12 @@ function Initialize-WsOhMyPosh {
     }
     function global:prompt {
         if (-not $global:_wsOmpInitialized) {
-            Initialize-WsOhMyPosh
+            $null = Initialize-WsOhMyPosh
         }
         if (-not $script:_wsPSReadLineConfigured) {
-            Initialize-WsPSReadLine
+            $null = Initialize-WsPSReadLine
         }
-        Sync-PromptDynamicState
+        $null = Sync-PromptDynamicState
         if ($global:_wsOriginalOmpPrompt) {
             & $global:_wsOriginalOmpPrompt
         } else {
@@ -609,12 +615,12 @@ if ($null -ne (Get-Module -Name 'PSReadLine')) {
 
 function global:prompt {
     if (-not $global:_wsOmpInitialized) {
-        Initialize-WsOhMyPosh
+        $null = Initialize-WsOhMyPosh
     }
     if (-not $script:_wsPSReadLineConfigured) {
-        Initialize-WsPSReadLine
+        $null = Initialize-WsPSReadLine
     }
-    Sync-PromptDynamicState
+    $null = Sync-PromptDynamicState
     if ($global:_wsOriginalOmpPrompt) {
         & $global:_wsOriginalOmpPrompt
     } else {

@@ -1426,7 +1426,7 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
                 if (`$pSol -match '48;2;7;54;66' -and `$pNord -match '48;2;59;66;82' -and `$pHal -match '48;2;40;16;64') {
                     Write-Output 'LIVE_PROMPT_OK'
                 } else {
-                    Write-Output 'LIVE_PROMPT_MISMATCH'
+                    Write-Output ""LIVE_PROMPT_MISMATCH (sol=`$(`$pSol -match '48;2;7;54;66'):`$(`$pSol.Length), nord=`$(`$pNord -match '48;2;59;66;82'):`$(`$pNord.Length), hal=`$(`$pHal -match '48;2;40;16;64'):`$(`$pHal.Length))""
                 }
             } finally {
                 & '$($themeScript.Replace("'", "''"))' --set `$orig --no-live | Out-Null
