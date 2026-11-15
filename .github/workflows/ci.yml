@@ -27,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat')
+          $crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat', '.doskey')
           $lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
           $violations = [System.Collections.Generic.List[string]]::new()
 

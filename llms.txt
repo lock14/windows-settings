@@ -32,7 +32,7 @@ cd windows-settings
 - `config/zellij/`: Declarative Zellij `0.46+` `config.kdl`, frameless `ide-3pane.kdl` (Inverted-T) and `ide-2pane.kdl` layouts, right-click IDE `context_menu`, `themes/windows-settings.kdl`, `OSC 7501` Attention Inbox, and `zellij terminal` GPU desktop app settings.
 - `config/nvim/` and `config/vim/_vimrc`: Neovim 0.11+ and 0.12+ Lua configuration (Native LSP, Lazy.nvim, 43 Tree-sitter `.scm` queries, `mini.files`, `render-markdown.nvim`, Named Pipe RPC, `:Theme`) plus standalone 17-theme `_vimrc`.
 - `config/bat/` and `config/colors/LS_COLORS`: 17 `*-TrueColor.tmTheme` files, 37 standalone `.sublime-syntax` grammars, and 40-language calibrated `LS_COLORS`.
-- `config/powershell/` and `config/cmd/autorun.cmd`: Minimal 1-line `$PROFILE`, Base02 shelf Oh My Posh theme (`p10k_single_line.omp.json`), and UTF-8 `cmd.exe` AutoRun prompt and `doskey` parity.
+- `config/powershell/`, `config/cmd/autorun.cmd`, and `config/cmd/macros.doskey`: Minimal 1-line `$PROFILE`, streaming Base02 shelf Oh My Posh theme (`p10k_single_line.omp.json`), and UTF-8 `cmd.exe` AutoRun prompt and `doskey /macrofile` parity.
 - `config/terminal/`: Zero-touch Windows Terminal JSON Fragment (`windows-settings.json`) and `settings.json` with all 17 schemes and `Alt+*` pass-through to Zellij.
 - `tests/test_settings.ps1`: Automated validation suite covering syntax, manifests, themes, module exports, CLI utilities, Git safety guards, prompt rendering, line endings, documentation typography, and setup idempotency.
 
@@ -42,7 +42,7 @@ Every utility ships as a dual-execution pair (`<name>.ps1` and `<name>.cmd`):
 
 - `theme`: Unified 17-theme TrueColor engine (`--list`, `--plain`, `--current`, `--set <slug>`, `--preview <slug>`, `--holiday`, `--create <slug> --from <base>`, `--sync-assets`, `--dry-run`, and interactive `fzf` picker).
 - `ide`: Zellij `0.46+` and Neovim Named Pipe IDE and AI agent fleet manager (`--3pane`, `--2pane`, `--ai agy|claude|codex`, `-d`, `--detach`, `--desktop`, `-s`, `--sessions`, `--next-attention`, `--open [+line] <file>`, `--cd <dir>`, `--send <text>`, `--monitor`, `--keys`, `--quit`, `--backend zellij|wt`, `--dry-run`).
-- `update-system` (`update`): System-wide updater across `winget`, `mise`, PowerShell modules, Oh My Posh, Neovim plugins, and `tldr` cache (`--dry-run`).
+- `update-system` (`update`): Unified updater across `winget`, `mise` (with `mise_paths` refresh), PowerShell modules, `rustup` and `elan` toolchains, Neovim plugins, `tldr` and `bat` caches, and compiled shell and IDE startup caches (`--system-only`, `--skip-winget`, `--skip-mise`, `--skip-modules`, `--skip-nvim`, `--dry-run`).
 - `gen-passwd`: Cryptographically secure RNG password generator (`-Length`, `-Count`, `-NoSymbols`).
 - `sum`: Streaming numeric accumulator accepting CLI arguments and piped stdin.
 - `repeat-until-success`: Command retry runner (`-MaxAttempts`, `-DelaySeconds`).
@@ -51,7 +51,7 @@ Every utility ships as a dual-execution pair (`<name>.ps1` and `<name>.cmd`):
 ## Key design invariants
 
 - **Zero personal paths**: Use `$HOME`, `$env:LOCALAPPDATA`, `$env:APPDATA`, and `Join-Path`; never hardcode usernames.
-- **Line-ending contract**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` strictly use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` strictly use `LF`.
+- **Line-ending contract**: `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` strictly use `CRLF`; `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.txt`, and `LICENSE` strictly use `LF`.
 - **Git safety separation**: `gprune` deletes merged branches only (`git branch -d`); `gpurge` force-deletes unmerged branches (`git branch -D`) behind confirmation; `gsync` refuses dirty working trees; `guser-branch` refuses to rename `main` or `master`.
 - **3-tier semantic color contract**: `YELLOW` is exclusive to control flow; `BASE0` holds invocations, qualifiers, and custom domain types; `BLUE` marks routine declarations and section headers; `GREEN` marks declarations and primitive types.
 

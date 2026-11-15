@@ -174,21 +174,21 @@ function Sync-AntigravityHooksJson([switch]$Remove, [switch]$DryRun) {
         SessionStart = @(
             [ordered]@{
                 type    = 'command'
-                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook SessionStart || echo {}'
+                command = 'for %I in (ide.cmd) do @if not "%~$PATH:I"=="" ("%~$PATH:I" --agy-hook SessionStart) else @echo {}'
                 timeout = 5
             }
         )
         PreInvocation = @(
             [ordered]@{
                 type    = 'command'
-                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook PreInvocation || echo {}'
+                command = 'for %I in (ide.cmd) do @if not "%~$PATH:I"=="" ("%~$PATH:I" --agy-hook PreInvocation) else @echo {}'
                 timeout = 5
             }
         )
         Stop = @(
             [ordered]@{
                 type    = 'command'
-                command = 'where ide.cmd >nul 2>nul && ide.cmd --agy-hook Stop || echo {"decision":"allow"}'
+                command = 'for %I in (ide.cmd) do @if not "%~$PATH:I"=="" ("%~$PATH:I" --agy-hook Stop) else @echo {"decision":"allow"}'
                 timeout = 5
             }
         )
@@ -272,6 +272,85 @@ function Sync-AntigravityHooksJson([switch]$Remove, [switch]$DryRun) {
     Write-Host "==> Antigravity OSC 7501 hook configured in $hooksPath" -ForegroundColor Green
 }
 
+function Sync-MisePathsCache([switch]$DryRun) {
+    $miseCmd = Get-Command mise -ErrorAction SilentlyContinue
+    if (-not $miseCmd) { return }
+
+    $psCacheFile = Join-Path (Join-Path $HOME '.cache') 'powershell\mise_paths.ps1'
+    $cmdCacheFile = if ($env:LOCALAPPDATA) { Join-Path (Join-Path $env:LOCALAPPDATA 'cmd') 'mise_paths.cmd' } else { '' }
+
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would compile direct Mise tool PATH caches to $psCacheFile and $cmdCacheFile" -ForegroundColor DarkCyan
+        return
+    }
+
+    try {
+        $rawPaths = @(& $miseCmd.Source bin-paths 2>$null)
+        $cleanDirs = [System.Collections.Generic.List[string]]::new()
+        foreach ($rp in $rawPaths) {
+            if (-not $rp -or -not "$rp".Trim()) { continue }
+            $norm = "$rp".Trim().Replace('/', '\').TrimEnd('\')
+            if ([System.IO.Directory]::Exists($norm) -and -not $cleanDirs.Contains($norm)) {
+                $cleanDirs.Add($norm)
+            }
+        }
+        if ($cleanDirs.Count -eq 0) { return }
+
+        $installsRoot = if ($env:LOCALAPPDATA) {
+            Join-Path $env:LOCALAPPDATA 'mise\installs'
+        } else {
+            Split-Path -Parent (Split-Path -Parent $cleanDirs[0])
+        }
+        $joined = ($cleanDirs -join ';')
+        $hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($joined.ToLowerInvariant()))
+        $stamp = [System.BitConverter]::ToString($hashBytes, 0, 4).Replace('-', '')
+        $escInstalls = $installsRoot.Replace("'", "''")
+        $escJoined = $joined.Replace("'", "''")
+
+        $psLines = @(
+            "`$script:_wsMiseInstallsDir = '$escInstalls'",
+            "`$script:_wsMiseStamp = '$stamp'",
+            "`$script:_wsMisePathBlock = '$escJoined'",
+            'if ([System.IO.Directory]::Exists($script:_wsMiseInstallsDir)) {',
+            '    if (-not $env:Path.Contains($script:_wsMisePathBlock, [System.StringComparison]::OrdinalIgnoreCase)) {',
+            '        $cleanSegs = foreach ($seg in $env:Path.Split('';'', [System.StringSplitOptions]::RemoveEmptyEntries)) {',
+            '            if ($seg.IndexOf(''\mise\installs\'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and',
+            '                $seg.IndexOf(''/mise/installs/'', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {',
+            '                $seg',
+            '            }',
+            '        }',
+            '        $restPath = $cleanSegs -join '';''',
+            '        $env:Path = if ($restPath) { "$script:_wsMisePathBlock;$restPath" } else { $script:_wsMisePathBlock }',
+            '    }',
+            '    $env:_WS_MISE_STAMP = $script:_wsMiseStamp',
+            '}'
+        )
+        $psParent = Split-Path -Parent $psCacheFile
+        if (-not [System.IO.Directory]::Exists($psParent)) {
+            New-Item -ItemType Directory -Force -Path $psParent | Out-Null
+        }
+        [System.IO.File]::WriteAllText($psCacheFile, ($psLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+
+        if ($cmdCacheFile) {
+            $cmdParent = Split-Path -Parent $cmdCacheFile
+            if (-not [System.IO.Directory]::Exists($cmdParent)) {
+                New-Item -ItemType Directory -Force -Path $cmdParent | Out-Null
+            }
+            $cmdLines = @(
+                "@if not exist `"$installsRoot`" exit /b 0",
+                "@if /i `"%_WS_MISE_STAMP%`"==`"$stamp`" exit /b 0",
+                "@set `"_WS_MISE_STAMP=$stamp`"",
+                "@set `"PATH=$joined;%PATH%`"",
+                '@exit /b 0'
+            )
+            [System.IO.File]::WriteAllText($cmdCacheFile, ($cmdLines -join "`r`n") + "`r`n", [System.Text.UTF8Encoding]::new($false))
+        }
+        Write-Host "==> Mise direct tool PATH caches compiled ($($cleanDirs.Count) directories)" -ForegroundColor Green
+    } catch {
+        Write-Verbose "Mise PATH cache generation skipped: $_"
+    }
+}
+
 # -------------------------------------------------------------
 # Modular Uninstall Handler (-Uninstall / -UninstallDotfiles / -UninstallFonts / -UninstallBin)
 # -------------------------------------------------------------
@@ -345,8 +424,16 @@ function Invoke-WorkstationUninstall {
         }
 
         # 4. CMD AutoRun & Registry Hook
-        $cmdFiles = @((Join-Path $HOME ".config\cmd\autorun.cmd"))
-        if ($env:LOCALAPPDATA) { $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\autorun.cmd") }
+        $cmdFiles = @(
+            (Join-Path $HOME ".config\cmd\autorun.cmd"),
+            (Join-Path $HOME ".config\cmd\macros.doskey")
+        )
+        if ($env:LOCALAPPDATA) {
+            $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\autorun.cmd")
+            $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\macros.doskey")
+            $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\mise_paths.cmd")
+            $cmdFiles += (Join-Path $env:LOCALAPPDATA "cmd\theme_env.cmd")
+        }
         foreach ($cf in $cmdFiles) {
             if (Test-Path $cf) {
                 if ($IsDryRun) {
@@ -381,6 +468,7 @@ function Invoke-WorkstationUninstall {
             (Join-Path $HOME ".cache\windows-settings"),
             (Join-Path $HOME ".cache\powershell\omp_init.ps1"),
             (Join-Path $HOME ".cache\powershell\theme_env.ps1"),
+            (Join-Path $HOME ".cache\powershell\mise_paths.ps1"),
             (Join-Path $HOME ".cache\powershell\zoxide_init.ps1"),
             (Join-Path $HOME ".cache\powershell\gh_completion.ps1")
         )) {
@@ -873,6 +961,7 @@ if (-not $SkipPosh) {
         }
     }
     Sync-AntigravityHooksJson -DryRun:$DryRun
+    Sync-MisePathsCache -DryRun:$DryRun
 
     # Apply Active Color Theme via bin/theme.ps1
     $themeScript = Join-Path $RootDir "bin\theme.ps1"
@@ -973,6 +1062,16 @@ Import-Module WindowsSettings -DisableNameChecking -ErrorAction SilentlyContinue
             -SourcePath $cmdSource `
             -DestinationPath $cmdDest `
             -AltDestinations @($cmdAltDest) `
+            -DryRun:$DryRun
+
+        $macrosSource = Join-Path $RootDir "config\cmd\macros.doskey"
+        $macrosDest = Join-Path $env:LOCALAPPDATA "cmd\macros.doskey"
+        $macrosAltDest = Join-Path $HOME ".config\cmd\macros.doskey"
+
+        Deploy-ConfigFile -Name "CMD Doskey macrofile" `
+            -SourcePath $macrosSource `
+            -DestinationPath $macrosDest `
+            -AltDestinations @($macrosAltDest) `
             -DryRun:$DryRun
 
         # Enable VirtualTerminalLevel in Console for ANSI escape rendering in conhost

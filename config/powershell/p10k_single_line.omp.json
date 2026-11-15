@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
   "version": 3,
   "final_space": true,
+  "streaming": 150,
   "blocks": [
     {
       "type": "prompt",
@@ -41,7 +42,8 @@
             "branch_behind_icon": "⇣",
             "branch_identical_icon": "",
             "branch_gone_icon": "≢",
-            "fetch_status": true
+            "fetch_status": true,
+            "native_status": true
           },
           "template": "<#657b83>\uE0B1</> {{ if .UpstreamIcon }}{{ .UpstreamIcon }} {{ end }}{{ .HEAD }}{{ if .Env._WS_GIT_PR_URL }}{{ url .Env._WS_GIT_PR_LABEL .Env._WS_GIT_PR_URL }}{{ else if .Env._WS_GIT_PR_LABEL }}{{ .Env._WS_GIT_PR_LABEL }}{{ end }}{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uF044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uF046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \uEB4B {{ .StashCount }}{{ end }} "
         },

@@ -8,7 +8,7 @@ All contributions must respect the repository invariants:
 
 * **Portability and zero personal paths**: Never commit personal user directories or machine-specific paths such as `C:\Users\<username>\`, `/Users/<username>/`, or `/home/<username>/`. Always use canonical PowerShell and Windows environment variables (`$HOME`, `$env:USERPROFILE`, `$env:LOCALAPPDATA`, `$env:APPDATA`, `$PROFILE`) and construct paths with `Join-Path` and `Split-Path`.
 * **Strict line-ending discipline**:
-  * `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a batch script uses `LF`.
+  * `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` files use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a batch script uses `LF`.
   * `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files use `LF` (`\n`) line endings.
 * **Non-destructive backups, idempotency, and dry-run support**:
   * Provisioning and uninstall flows (`setup.ps1`, `bootstrap.ps1`) create a timestamped `.bak_<timestamp>` backup before modifying existing user files and skip backup creation when file content is already identical.
@@ -26,7 +26,7 @@ Keep components uniform across shells and tools, and never commit ad-hoc scratch
 1. **Adding or updating a CLI utility**:
    * **PowerShell script**: Implement `bin/<name>.ps1` (`CRLF`) with `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, pipeline input support where applicable, and `--dry-run` for stateful operations.
    * **Batch wrapper**: Add `bin/<name>.cmd` (`CRLF`) invoking `pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0<name>.ps1" %*`.
-   * **Shell integration**: Register a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, export it in `module/WindowsSettings.psd1`, add tab completion in `module/Completions.ps1`, add a `doskey` macro in `config/cmd/autorun.cmd`, and add test coverage in `tests/test_settings.ps1`.
+   * **Shell integration**: Register a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, export it in `module/WindowsSettings.psd1`, add tab completion in `module/Completions.ps1`, add a `doskey` macro in `config/cmd/macros.doskey`, and add test coverage in `tests/test_settings.ps1`.
 2. **Adding or updating a built-in theme palette**:
    * **Palette definition**: Declare all semantic and ANSI slots in `config/themes/<slug>.theme`.
    * **Static asset synchronization**: Run `pwsh -NoProfile -File ./bin/theme.ps1 --sync-assets` to regenerate `config/bat/themes/*-TrueColor.tmTheme`, `config/btop/themes/*.theme`, `config/terminal/windows-settings.json`, and `config/terminal/settings.json`, and update the standalone palette table in `config/vim/_vimrc`.

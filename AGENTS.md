@@ -15,7 +15,7 @@ Any agent modifying this repository must adhere to the architecture invariants, 
 | Neovim configuration | `config/nvim/init.lua`, `lazy-lock.json` | `$env:LOCALAPPDATA\nvim\` | Neovim 0.11+ and 0.12+ Lua configuration (Lazy.nvim, Native LSP, 17-theme `:Theme`, Named Pipe IDE RPC, `render-markdown.nvim`, `mini.files`) |
 | Neovim Tree-sitter queries | `config/nvim/queries/`, `after/`, `ftplugin/` | `$env:LOCALAPPDATA\nvim\` | 43 dedicated AST highlight `.scm` queries (13 base and 30 extensions) and Java filetype plugin aligned with the universal color contract |
 | Legacy Vim configuration | `config/vim/_vimrc` | `$HOME\_vimrc` and `$HOME\.vimrc` | Zero-dependency standalone fallback configuration with inline 17-theme engine and `:Theme` command |
-| Command Prompt AutoRun | `config/cmd/autorun.cmd` | `%LOCALAPPDATA%\cmd\autorun.cmd` | Zero-dependency native `cmd.exe` AutoRun environment, UTF-8 `BASE02` Powerline shelf prompt, dynamic `theme_env.cmd` hook, `cmd.d\` drop-ins, and `doskey` macros |
+| Command Prompt AutoRun | `config/cmd/autorun.cmd`, `macros.doskey` | `%LOCALAPPDATA%\cmd\` | Zero-dependency native `cmd.exe` AutoRun environment, UTF-8 `BASE02` Powerline shelf prompt, dynamic `theme_env.cmd` and `mise_paths.cmd` hooks, `cmd.d\` drop-ins, and bulk `doskey /macrofile` macros |
 | Zellij workspace and themes | `config/zellij/` | `%APPDATA%\Zellij\config\` | Declarative Zellij `0.46+` `config.kdl`, `ide-3pane` and `ide-2pane` KDL layouts, IDE `context_menu`, `windows-settings.kdl` theme, `OSC 7501` Attention Inbox, and 1-hop GPU `terminal` config |
 | Terminal fragments | `config/terminal/windows-settings.json`, `settings.json` | `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` | Zero-touch Windows Terminal JSON Fragment extension with all 17 TrueColor schemes and clean `Alt+*` pass-through to Zellij |
 | TrueColor themes and syntaxes | `config/bat/`, `config/colors/` | `%APPDATA%\bat\` and `$env:LS_COLORS` | 17 `*-TrueColor.tmTheme` files, 37 standalone `.sublime-syntax` grammars, and 40-language calibrated `LS_COLORS` |
@@ -38,7 +38,7 @@ Any agent modifying this repository must adhere to the architecture invariants, 
   - **PowerShell profile**: `$PROFILE`
   - **Path construction**: Always use `Join-Path` or `Split-Path` rather than concatenating literal backslashes or forward slashes.
 - **Strict line-ending discipline**: Enforced via `.gitattributes`:
-  - `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files strictly use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a `.cmd` script or generated `theme_env.cmd` uses `LF` instead of `CRLF`.
+  - `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` files strictly use `CRLF` (`\r\n`) line endings because `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a `.cmd` script or generated `theme_env.cmd` uses `LF` instead of `CRLF`.
   - `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files strictly use `LF` (`\n`) line endings.
 - **Windows Terminal dynamic resolution and fragments**:
   - Deploy JSON Fragment extensions under `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` for zero-touch configuration without mutating base `settings.json`.
@@ -70,8 +70,8 @@ Any agent modifying this repository must adhere to the architecture invariants, 
   - **No dynamic disk traversal**: Never use `Get-ChildItem -Recurse` inside `WindowsSettings.psm1` or module startup paths. All public and private module scripts are sourced explicitly; local drop-in hooks (`$HOME\.config\windows-settings\env.d\*.ps1`, `aliases.d\*.ps1`, and `functions.d\*.ps1`) use flat single-directory checks only when the directory exists.
   - **No dynamic command scans**: Never scan `PATH` directories with `Get-Command` loops during shell startup. Use statically known binary names and direct invocations.
   - **Compiled disk caching and non-blocking background sync**:
-    - Heavy prompt and engine initializations (`oh-my-posh init`, `zoxide init`, `gh completion`, active `theme_env.ps1`) are cached as compiled `.ps1` files under `$HOME\.cache\powershell\` and `$HOME\.cache\windows-settings\` to avoid spawning child processes on every new shell tab.
-    - Prompt wrappers (`global:prompt`) synchronize cross-pane theme changes via lightweight file-timestamp checks on `theme` and `p10k_single_line.omp.json`. Oh My Posh caches compiled prompt colors per `$env:POSH_SESSION_ID` (`pwsh.<UUID>.omp.cache`) and inside any active `oh-my-posh serve` daemon (`$global:_ompStreamingState.ServeProcess`); whenever the active theme changes, both `bin/theme.ps1` and `Sync-PromptDynamicState` delete the stale `pwsh.<oldId>.omp.cache`, rotate `$env:POSH_SESSION_ID`, and reset `$global:_ompStreamingState.ServeProcess` so prompt colors repaint immediately in live and cross-pane sessions.
+    - Heavy prompt, runtime `PATH`, and engine initializations (`oh-my-posh init`, `mise bin-paths` via `mise_paths.ps1` and `mise_paths.cmd`, `zoxide init`, `gh completion`, active `theme_env.ps1`) are cached as compiled `.ps1` and `.cmd` files under `$HOME\.cache\powershell\`, `$HOME\.cache\windows-settings\`, and `%LOCALAPPDATA%\cmd\` to bypass child process and shim spawns on every new shell tab. Cached init scripts validate binary modification timestamps (`oh-my-posh.exe`, `zoxide.exe`, `gh.exe`) and flat `mise\installs\<tool>` subfolder timestamps so manual WinGet or Mise package upgrades automatically refresh stale caches without leaving orphaned version paths on `PATH`. `omp_init.ps1` is loaded lazily on the first `global:prompt` call and runs with `"streaming": 150` (`oh-my-posh serve` daemon) and `"native_status": true` for sub-15ms prompt redraws.
+    - Prompt wrappers (`global:prompt`) synchronize cross-pane theme changes via lightweight file-timestamp checks on `theme` and `p10k_single_line.omp.json`. Oh My Posh caches compiled prompt colors per `$env:POSH_SESSION_ID` (`pwsh.<UUID>.omp.cache`) and inside any active `oh-my-posh serve` daemon (`$global:_ompStreamingState.ServeProcess`); whenever the active theme changes, both `bin/theme.ps1` and `Sync-PromptDynamicState` delete the stale `pwsh.<oldId>.omp.cache`, rotate `$env:POSH_SESSION_ID`, and send a graceful quit signal before resetting `$global:_ompStreamingState.ServeProcess` so prompt colors repaint immediately in live and cross-pane sessions.
     - Prompt wrappers also refresh `<branch>@<N>` GitHub and GitLab pull and merge request badges asynchronously in the background without blocking prompt rendering.
 - **Un-aliasing conflicting legacy cmdlets**:
   - Automatically un-alias conflicting PowerShell cmdlets (`cat`, `sort`, `tee`, `diff`, `echo`, `sleep`, `ls`, `gcm`, `gl`, `gp`) so modern CLI tools (`uutils-coreutils`, `eza`, Git shortcuts) execute without prefixing `&`.
@@ -175,9 +175,9 @@ Colors across the workstation fulfill invariant domain roles across all 40 suppo
 5. **Filesystem listings, system monitor, and language tools**: Configured for `eza`, `uutils` `ls`, `btop4win`, `tealdeer`, and `clangd`:
    - `eza` (`e`, `el`, `elm`, `et`, `elt`, `elx`) and `LS_COLORS` (`ls`, `ll`, `la`, `l`) are dynamically re-tinted by `bin/theme.ps1` across all 17 palettes.
    - Declarative configurations are deployed for `btop4win` (`config/btop/btop.conf` and 17 themes), `tealdeer` (`config/tealdeer/config.toml`), and `clangd` (`config/clangd/config.yaml`).
-6. **Oh My Posh prompt and Command Prompt AutoRun**: Configured in `p10k_single_line.omp.json` and `autorun.cmd`:
-   - Unified on the active theme's `BASE02` shelf with compiled disk caching (`$HOME\.cache\powershell\omp_init.ps1`), dynamic holiday OS icon (`_HS_PROMPT_OS_ICON`), clickable OSC 8 `<branch>@<N>` GitHub and GitLab PR hyperlinks (`_WS_GIT_PR_LABEL` and `_WS_GIT_PR_URL`), and persistent right status anchor (`\uF00C` and `\uF00D`).
-   - `config/cmd/autorun.cmd` provides 0ms native `cmd.exe` parity (`chcp 65001 >nul`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, dynamic `theme_env.cmd` hook, `cmd.d\*.cmd` drop-ins, `doskey cat=`, and `doskey` alias parity).
+6. **Oh My Posh prompt and Command Prompt AutoRun**: Configured in `p10k_single_line.omp.json`, `autorun.cmd`, and `macros.doskey`:
+   - Unified on the active theme's `BASE02` shelf with compiled disk caching (`$HOME\.cache\powershell\omp_init.ps1`), `"streaming": 150` persistent daemon rendering, dynamic holiday OS icon (`_HS_PROMPT_OS_ICON`), clickable OSC 8 `<branch>@<N>` GitHub and GitLab PR hyperlinks (`_WS_GIT_PR_LABEL` and `_WS_GIT_PR_URL`), and persistent right status anchor (`\uF00C` and `\uF00D`).
+   - `config/cmd/autorun.cmd` and `config/cmd/macros.doskey` provide low-latency native `cmd.exe` parity (`chcp 65001 >nul`, `FORCE_HYPERLINK=1`, `JQ_COLORS`, dynamic `theme_env.cmd` and `mise_paths.cmd` hooks, `cmd.d\*.cmd` drop-ins, `doskey cat=`, and single-spawn `doskey /macrofile` alias parity).
 
 ## 6. Developer shortcuts, aliases, and Git safety guards
 
@@ -192,7 +192,7 @@ Colors across the workstation fulfill invariant domain roles across all 40 suppo
 ## 7. Component structure, multi-file contracts, and code style
 
 - **Standardized multi-file component contracts**:
-  - **CLI utility**: Every tool in `bin/` requires `bin/<name>.ps1` (`CRLF`), `bin/<name>.cmd` (`CRLF`), a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, an export in `module/WindowsSettings.psd1`, tab completion in `module/Completions.ps1`, a `doskey` macro in `config/cmd/autorun.cmd`, and test coverage in `tests/test_settings.ps1`.
+  - **CLI utility**: Every tool in `bin/` requires `bin/<name>.ps1` (`CRLF`), `bin/<name>.cmd` (`CRLF`), a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, an export in `module/WindowsSettings.psd1`, tab completion in `module/Completions.ps1`, a `doskey` macro in `config/cmd/macros.doskey`, and test coverage in `tests/test_settings.ps1`.
   - **Theme palette**: Every built-in theme in `config/themes/` requires `config/themes/<slug>.theme`, synchronized static assets via `bin/theme.ps1 --sync-assets` (`config/bat/themes/*-TrueColor.tmTheme`, `config/btop/themes/*.theme`, `config/terminal/windows-settings.json`, `config/terminal/settings.json`), and a matching entry in standalone `config/vim/_vimrc`.
   - **Language highlighting**: Every supported language requires a fixture in `sample-code/`, a standalone `.sublime-syntax` grammar in `config/bat/syntaxes/`, a Tree-sitter `.scm` query in `config/nvim/queries/` or `config/nvim/after/queries/`, and an extension mapping in `config/colors/LS_COLORS`.
   - **No extraneous or ad-hoc files**: Extraneous scratch scripts, temporary patch files, `tmp_*` folders, or `.bak` backups in the repository tree are prohibited. Scratch work belongs in `<appDataDir>\brain\<conversation-id>\scratch\` or `$env:TEMP`.
@@ -206,6 +206,8 @@ Colors across the workstation fulfill invariant domain roles across all 40 suppo
 - **Identifier anti-shadowing and encoding discipline**:
   - Never use parameter or local variable names that shadow PowerShell automatic variables (`$args`, `$input`, `$Host`, `$HOME`, `$PID`, `$PROFILE`, `$Error`, `$Matches`, `$PSItem`).
   - Any `.ps1` file containing literal non-ASCII Unicode characters requires a UTF-8 BOM (or codepoint escapes via `[char]0x...` or `` "`u{...}" ``) to satisfy `PSUseBOMForUnicodeEncodedFile`.
+- **Strict CLI flag hygiene**:
+  - Do not retain undocumented no-op flags or legacy compatibility shims when refactoring internal CLI utilities unless explicitly requested; remove obsolete flags cleanly so unknown options fail fast.
 
 ## 8. Documentation roles, boundaries, and continuous learning
 
@@ -246,7 +248,7 @@ Before completing any task, run and verify all of the following succeed without 
    - `[6/8]` Completions, `cmd.exe` AutoRun, and prompt rendering (including OSC 8 PR badge hyperlinks)
    - `[7/8]` Path invariants, byte-level `CRLF` and `LF` line endings, startup hygiene, and dual-execution wrappers
    - `[8/8]` Setup script idempotency, `-DryRun`, `-Theme`, clean `-Uninstall*`, and backup policy
-3. **Verify path and line-ending invariants**: Confirm `git diff` introduces zero hardcoded personal paths and preserves `CRLF` on `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files and `LF` on all config and documentation files.
+3. **Verify path and line-ending invariants**: Confirm `git diff` introduces zero hardcoded personal paths and preserves `CRLF` on `.ps1`, `.psm1`, `.psd1`, `.cmd`, `.bat`, and `.doskey` files and `LF` on all config and documentation files.
 4. **Synchronize documentation**: Confirm `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `llms.txt` reflect the latest changes and pass documentation typography and link validation.
 
 ## 11. Documentation architecture and technical writing style for agents

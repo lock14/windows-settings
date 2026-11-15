@@ -7,6 +7,7 @@
 *.psd1 text eol=crlf
 *.cmd text eol=crlf
 *.bat text eol=crlf
+*.doskey text eol=crlf
 
 # Declarative configs, queries, themes, workflows, and documentation use LF
 *.md text eol=lf

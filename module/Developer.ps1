@@ -49,7 +49,12 @@ Set-Alias -Name tf -Value terraform -ErrorAction SilentlyContinue
 if (Test-Path 'Alias:v') {
     Remove-Item -Path 'Alias:v' -Force -ErrorAction SilentlyContinue
 }
-if (Get-Command nvim -ErrorAction SilentlyContinue) {
+$hasNvimFast = if (Get-Command Test-WsExeOnPath -CommandType Function -ErrorAction SilentlyContinue) {
+    Test-WsExeOnPath 'nvim.exe'
+} else {
+    [bool](Get-Command nvim -ErrorAction SilentlyContinue)
+}
+if ($hasNvimFast) {
     Set-Alias -Name vi -Value nvim -ErrorAction SilentlyContinue
     Set-Alias -Name vim -Value nvim -ErrorAction SilentlyContinue
 } else {
