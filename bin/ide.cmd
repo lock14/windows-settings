@@ -2,6 +2,14 @@
 setlocal
 
 if /i "%~1"=="--agy-hook" if not "%~2"=="" if "%~3"=="" goto :agy_hook
+if /i "%~1"=="--quit" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_safe
+if /i "%~1"=="-q" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_safe
+if /i "%~1"=="--quit" if /i "%~2"=="--force" if "%~3"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
+if /i "%~1"=="--quit" if /i "%~2"=="-f" if "%~3"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
+if /i "%~1"=="--force" if /i "%~2"=="--quit" if "%~3"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
+if /i "%~1"=="-f" if /i "%~2"=="--quit" if "%~3"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
+if /i "%~1"=="--kill" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
+if /i "%~1"=="-k" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
 if /i "%~1"=="--run-btop" goto :run_btop
 if /i "%~1"=="--run-keys" goto :run_keys
 if /i "%~1"=="--toggle-monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if defined ZELLIJ goto :toggle_monitor
@@ -156,6 +164,41 @@ del /f /q "%KEYS_PANE_FILE%" >nul 2>nul
 "%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 6%% -y 10%% --width 88%% --height 80%% --name "Keybindings" -- cmd.exe /d /c "%~f0" --run-keys >"%KEYS_PANE_FILE%" 2>nul
 exit /b 0
 
+:fast_quit_safe
+call :find_zellij
+if not defined ZELLIJ_EXE goto :run_pwsh
+call :find_nvim
+set "SESS=%ZELLIJ_SESSION_NAME%"
+set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
+if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
+set "PIPE=\\.\pipe\nvim-ide-%SESS%"
+if not defined NVIM_EXE goto :fast_quit_cleanup
+set "MOD_FILE=%STATE_DIR%\%SESS%.quit-check"
+del /f /q "%MOD_FILE%" >nul 2>nul
+"%NVIM_EXE%" --headless --server "%PIPE%" --remote-expr "luaeval('_G.try_ide_quit and _G.try_ide_quit(false) or (_G.count_ide_modified_buffers and _G.count_ide_modified_buffers() or 0)')" >"%MOD_FILE%" 2>nul
+set "MOD_OUT="
+if exist "%MOD_FILE%" set /p MOD_OUT=<"%MOD_FILE%"
+del /f /q "%MOD_FILE%" >nul 2>nul
+if not defined MOD_OUT goto :fast_quit_cleanup
+if "%MOD_OUT%"=="0" goto :fast_quit_cleanup
+set "ED_PANE="
+if exist "%STATE_DIR%\%SESS%.pane-editor" set /p ED_PANE=<"%STATE_DIR%\%SESS%.pane-editor"
+if defined ED_PANE "%ZELLIJ_EXE%" action focus-pane-id %ED_PANE% >nul 2>nul
+exit /b 1
+
+:fast_quit_force
+call :find_zellij
+if not defined ZELLIJ_EXE goto :run_pwsh
+call :find_nvim
+set "SESS=%ZELLIJ_SESSION_NAME%"
+set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
+if defined NVIM_EXE "%NVIM_EXE%" --headless --server "\\.\pipe\nvim-ide-%SESS%" --remote-expr "luaeval('_G.try_ide_quit and _G.try_ide_quit(true) or 0')" >nul 2>nul
+
+:fast_quit_cleanup
+del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" >nul 2>nul
+"%ZELLIJ_EXE%" delete-session --force "%SESS%" >nul 2>nul
+exit /b 0
+
 :init_state
 set "SESS=%ZELLIJ_SESSION_NAME%"
 if not defined SESS set "SESS=default"
@@ -208,6 +251,23 @@ if defined LOCALAPPDATA (
 )
 if defined ZELLIJ_EXE exit /b 0
 set "ZELLIJ_EXE=zellij.exe"
+exit /b 0
+
+:find_nvim
+set "NVIM_EXE="
+if defined LOCALAPPDATA (
+    for /d %%D in ("%LOCALAPPDATA%\mise\installs\neovim\*") do (
+        if exist "%%~fD\bin\nvim.exe" set "NVIM_EXE=%%~fD\bin\nvim.exe"
+        if exist "%%~fD\nvim-win64\bin\nvim.exe" set "NVIM_EXE=%%~fD\nvim-win64\bin\nvim.exe"
+    )
+)
+if defined NVIM_EXE exit /b 0
+if exist "%ProgramFiles%\Neovim\bin\nvim.exe" (
+    set "NVIM_EXE=%ProgramFiles%\Neovim\bin\nvim.exe"
+    exit /b 0
+)
+where nvim.exe >nul 2>nul
+if %ERRORLEVEL% EQU 0 set "NVIM_EXE=nvim.exe"
 exit /b 0
 
 :run_pwsh

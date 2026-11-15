@@ -1189,6 +1189,15 @@ try {
     } else {
         Fail "ide.cmd --agy-hook" "Unexpected batch hook JSON: Pre='$cmdHookPre', Stop='$cmdHookStop'"
     }
+    $ideCmdRaw = Get-Content -LiteralPath $ideCmdScript -Raw
+    $zellijCfgRaw = Get-Content -LiteralPath (Join-Path (Join-Path (Join-Path $RootDir 'config') 'zellij') 'config.kdl') -Raw
+    if ($ideCmdRaw -match ':fast_quit_safe' -and $ideCmdRaw -match ':fast_quit_force' -and
+        $zellijCfgRaw -notmatch 'Run "ide\.cmd" "--quit"[\s\S]{0,60}floating true' -and
+        $zellijCfgRaw -match 'Run "cmd\.exe" "/d" "/c" "ide\.cmd" "--quit"') {
+        Pass "ide.cmd and config.kdl execute Alt+q workspace quit in background without floating window flash"
+    } else {
+        Fail "Alt+q fast background quit" "Expected :fast_quit_safe/:fast_quit_force in ide.cmd and background Run in config.kdl"
+    }
 } finally {
     $env:WS_AGY_HOOK_NO_TTY = $prevNoTty
 }

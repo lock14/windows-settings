@@ -1519,7 +1519,20 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
     }
 
     $zellijBin = Resolve-ZellijExecutable
-    $liveZellij = Get-LiveZellijSessionMap
+    $curZellijSess = if ($env:ZELLIJ_SESSION_NAME) { Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    $needsSessionScan = $false
+    foreach ($t in $targets) {
+        if (-not $curZellijSess -or -not [string]::Equals($t, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $needsSessionScan = $true
+            break
+        }
+    }
+    $liveZellij = if ($needsSessionScan) { Get-LiveZellijSessionMap } else { @{} }
+    if ($curZellijSess) {
+        $liveZellij[$curZellijSess] = 'live'
+    }
+
+    $alreadyScheduledQuit = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($sess in $targets) {
         $meta = Read-SessionState $sess
@@ -1531,11 +1544,21 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
             exit 1
         }
         if ($pipeLive -and -not $Force) {
-            $modRes = Invoke-NvimRemoteExpr -PipePath $pipePath -Expr 'v:lua.count_ide_modified_buffers()'
+            $quitExpr = "luaeval('_G.try_ide_quit and _G.try_ide_quit(false) or (_G.count_ide_modified_buffers and _G.count_ide_modified_buffers() or 0)')"
+            $modRes = Invoke-NvimRemoteExpr -PipePath $pipePath -Expr $quitExpr
             $modCount = 0
             if ($modRes.Success -and [int]::TryParse($modRes.Output, [ref]$modCount) -and $modCount -gt 0) {
+                if ($zellijBin -and $curZellijSess -and [string]::Equals($sess, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $edPane = Get-RolePaneId -SessionName $sess -Role 'editor'
+                    if ($edPane) {
+                        & $zellijBin action focus-pane-id $edPane *> $null
+                    }
+                }
                 [Console]::Error.WriteLine("E37: No write since last change in $modCount buffer(s) in session '$sess' (save in Neovim or use --force / idek).")
                 exit 1
+            }
+            if ($modRes.Success -and $targets.Count -eq 1) {
+                [void]$alreadyScheduledQuit.Add($sess)
             }
         }
     }
@@ -1543,7 +1566,7 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
     foreach ($sess in $targets) {
         $meta = Read-SessionState $sess
         $pipePath = if ($meta -and $meta['pipe']) { [string]$meta['pipe'] } else { Get-SessionPipePath $sess }
-        if (Test-IdePipeLive $pipePath) {
+        if (-not $alreadyScheduledQuit.Contains($sess) -and (Test-IdePipeLive $pipePath)) {
             [void](Invoke-NvimRemoteExpr -PipePath $pipePath -Expr "luaeval('(function() vim.schedule(function() vim.cmd(""qa!"") end); return ""OK"" end)()')")
         }
         if ($zellijBin -and $liveZellij.ContainsKey($sess)) {
