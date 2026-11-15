@@ -1121,10 +1121,20 @@ $prevNoWait = $env:IDE_KEYS_NO_WAIT
 try {
     $env:IDE_KEYS_NO_WAIT = '1'
     $ideKeysOut = (& $ideScript --keys) -join "`n"
-    if ($ideKeysOut -match 'IDE Workspace & Agent Fleet Keybindings' -and $ideKeysOut -match 'mini\.files') {
-        Pass "ide.ps1 --keys renders TrueColor keybinding cheatsheet"
+    & $ideScript --write-keys-cache
+    $keysCachePath = Join-Path (Join-Path (Join-Path $HOME '.cache\windows-settings') 'ide') 'keys-cheatsheet.ans'
+    $keysCacheBytes = if (Test-Path -LiteralPath $keysCachePath -PathType Leaf) { [System.IO.File]::ReadAllBytes($keysCachePath) } else { [byte[]]@() }
+    $keysCacheRaw = if ($keysCacheBytes.Length -gt 2) { [System.IO.File]::ReadAllText($keysCachePath, [System.Text.Encoding]::Unicode) } else { '' }
+    $hasUtf16LeBom = ($keysCacheBytes.Length -ge 2 -and $keysCacheBytes[0] -eq 0xFF -and $keysCacheBytes[1] -eq 0xFE)
+    if ($ideKeysOut -match 'IDE Workspace & Agent Fleet Keybindings' -and
+        $ideKeysOut -match 'mini\.files' -and
+        $hasUtf16LeBom -and
+        $keysCacheRaw.StartsWith("$([char]27)[?25l") -and
+        $keysCacheRaw -match 'IDE Workspace & Agent Fleet Keybindings' -and
+        $keysCacheRaw.Contains("`r`n")) {
+        Pass "ide.ps1 --keys & --write-keys-cache render TrueColor keybinding cheatsheet & UTF-16LE BOM cache"
     } else {
-        Fail "ide.ps1 --keys" "Missing expected cheatsheet sections"
+        Fail "ide.ps1 --keys" "Missing expected cheatsheet sections or UTF-16LE BOM cache ($keysCachePath)"
     }
 } finally {
     $env:IDE_KEYS_NO_WAIT = $prevNoWait
