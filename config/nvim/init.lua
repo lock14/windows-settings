@@ -1053,6 +1053,26 @@ local function count_real_modified_buffers()
     return cnt
 end
 _G.count_ide_modified_buffers = count_real_modified_buffers
+_G.try_ide_quit = function(force)
+    if not force then
+        local modified = count_real_modified_buffers()
+        if modified > 0 then
+            vim.schedule(function()
+                local msg = string.format("E37: %d unsaved buffer(s) (:wa to save or Alt+Shift+Q to force)", modified)
+                local max_w = math.max(16, (vim.o.columns or 80) - 14)
+                if #msg > max_w then
+                    msg = msg:sub(1, max_w - 1) .. "…"
+                end
+                vim.api.nvim_echo({ { msg, "ErrorMsg" } }, false, {})
+            end)
+            return modified
+        end
+    end
+    vim.schedule(function()
+        vim.cmd("qa!")
+    end)
+    return 0
+end
 
 local function quit_ide_or_nvim(force, target_sessions)
     local targets = target_sessions or {}
@@ -1075,11 +1095,10 @@ local function quit_ide_or_nvim(force, target_sessions)
             end
         end
         if #targets == 0 then
-            if force then
-                ide_job("--quit", "--force")
-            else
-                ide_job("--quit")
-            end
+            vim.schedule(function()
+                vim.cmd("qa!")
+            end)
+            ide_job("--quit", "--force")
         else
             local cmd = { resolve_cli_bin("ide"), "--quit" }
             if force then

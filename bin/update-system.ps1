@@ -179,8 +179,8 @@ if (-not $systemOnly) {
 
     # 4. Rust & Lean 4 Toolchains
     if (Get-Command rustup -ErrorAction SilentlyContinue) {
-        Invoke-UpdateStep -Title 'Rust Toolchain (rustup)' -PreviewText 'rustup update' -Action {
-            & rustup update
+        Invoke-UpdateStep -Title 'Rust Toolchain (rustup)' -PreviewText 'rustup update --no-self-update' -Action {
+            & rustup update --no-self-update
         }
     }
     if (Get-Command elan -ErrorAction SilentlyContinue) {
@@ -237,6 +237,14 @@ if (-not $systemOnly) {
             $ideScript = Join-Path $scriptDir 'ide.ps1'
             if (Test-Path -LiteralPath $ideScript) {
                 & $ideScript --write-keys-cache *> $null
+            }
+            $repoRoot = Split-Path -Parent $scriptDir
+            $wsBarManifest = Join-Path (Join-Path (Join-Path $repoRoot 'plugin') 'ws-bar') 'Cargo.toml'
+            if ((Test-Path -LiteralPath $wsBarManifest -PathType Leaf) -and (Get-Command cargo -ErrorAction SilentlyContinue)) {
+                $setupScript = Join-Path $repoRoot 'setup.ps1'
+                if (Test-Path -LiteralPath $setupScript -PathType Leaf) {
+                    & $setupScript -DotfilesOnly -SkipFonts -SkipTerminal -SkipCMD -SkipCompletions -SkipVim -SkipBin *> $null
+                }
             }
         }
 }

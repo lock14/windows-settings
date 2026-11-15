@@ -138,6 +138,8 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
         $zellijCfgRaw -match 'terminal \{' -and
         $zellijCfgRaw -match 'GoToNextAttention' -and
         $zellijCfgRaw -match 'session-manager' -and
+        $zellijCfgRaw -match '// BEGIN WINDOWS-SETTINGS BAR PLUGIN' -and
+        $zellijCfgRaw -match 'file:windows-settings-bar' -and
         $zellijLayout3Raw -match 'compact-bar' -and
         $zellijLayout3Raw -match '--pane-init' -and
         $zellijLayout3Raw -match 'attention_muted=true' -and
@@ -164,12 +166,28 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
     Fail "config/zellij/ files missing" "Expected config.kdl, ide-3pane.kdl, ide-2pane.kdl, and themes/windows-settings.kdl"
 }
 
-# Test .gitattributes line-ending rules (.ps1/.cmd = crlf, .kdl/.json/.md/.yml = lf)
+# Test Rust WASM Top-Bar Plugin crate (plugin/ws-bar/)
+$wsBarDir = Join-Path (Join-Path $RootDir "plugin") "ws-bar"
+$wsBarCargo = Join-Path $wsBarDir "Cargo.toml"
+$wsBarLock = Join-Path $wsBarDir "Cargo.lock"
+$wsBarSrcFiles = @("main.rs", "palette.rs", "roles.rs", "render.rs") | ForEach-Object { Join-Path (Join-Path $wsBarDir "src") $_ }
+if ((Test-Path -LiteralPath $wsBarCargo) -and (Test-Path -LiteralPath $wsBarLock) -and (@($wsBarSrcFiles | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0)) {
+    $wsBarCargoRaw = Get-Content -LiteralPath $wsBarCargo -Raw
+    if ($wsBarCargoRaw -match 'name\s*=\s*"windows-settings-bar"' -and $wsBarCargoRaw -match 'zellij-tile\s*=\s*"0\.46\.0"') {
+        Pass "WASM plugin crate valid: plugin/ws-bar/ (Cargo.toml, Cargo.lock, main/palette/roles/render.rs)"
+    } else {
+        Fail "plugin/ws-bar/Cargo.toml" "Expected name = windows-settings-bar and zellij-tile = 0.46.0"
+    }
+} else {
+    Fail "plugin/ws-bar/ files missing" "Expected Cargo.toml, Cargo.lock, and src/{main,palette,roles,render}.rs"
+}
+
+# Test .gitattributes line-ending rules (.ps1/.cmd = crlf, .kdl/.json/.md/.yml/.rs = lf)
 $gitAttributesPath = Join-Path $RootDir ".gitattributes"
 if (Test-Path $gitAttributesPath) {
     $gitAttrRaw = Get-Content $gitAttributesPath -Raw
-    if ($gitAttrRaw -match '\*\.ps1\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.cmd\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.kdl\s+text\s+eol=lf' -and $gitAttrRaw -match '\*\.yml\s+text\s+eol=lf') {
-        Pass ".gitattributes enforces CRLF for .ps1/.cmd and LF for .kdl/.yml/.md configs"
+    if ($gitAttrRaw -match '\*\.ps1\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.cmd\s+text\s+eol=crlf' -and $gitAttrRaw -match '\*\.kdl\s+text\s+eol=lf' -and $gitAttrRaw -match '\*\.rs\s+text\s+eol=lf' -and $gitAttrRaw -match '\*\.yml\s+text\s+eol=lf') {
+        Pass ".gitattributes enforces CRLF for .ps1/.cmd and LF for .kdl/.rs/.yml/.md configs"
     } else {
         Fail ".gitattributes validation" "Missing expected CRLF/LF rules in .gitattributes"
     }
@@ -1140,6 +1158,19 @@ if ($ideDryWt -match 'Backend\s*:\s*wt' -and $ideDryWt -match 'split-pane -H -s 
     Fail "ide.ps1 --backend wt --dry-run" "Unexpected wt fallback output: $ideDryWt"
 }
 
+$ideEmptyDir = Join-Path ([System.IO.Path]::GetTempPath()) "ws-ide-noreadme-$PID"
+New-Item -ItemType Directory -Force -Path $ideEmptyDir | Out-Null
+try {
+    $ideDryNoReadme = (& $ideScript --backend zellij --dry-run $ideEmptyDir) -join "`n"
+    if ($ideDry3 -match 'Initial Doc\s*:.*README\.md' -and $ideDryWt -match 'Initial Doc\s*:.*README\.md' -and $ideDryNoReadme -notmatch 'Initial Doc') {
+        Pass "ide.ps1 auto-opens workspace README in the Editor pane when present and omits it when absent"
+    } else {
+        Fail "ide.ps1 README auto-open" "Unexpected Initial Doc detection across repo root vs empty dir"
+    }
+} finally {
+    Remove-Item -LiteralPath $ideEmptyDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $prevNoTty = $env:WS_AGY_HOOK_NO_TTY
 try {
     $env:WS_AGY_HOOK_NO_TTY = '1'
@@ -1157,6 +1188,15 @@ try {
         Pass "ide.cmd --agy-hook fast path emits valid Antigravity PreInvocation & Stop JSON responses"
     } else {
         Fail "ide.cmd --agy-hook" "Unexpected batch hook JSON: Pre='$cmdHookPre', Stop='$cmdHookStop'"
+    }
+    $ideCmdRaw = Get-Content -LiteralPath $ideCmdScript -Raw
+    $zellijCfgRaw = Get-Content -LiteralPath (Join-Path (Join-Path (Join-Path $RootDir 'config') 'zellij') 'config.kdl') -Raw
+    if ($ideCmdRaw -match ':fast_quit_safe' -and $ideCmdRaw -match ':fast_quit_force' -and
+        $zellijCfgRaw -notmatch 'Run "ide\.cmd" "--quit"[\s\S]{0,60}floating true' -and
+        $zellijCfgRaw -match 'Run "cmd\.exe" "/d" "/c" "ide\.cmd" "--quit"') {
+        Pass "ide.cmd and config.kdl execute Alt+q workspace quit in background without floating window flash"
+    } else {
+        Fail "Alt+q fast background quit" "Expected :fast_quit_safe/:fast_quit_force in ide.cmd and background Run in config.kdl"
     }
 } finally {
     $env:WS_AGY_HOOK_NO_TTY = $prevNoTty
@@ -1505,7 +1545,7 @@ if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
 Write-Host "`n[7/8] Testing Path Invariants & Dual Execution Wrappers..." -ForegroundColor Yellow
 
 $filesToScan = Get-ChildItem -Path $RootDir -Recurse -File |
-    Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' -and $_.Name -ne 'AGENTS.md' }
+    Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp|plugin[\\/]ws-bar[\\/]target)[\\/]' -and $_.Name -ne 'AGENTS.md' }
 
 $hardcodedFound = $false
 foreach ($f in $filesToScan) {
@@ -1521,9 +1561,9 @@ if (-not $hardcodedFound) {
 
 # 7.1b Byte-level CRLF / LF line-ending discipline & module startup hygiene
 $crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat', '.doskey')
-$lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
+$lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lock', '.rs', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
 $eolViolation = $false
-foreach ($f in (Get-ChildItem -Path $RootDir -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp)[\\/]' })) {
+foreach ($f in (Get-ChildItem -Path $RootDir -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp|plugin[\\/]ws-bar[\\/]target)[\\/]' })) {
     $rawBytes = [System.IO.File]::ReadAllBytes($f.FullName)
     if ($rawBytes.Length -eq 0) { continue }
     $rawStr = [System.Text.Encoding]::UTF8.GetString($rawBytes)
@@ -1674,6 +1714,66 @@ try {
         Pass "setup.ps1 implements declarative JSON Fragment extension deployment"
     } else {
         Fail "Terminal setup" "Declarative JSON Fragment support missing in setup.ps1"
+    }
+
+    if ($setupScriptContent -match 'Sync-ZellijBarPlugin' -and $setupScriptContent -match 'Sync-ZellijPluginPermission' -and $setupScriptContent -match 'role "compact-bar"') {
+        Pass "setup.ps1 implements WASM bar build/cache, permission pre-seeding, and compact-bar fallback"
+    } else {
+        Fail "Zellij WASM bar setup" "Expected Sync-ZellijBarPlugin, Sync-ZellijPluginPermission, and compact-bar fallback in setup.ps1"
+    }
+
+    $setupAst = [System.Management.Automation.Language.Parser]::ParseFile($setupScriptPath, [ref]$null, [ref]$null)
+    $fnNames = @('ConvertTo-NormalizedZellijConfig', 'Deploy-ZellijConfig', 'Sync-ZellijPluginPermission')
+    $fnDefs = $setupAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $fnNames
+    }, $false)
+    foreach ($fnAst in $fnDefs) {
+        . ([scriptblock]::Create($fnAst.Extent.Text))
+    }
+
+    $mockPermFile = Join-Path $sandboxDir 'permissions.kdl'
+    [System.IO.File]::WriteAllText($mockPermFile, "`"other-plugin`" {`n    ReadApplicationState`n}`n", [System.Text.UTF8Encoding]::new($false))
+    Sync-ZellijPluginPermission -PermissionsPath $mockPermFile *>$null
+    $permRaw1 = [System.IO.File]::ReadAllText($mockPermFile)
+    $permBackups1 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'permissions.kdl.bak_*')
+    if (-not $permRaw1.Contains("`r`n") -and $permRaw1 -match '"other-plugin"' -and $permRaw1 -match 'windows-settings-bar' -and $permRaw1 -match 'RunActionsAsUser' -and $permBackups1.Count -eq 1) {
+        Pass "Sync-ZellijPluginPermission pre-seeds LF permissions while preserving existing plugin entries and backup"
+    } else {
+        Fail "Sync-ZellijPluginPermission seed" "Unexpected permissions.kdl content or backup count ($($permBackups1.Count))"
+    }
+
+    Sync-ZellijPluginPermission -PermissionsPath $mockPermFile *>$null
+    $permBackups2 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'permissions.kdl.bak_*')
+    if ($permBackups2.Count -eq 1) {
+        Pass "Sync-ZellijPluginPermission is idempotent with zero redundant backups on re-run"
+    } else {
+        Fail "Sync-ZellijPluginPermission idempotency" "Expected 1 backup after re-run, found $($permBackups2.Count)"
+    }
+
+    Sync-ZellijPluginPermission -PermissionsPath $mockPermFile -Remove *>$null
+    $permRawRemoved = [System.IO.File]::ReadAllText($mockPermFile)
+    if ($permRawRemoved -match '"other-plugin"' -and $permRawRemoved -notmatch 'windows-settings-bar') {
+        Pass "Sync-ZellijPluginPermission -Remove strips only windows-settings-bar and preserves unrelated entries"
+    } else {
+        Fail "Sync-ZellijPluginPermission -Remove" "Failed to cleanly remove windows-settings-bar while keeping other-plugin"
+    }
+
+    $srcZellijConfig = Join-Path (Join-Path (Join-Path $RootDir 'config') 'zellij') 'config.kdl'
+    $mockZellijConfig = Join-Path $sandboxDir 'config.kdl'
+    Deploy-ZellijConfig -SourcePath $srcZellijConfig -DestinationPath $mockZellijConfig -UseWasmBar $false *>$null
+    $cfgFallback = [System.IO.File]::ReadAllText($mockZellijConfig)
+    Deploy-ZellijConfig -SourcePath $srcZellijConfig -DestinationPath $mockZellijConfig -UseWasmBar $true *>$null
+    $cfgWasm = [System.IO.File]::ReadAllText($mockZellijConfig)
+    $cfgBackups1 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'config.kdl.bak_*')
+    Deploy-ZellijConfig -SourcePath $srcZellijConfig -DestinationPath $mockZellijConfig -UseWasmBar $true *>$null
+    $cfgBackups2 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'config.kdl.bak_*')
+    if (-not $cfgFallback.Contains("`r`n") -and $cfgFallback -match 'location="zellij:bars"' -and $cfgFallback -match 'role "compact-bar"' -and
+        -not $cfgWasm.Contains("`r`n") -and $cfgWasm -match 'location="file:windows-settings-bar"' -and
+        $cfgBackups1.Count -eq 1 -and $cfgBackups2.Count -eq 1) {
+        Pass "Deploy-ZellijConfig switches cleanly between compact-bar fallback and WASM bar with idempotent LF writes"
+    } else {
+        Fail "Deploy-ZellijConfig bar switching" "Fallback/WASM bar rewrite or backup idempotency check failed"
     }
 
     foreach ($modeSpec in @(

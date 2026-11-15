@@ -120,6 +120,295 @@ function Deploy-ConfigFile {
     }
 }
 
+function Get-ZellijPluginDir {
+    if ($env:APPDATA) {
+        return (Join-Path (Join-Path (Join-Path $env:APPDATA 'Zellij') 'data') 'plugins')
+    }
+    return (Join-Path (Join-Path (Join-Path (Join-Path $HOME '.local') 'share') 'zellij') 'plugins')
+}
+
+function Get-ZellijBarSourceStamp([string]$CrateDir) {
+    if (-not (Test-Path -LiteralPath $CrateDir -PathType Container)) { return '' }
+    $sb = [System.Text.StringBuilder]::new()
+    $zellijCmd = Get-Command zellij -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($zellijCmd) {
+        try {
+            $zVer = (& $zellijCmd.Source --version 2>$null | Out-String).Trim()
+            [void]$sb.AppendLine("zellij:$zVer")
+        } catch {
+            [void]$sb.AppendLine('zellij:unknown')
+        }
+    }
+    $relFiles = [System.Collections.Generic.List[string]]::new()
+    foreach ($fixed in @('Cargo.toml', 'Cargo.lock', (Join-Path '.cargo' 'config.toml'))) {
+        $fp = Join-Path $CrateDir $fixed
+        if (Test-Path -LiteralPath $fp -PathType Leaf) { $relFiles.Add($fixed) }
+    }
+    $srcDir = Join-Path $CrateDir 'src'
+    if (Test-Path -LiteralPath $srcDir -PathType Container) {
+        foreach ($rs in (Get-ChildItem -LiteralPath $srcDir -Filter '*.rs' -File | Sort-Object Name)) {
+            $relFiles.Add((Join-Path 'src' $rs.Name))
+        }
+    }
+    foreach ($rel in $relFiles) {
+        $full = Join-Path $CrateDir $rel
+        $raw = (Get-Content -LiteralPath $full -Raw).Replace("`r`n", "`n")
+        $normRel = $rel.Replace([System.IO.Path]::DirectorySeparatorChar, [char]'/')
+        [void]$sb.AppendLine("---$normRel---")
+        [void]$sb.AppendLine($raw)
+    }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($sb.ToString())
+    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+    return ([System.BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant())
+}
+
+function Resolve-RustWasmToolchain {
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    $cargoBin = Join-Path (Join-Path $userHome '.cargo') 'bin'
+    $cargoExe = Get-Command cargo.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cargoExe -and (Test-Path -LiteralPath (Join-Path $cargoBin 'cargo.exe'))) {
+        $cargoExe = Get-Item -LiteralPath (Join-Path $cargoBin 'cargo.exe')
+    }
+    if (-not $cargoExe -and $env:LOCALAPPDATA) {
+        $miseRust = Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'mise') 'installs') 'rust'
+        if (Test-Path -LiteralPath $miseRust -PathType Container) {
+            $foundCargo = Get-ChildItem -LiteralPath $miseRust -Filter 'cargo.exe' -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+            if ($foundCargo) { $cargoExe = $foundCargo }
+        }
+    }
+    if (-not $cargoExe) { return $null }
+    $cargoPath = if ($cargoExe.PSObject.Properties['Source']) { $cargoExe.Source } else { $cargoExe.FullName }
+
+    $rustupExe = Get-Command rustup.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $rustupExe -and (Test-Path -LiteralPath (Join-Path $cargoBin 'rustup.exe'))) {
+        $rustupExe = Get-Item -LiteralPath (Join-Path $cargoBin 'rustup.exe')
+    }
+    $rustupPath = if ($rustupExe) {
+        if ($rustupExe.PSObject.Properties['Source']) { $rustupExe.Source } else { $rustupExe.FullName }
+    } else {
+        ''
+    }
+
+    $hasMsvc = $false
+    $pf86 = ${env:ProgramFiles(x86)}
+    if ($pf86) {
+        $vswhere = Join-Path (Join-Path (Join-Path $pf86 'Microsoft Visual Studio') 'Installer') 'vswhere.exe'
+        if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+            try {
+                $vcInst = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null | Out-String).Trim()
+                if ($vcInst) { $hasMsvc = $true }
+            } catch {
+                $hasMsvc = $false
+            }
+        }
+    }
+    if ($hasMsvc) {
+        return @{ Cargo = $cargoPath; Rustup = $rustupPath; Toolchain = ''; ExtraPath = '' }
+    }
+
+    $gccCmd = Get-Command gcc.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $gccDir = if ($gccCmd) { Split-Path -Parent $gccCmd.Source } else { '' }
+    if (-not $gccDir -and $env:LOCALAPPDATA) {
+        $wgPkgs = Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Microsoft') 'WinGet') 'Packages'
+        if (Test-Path -LiteralPath $wgPkgs -PathType Container) {
+            $foundGcc = Get-ChildItem -LiteralPath $wgPkgs -Filter 'gcc.exe' -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match 'WinLibs' } | Select-Object -First 1
+            if ($foundGcc) { $gccDir = Split-Path -Parent $foundGcc.FullName }
+        }
+    }
+    if ($gccDir -and $rustupPath) {
+        return @{ Cargo = $cargoPath; Rustup = $rustupPath; Toolchain = 'stable-x86_64-pc-windows-gnu'; ExtraPath = $gccDir }
+    }
+    return $null
+}
+
+function Sync-ZellijBarPlugin([string]$RepoRoot, [switch]$DryRun) {
+    $crateDir = Join-Path (Join-Path $RepoRoot 'plugin') 'ws-bar'
+    $manifestPath = Join-Path $crateDir 'Cargo.toml'
+    $wasmDest = Join-Path (Get-ZellijPluginDir) 'windows-settings-bar.wasm'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return (Test-Path -LiteralPath $wasmDest -PathType Leaf)
+    }
+
+    if ($DryRun -and $env:WS_TEST_MODE -eq '1') {
+        Write-Host "  [DryRun] Would sync windows-settings-bar.wasm to $wasmDest" -ForegroundColor DarkCyan
+        return $true
+    }
+
+    $stampDir = Join-Path (Join-Path $HOME '.cache') 'windows-settings'
+    $stampFile = Join-Path $stampDir 'ws-bar.sha256'
+    $desiredStamp = Get-ZellijBarSourceStamp $crateDir
+
+    if ((Test-Path -LiteralPath $wasmDest -PathType Leaf) -and (Test-Path -LiteralPath $stampFile -PathType Leaf)) {
+        $currentStamp = (Get-Content -LiteralPath $stampFile -Raw).Trim()
+        if ($currentStamp -eq $desiredStamp) {
+            Write-Host "==> Zellij top-bar plugin at $wasmDest is already up to date." -ForegroundColor Green
+            return $true
+        }
+    }
+
+    $tc = Resolve-RustWasmToolchain
+    if (-not $tc) {
+        if (Test-Path -LiteralPath $wasmDest -PathType Leaf) {
+            Write-Host "==> Retaining existing Zellij top-bar plugin at $wasmDest." -ForegroundColor Green
+            return $true
+        }
+        Write-Host '==> Rust/Cargo toolchain or C linker not yet available; using built-in Zellij compact-bar fallback.' -ForegroundColor DarkYellow
+        return $false
+    }
+
+    if ($DryRun) {
+        Write-Host "  [DryRun] Would build windows-settings-bar.wasm (wasm32-wasip1) and deploy to $wasmDest" -ForegroundColor DarkCyan
+        return $true
+    }
+
+    $savedPath = $env:Path
+    try {
+        $cargoDir = Split-Path -Parent $tc.Cargo
+        if ($tc.ExtraPath -and -not $env:Path.Contains($tc.ExtraPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $env:Path = "$($tc.ExtraPath);$env:Path"
+        }
+        if ($cargoDir -and -not $env:Path.Contains($cargoDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $env:Path = "$cargoDir;$env:Path"
+        }
+
+        if ($tc.Rustup) {
+            if ($tc.Toolchain) {
+                $installedTcs = (& $tc.Rustup toolchain list 2>$null | Out-String)
+                if ($installedTcs -notmatch [regex]::Escape($tc.Toolchain)) {
+                    Write-Host "==> Installing Rust host toolchain $($tc.Toolchain) + wasm32-wasip1 target..." -ForegroundColor Cyan
+                    & $tc.Rustup toolchain install $tc.Toolchain --target wasm32-wasip1 --profile minimal --no-self-update *> $null
+                } else {
+                    $installedTargets = (& $tc.Rustup target list --installed --toolchain $tc.Toolchain 2>$null | Out-String)
+                    if ($installedTargets -notmatch 'wasm32-wasip1') {
+                        & $tc.Rustup target add wasm32-wasip1 --toolchain $tc.Toolchain *> $null
+                    }
+                }
+            } else {
+                $installedTargets = (& $tc.Rustup target list --installed 2>$null | Out-String)
+                if ($installedTargets -notmatch 'wasm32-wasip1') {
+                    & $tc.Rustup target add wasm32-wasip1 *> $null
+                }
+            }
+        }
+
+        Write-Host '==> Compiling Zellij WASM top-bar plugin (windows-settings-bar.wasm)...' -ForegroundColor Cyan
+        $cargoArgs = [System.Collections.Generic.List[string]]::new()
+        if ($tc.Toolchain) { $cargoArgs.Add("+$($tc.Toolchain)") }
+        $cargoArgs.AddRange([string[]]@('build', '--release', '--manifest-path', $manifestPath, '--target', 'wasm32-wasip1', '--quiet'))
+        & $tc.Cargo @cargoArgs
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Failed to compile windows-settings-bar.wasm; falling back to built-in Zellij compact-bar.'
+            return (Test-Path -LiteralPath $wasmDest -PathType Leaf)
+        }
+
+        $builtWasm = Join-Path (Join-Path (Join-Path (Join-Path $crateDir 'target') 'wasm32-wasip1') 'release') 'windows-settings-bar.wasm'
+        if (-not (Test-Path -LiteralPath $builtWasm -PathType Leaf)) {
+            Write-Warning 'Compiled windows-settings-bar.wasm artifact not found; falling back to built-in Zellij compact-bar.'
+            return (Test-Path -LiteralPath $wasmDest -PathType Leaf)
+        }
+
+        $pluginDir = Split-Path -Parent $wasmDest
+        if (-not (Test-Path -LiteralPath $pluginDir -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+        }
+        Copy-Item -LiteralPath $builtWasm -Destination $wasmDest -Force
+        if (-not (Test-Path -LiteralPath $stampDir -PathType Container)) {
+            New-Item -ItemType Directory -Force -Path $stampDir | Out-Null
+        }
+        [System.IO.File]::WriteAllText($stampFile, "$desiredStamp`n", [System.Text.UTF8Encoding]::new($false))
+        Write-Host "==> Zellij top-bar plugin deployed to $wasmDest" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Warning "Skipping WASM bar build ($_): falling back to built-in Zellij compact-bar."
+        return (Test-Path -LiteralPath $wasmDest -PathType Leaf)
+    } finally {
+        $env:Path = $savedPath
+    }
+}
+
+function Sync-ZellijPluginPermission([string]$PermissionsPath = '', [switch]$Remove, [switch]$DryRun) {
+    $permFile = if ($PermissionsPath) {
+        $PermissionsPath
+    } elseif ($env:LOCALAPPDATA) {
+        Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Zellij') 'cache') 'permissions.kdl'
+    } else {
+        Join-Path (Join-Path (Join-Path $HOME '.cache') 'zellij') 'permissions.kdl'
+    }
+
+    $desiredPerms = @('ChangeApplicationState', 'ReadApplicationState', 'RunActionsAsUser', 'RunCommands')
+    $desiredBlock = (@(
+        'windows-settings-bar {'
+        '    ChangeApplicationState'
+        '    ReadApplicationState'
+        '    RunActionsAsUser'
+        '    RunCommands'
+        '}'
+    ) -join "`n")
+    $blockPattern = '(?m)^\s*"?windows-settings-bar"?\s*\{[^}]*\}\s*\n?'
+
+    if ($Remove) {
+        if (-not (Test-Path -LiteralPath $permFile -PathType Leaf)) { return }
+        $raw = (Get-Content -LiteralPath $permFile -Raw).Replace("`r`n", "`n")
+        if ($raw -notmatch $blockPattern) { return }
+        $updated = [regex]::Replace($raw, $blockPattern, '').Trim()
+        if ($DryRun) {
+            Write-Host "  [DryRun] Would remove windows-settings-bar permissions from $permFile" -ForegroundColor DarkCyan
+            return
+        }
+        $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        Copy-Item -LiteralPath $permFile -Destination "$permFile.bak_$timestamp" -Force
+        if (-not $updated) {
+            Remove-Item -LiteralPath $permFile -Force -ErrorAction SilentlyContinue
+        } else {
+            [System.IO.File]::WriteAllText($permFile, "$updated`n", [System.Text.UTF8Encoding]::new($false))
+        }
+        Write-Host "  Removed windows-settings-bar permissions from $permFile" -ForegroundColor Green
+        return
+    }
+
+    $exists = Test-Path -LiteralPath $permFile -PathType Leaf
+    $raw = if ($exists) { (Get-Content -LiteralPath $permFile -Raw).Replace("`r`n", "`n") } else { '' }
+    if ($exists -and $raw -match '(?m)^\s*"?windows-settings-bar"?\s*\{(?<body>[^}]*)\}') {
+        $body = $Matches['body']
+        $allPresent = $true
+        foreach ($perm in $desiredPerms) {
+            if ($body -notmatch "\b$([regex]::Escape($perm))\b") {
+                $allPresent = $false
+                break
+            }
+        }
+        if ($allPresent) {
+            Write-Host "==> Zellij plugin permissions at $permFile are already up to date." -ForegroundColor Green
+            return
+        }
+    }
+
+    $stripped = [regex]::Replace($raw, $blockPattern, '').Trim()
+    $finalLf = if ($stripped) { "$stripped`n$desiredBlock`n" } else { "$desiredBlock`n" }
+
+    if ($DryRun) {
+        if ($exists) {
+            $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+            Write-Host "  [DryRun] Would backup $permFile to $permFile.bak_$timestamp" -ForegroundColor DarkCyan
+        }
+        Write-Host "  [DryRun] Would pre-seed windows-settings-bar permissions in $permFile" -ForegroundColor DarkCyan
+        return
+    }
+
+    $parentDir = Split-Path -Parent $permFile
+    if ($parentDir -and -not (Test-Path -LiteralPath $parentDir -PathType Container)) {
+        New-Item -ItemType Directory -Force -Path $parentDir | Out-Null
+    }
+    if ($exists) {
+        $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+        Copy-Item -LiteralPath $permFile -Destination "$permFile.bak_$timestamp" -Force
+    }
+    [System.IO.File]::WriteAllText($permFile, $finalLf, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "==> Zellij plugin permissions pre-seeded at $permFile" -ForegroundColor Green
+}
+
 function ConvertTo-NormalizedZellijConfig([string]$Content) {
     if (-not $Content) { return '' }
     $norm = $Content.Replace("`r`n", "`n")
@@ -128,9 +417,29 @@ function ConvertTo-NormalizedZellijConfig([string]$Content) {
     return $norm.Trim()
 }
 
-function Deploy-ZellijConfig([string]$SourcePath, [string]$DestinationPath, [switch]$DryRun) {
+function Deploy-ZellijConfig([string]$SourcePath, [string]$DestinationPath, [bool]$UseWasmBar = $false, [switch]$DryRun) {
     if (-not (Test-Path -LiteralPath $SourcePath)) { return }
     $srcLf = (Get-Content -LiteralPath $SourcePath -Raw).Replace("`r`n", "`n")
+    $barBlock = if ($UseWasmBar) {
+        @(
+            '    // BEGIN WINDOWS-SETTINGS BAR PLUGIN'
+            '    compact-bar location="file:windows-settings-bar"'
+            '    // END WINDOWS-SETTINGS BAR PLUGIN'
+        ) -join "`n"
+    } else {
+        @(
+            '    // BEGIN WINDOWS-SETTINGS BAR PLUGIN'
+            '    compact-bar location="zellij:bars" {'
+            '        role "compact-bar"'
+            '    }'
+            '    // END WINDOWS-SETTINGS BAR PLUGIN'
+        ) -join "`n"
+    }
+    $srcLf = [regex]::Replace(
+        $srcLf,
+        '(?s)[ \t]*// BEGIN WINDOWS-SETTINGS BAR PLUGIN.*?// END WINDOWS-SETTINGS BAR PLUGIN',
+        $barBlock
+    )
     $destDir = Split-Path -Parent $DestinationPath
     if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
         if (-not $DryRun) {
@@ -494,14 +803,16 @@ function Invoke-WorkstationUninstall {
             }
         }
 
-        # 7. Zellij Config, Layouts, Theme & Antigravity OSC 7501 Hook cleanup
+        # 7. Zellij Config, Layouts, Theme, WASM Bar Plugin & Antigravity OSC 7501 Hook cleanup
         if ($env:APPDATA) {
             $zellijCfgRoot = Join-Path (Join-Path $env:APPDATA 'Zellij') 'config'
             foreach ($zf in @(
                 (Join-Path $zellijCfgRoot 'config.kdl'),
                 (Join-Path (Join-Path $zellijCfgRoot 'layouts') 'ide-3pane.kdl'),
                 (Join-Path (Join-Path $zellijCfgRoot 'layouts') 'ide-2pane.kdl'),
-                (Join-Path (Join-Path $zellijCfgRoot 'themes') 'windows-settings.kdl')
+                (Join-Path (Join-Path $zellijCfgRoot 'themes') 'windows-settings.kdl'),
+                (Join-Path (Get-ZellijPluginDir) 'windows-settings-bar.wasm'),
+                (Join-Path (Join-Path (Join-Path $HOME '.cache') 'windows-settings') 'ws-bar.sha256')
             )) {
                 if (Test-Path -LiteralPath $zf) {
                     if ($IsDryRun) {
@@ -513,6 +824,7 @@ function Invoke-WorkstationUninstall {
                 }
             }
         }
+        Sync-ZellijPluginPermission -Remove -DryRun:$IsDryRun
         Sync-AntigravityHooksJson -Remove -DryRun:$IsDryRun
     }
 
@@ -944,15 +1256,19 @@ if (-not $SkipPosh) {
         }
     }
 
-    # Deploy Zellij 0.46+ Configuration, IDE Layouts, Theme Seed & Antigravity OSC 7501 Hook
+    # Deploy Zellij 0.46+ Configuration, WASM Bar Plugin, IDE Layouts, Theme Seed & Antigravity OSC 7501 Hook
     $zellijSrcDir = Join-Path $RootDir "config\zellij"
     $zellijDestDir = if ($env:APPDATA) {
         Join-Path (Join-Path $env:APPDATA "Zellij") "config"
     } else {
         Join-Path $HOME ".config\zellij"
     }
+    $useWasmBar = Sync-ZellijBarPlugin -RepoRoot $RootDir -DryRun:$DryRun
+    if ($useWasmBar) {
+        Sync-ZellijPluginPermission -DryRun:$DryRun
+    }
     if (Test-Path -LiteralPath $zellijSrcDir) {
-        Deploy-ZellijConfig -SourcePath (Join-Path $zellijSrcDir "config.kdl") -DestinationPath (Join-Path $zellijDestDir "config.kdl") -DryRun:$DryRun
+        Deploy-ZellijConfig -SourcePath (Join-Path $zellijSrcDir "config.kdl") -DestinationPath (Join-Path $zellijDestDir "config.kdl") -UseWasmBar $useWasmBar -DryRun:$DryRun
         Deploy-ConfigFile -Name "Zellij 3-pane IDE layout" -SourcePath (Join-Path $zellijSrcDir "layouts\ide-3pane.kdl") -DestinationPath (Join-Path $zellijDestDir "layouts\ide-3pane.kdl") -DryRun:$DryRun
         Deploy-ConfigFile -Name "Zellij 2-pane IDE layout" -SourcePath (Join-Path $zellijSrcDir "layouts\ide-2pane.kdl") -DestinationPath (Join-Path $zellijDestDir "layouts\ide-2pane.kdl") -DryRun:$DryRun
         $zellijThemeSeedDst = Join-Path $zellijDestDir "themes\windows-settings.kdl"

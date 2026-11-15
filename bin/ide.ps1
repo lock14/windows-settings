@@ -1017,6 +1017,19 @@ function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {
     exit 0
 }
 
+function Resolve-InitialEditorFile([string]$Directory) {
+    if (-not $Directory -or -not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        return ''
+    }
+    foreach ($name in @('README.md', 'README.markdown', 'README.rst', 'README.txt', 'README')) {
+        $candidate = Join-Path $Directory $name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Get-Item -LiteralPath $candidate).FullName
+        }
+    }
+    return ''
+}
+
 function Invoke-PaneInit([string]$Role) {
     $normRole = switch ($Role.ToLowerInvariant()) {
         'editor' { 'editor' }
@@ -1074,7 +1087,12 @@ function Invoke-PaneInit([string]$Role) {
             }
             $nvimBin = Resolve-NvimExecutable
             if ($nvimBin) {
-                & $nvimBin --listen $pipePath
+                $initialFile = Resolve-InitialEditorFile $workDir
+                if ($initialFile) {
+                    & $nvimBin --listen $pipePath $initialFile
+                } else {
+                    & $nvimBin --listen $pipePath
+                }
             } else {
                 Write-Host "Neovim (nvim) not found on PATH; dropping to interactive shell." -ForegroundColor Yellow
             }
@@ -1501,7 +1519,20 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
     }
 
     $zellijBin = Resolve-ZellijExecutable
-    $liveZellij = Get-LiveZellijSessionMap
+    $curZellijSess = if ($env:ZELLIJ_SESSION_NAME) { Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    $needsSessionScan = $false
+    foreach ($t in $targets) {
+        if (-not $curZellijSess -or -not [string]::Equals($t, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $needsSessionScan = $true
+            break
+        }
+    }
+    $liveZellij = if ($needsSessionScan) { Get-LiveZellijSessionMap } else { @{} }
+    if ($curZellijSess) {
+        $liveZellij[$curZellijSess] = 'live'
+    }
+
+    $alreadyScheduledQuit = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($sess in $targets) {
         $meta = Read-SessionState $sess
@@ -1513,11 +1544,21 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
             exit 1
         }
         if ($pipeLive -and -not $Force) {
-            $modRes = Invoke-NvimRemoteExpr -PipePath $pipePath -Expr 'v:lua.count_ide_modified_buffers()'
+            $quitExpr = "luaeval('_G.try_ide_quit and _G.try_ide_quit(false) or (_G.count_ide_modified_buffers and _G.count_ide_modified_buffers() or 0)')"
+            $modRes = Invoke-NvimRemoteExpr -PipePath $pipePath -Expr $quitExpr
             $modCount = 0
             if ($modRes.Success -and [int]::TryParse($modRes.Output, [ref]$modCount) -and $modCount -gt 0) {
+                if ($zellijBin -and $curZellijSess -and [string]::Equals($sess, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $edPane = Get-RolePaneId -SessionName $sess -Role 'editor'
+                    if ($edPane) {
+                        & $zellijBin action focus-pane-id $edPane *> $null
+                    }
+                }
                 [Console]::Error.WriteLine("E37: No write since last change in $modCount buffer(s) in session '$sess' (save in Neovim or use --force / idek).")
                 exit 1
+            }
+            if ($modRes.Success -and $targets.Count -eq 1) {
+                [void]$alreadyScheduledQuit.Add($sess)
             }
         }
     }
@@ -1525,7 +1566,7 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
     foreach ($sess in $targets) {
         $meta = Read-SessionState $sess
         $pipePath = if ($meta -and $meta['pipe']) { [string]$meta['pipe'] } else { Get-SessionPipePath $sess }
-        if (Test-IdePipeLive $pipePath) {
+        if (-not $alreadyScheduledQuit.Contains($sess) -and (Test-IdePipeLive $pipePath)) {
             [void](Invoke-NvimRemoteExpr -PipePath $pipePath -Expr "luaeval('(function() vim.schedule(function() vim.cmd(""qa!"") end); return ""OK"" end)()')")
         }
         if ($zellijBin -and $liveZellij.ContainsKey($sess)) {
@@ -1599,10 +1640,18 @@ function Write-PaneLauncherSet(
         ) -join "`n"
     }
 
+    $initialFile = Resolve-InitialEditorFile $WorkDir
+    $escInitFile = $initialFile.Replace("'", "''")
+    $nvimLaunchLine = if ($initialFile) {
+        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET '$escInitFile'"
+    } else {
+        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET"
+    }
+
     $editorBody = @(
         $commonHeader
         "`$Host.UI.RawUI.WindowTitle = `"$escSess [Editor]`""
-        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET"
+        $nvimLaunchLine
     ) -join "`n"
 
     $termBody = @(
@@ -1850,6 +1899,15 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             if (Test-Path -LiteralPath $themePs1 -PathType Leaf) {
                 & $themePs1 --sync-assets *> $null
             }
+            if ($env:ZELLIJ -and $env:APPDATA) {
+                $barWasm = Join-Path (Join-Path (Join-Path (Join-Path $env:APPDATA 'Zellij') 'data') 'plugins') 'windows-settings-bar.wasm'
+                if (Test-Path -LiteralPath $barWasm -PathType Leaf) {
+                    $zellijBin = Resolve-ZellijExecutable
+                    if ($zellijBin) {
+                        & $zellijBin action start-or-reload-plugin 'file:windows-settings-bar' *> $null
+                    }
+                }
+            }
             if ($targetArg) {
                 $sess = Resolve-TargetSession $targetArg
                 [void](Invoke-NvimRemoteExpr -PipePath (Get-SessionPipePath $sess) -Expr 'v:lua.apply_home_settings_theme()')
@@ -1949,6 +2007,7 @@ if ($effectiveBackend -eq 'zellij') {
     }
 
     if ($dryRun) {
+        $initialDoc = Resolve-InitialEditorFile $resolvedRoot
         Write-Output "IDE Session : $sessionName"
         Write-Output "Backend     : zellij"
         Write-Output "Layout      : $layout ($zellijLayout)"
@@ -1956,6 +2015,9 @@ if ($effectiveBackend -eq 'zellij') {
         Write-Output "Named Pipe  : $pipePath"
         Write-Output "AI Agent    : $($aiInfo.Name)"
         Write-Output "Editor      : $nvimBin"
+        if ($initialDoc) {
+            Write-Output "Initial Doc : $initialDoc"
+        }
         Write-Output "Config Dir  : $zellijCfgDir"
         Write-Output "Command     : $zellijPreviewCmd"
         exit 0
@@ -2140,6 +2202,7 @@ $formattedWtArgs = @($wtArgList | ForEach-Object {
 })
 
 if ($dryRun) {
+    $initialDoc = Resolve-InitialEditorFile $resolvedRoot
     Write-Output "IDE Session : $sessionName"
     Write-Output "Backend     : wt"
     Write-Output "Layout      : $layout"
@@ -2147,6 +2210,9 @@ if ($dryRun) {
     Write-Output "Named Pipe  : $pipePath"
     Write-Output "AI Agent    : $($aiInfo.Name)"
     Write-Output "Editor      : $nvimBin"
+    if ($initialDoc) {
+        Write-Output "Initial Doc : $initialDoc"
+    }
     Write-Output "WT Command  : wt.exe $($formattedWtArgs -join ' ')"
     exit 0
 }
