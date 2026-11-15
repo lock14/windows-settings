@@ -1017,6 +1017,19 @@ function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {
     exit 0
 }
 
+function Resolve-InitialEditorFile([string]$Directory) {
+    if (-not $Directory -or -not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        return ''
+    }
+    foreach ($name in @('README.md', 'README.markdown', 'README.rst', 'README.txt', 'README')) {
+        $candidate = Join-Path $Directory $name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Get-Item -LiteralPath $candidate).FullName
+        }
+    }
+    return ''
+}
+
 function Invoke-PaneInit([string]$Role) {
     $normRole = switch ($Role.ToLowerInvariant()) {
         'editor' { 'editor' }
@@ -1074,7 +1087,12 @@ function Invoke-PaneInit([string]$Role) {
             }
             $nvimBin = Resolve-NvimExecutable
             if ($nvimBin) {
-                & $nvimBin --listen $pipePath
+                $initialFile = Resolve-InitialEditorFile $workDir
+                if ($initialFile) {
+                    & $nvimBin --listen $pipePath $initialFile
+                } else {
+                    & $nvimBin --listen $pipePath
+                }
             } else {
                 Write-Host "Neovim (nvim) not found on PATH; dropping to interactive shell." -ForegroundColor Yellow
             }
@@ -1599,10 +1617,18 @@ function Write-PaneLauncherSet(
         ) -join "`n"
     }
 
+    $initialFile = Resolve-InitialEditorFile $WorkDir
+    $escInitFile = $initialFile.Replace("'", "''")
+    $nvimLaunchLine = if ($initialFile) {
+        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET '$escInitFile'"
+    } else {
+        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET"
+    }
+
     $editorBody = @(
         $commonHeader
         "`$Host.UI.RawUI.WindowTitle = `"$escSess [Editor]`""
-        "& '$escNvim' --listen `$env:NVIM_IDE_SOCKET"
+        $nvimLaunchLine
     ) -join "`n"
 
     $termBody = @(
@@ -1958,6 +1984,7 @@ if ($effectiveBackend -eq 'zellij') {
     }
 
     if ($dryRun) {
+        $initialDoc = Resolve-InitialEditorFile $resolvedRoot
         Write-Output "IDE Session : $sessionName"
         Write-Output "Backend     : zellij"
         Write-Output "Layout      : $layout ($zellijLayout)"
@@ -1965,6 +1992,9 @@ if ($effectiveBackend -eq 'zellij') {
         Write-Output "Named Pipe  : $pipePath"
         Write-Output "AI Agent    : $($aiInfo.Name)"
         Write-Output "Editor      : $nvimBin"
+        if ($initialDoc) {
+            Write-Output "Initial Doc : $initialDoc"
+        }
         Write-Output "Config Dir  : $zellijCfgDir"
         Write-Output "Command     : $zellijPreviewCmd"
         exit 0
@@ -2149,6 +2179,7 @@ $formattedWtArgs = @($wtArgList | ForEach-Object {
 })
 
 if ($dryRun) {
+    $initialDoc = Resolve-InitialEditorFile $resolvedRoot
     Write-Output "IDE Session : $sessionName"
     Write-Output "Backend     : wt"
     Write-Output "Layout      : $layout"
@@ -2156,6 +2187,9 @@ if ($dryRun) {
     Write-Output "Named Pipe  : $pipePath"
     Write-Output "AI Agent    : $($aiInfo.Name)"
     Write-Output "Editor      : $nvimBin"
+    if ($initialDoc) {
+        Write-Output "Initial Doc : $initialDoc"
+    }
     Write-Output "WT Command  : wt.exe $($formattedWtArgs -join ' ')"
     exit 0
 }

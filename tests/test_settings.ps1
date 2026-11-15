@@ -1158,6 +1158,19 @@ if ($ideDryWt -match 'Backend\s*:\s*wt' -and $ideDryWt -match 'split-pane -H -s 
     Fail "ide.ps1 --backend wt --dry-run" "Unexpected wt fallback output: $ideDryWt"
 }
 
+$ideEmptyDir = Join-Path ([System.IO.Path]::GetTempPath()) "ws-ide-noreadme-$PID"
+New-Item -ItemType Directory -Force -Path $ideEmptyDir | Out-Null
+try {
+    $ideDryNoReadme = (& $ideScript --backend zellij --dry-run $ideEmptyDir) -join "`n"
+    if ($ideDry3 -match 'Initial Doc\s*:.*README\.md' -and $ideDryWt -match 'Initial Doc\s*:.*README\.md' -and $ideDryNoReadme -notmatch 'Initial Doc') {
+        Pass "ide.ps1 auto-opens workspace README in the Editor pane when present and omits it when absent"
+    } else {
+        Fail "ide.ps1 README auto-open" "Unexpected Initial Doc detection across repo root vs empty dir"
+    }
+} finally {
+    Remove-Item -LiteralPath $ideEmptyDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $prevNoTty = $env:WS_AGY_HOOK_NO_TTY
 try {
     $env:WS_AGY_HOOK_NO_TTY = '1'
