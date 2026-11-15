@@ -132,12 +132,20 @@ context_menu {
             Run "ide.cmd" "--monitor" {
                 floating true
                 close_on_exit true
+                x "5%"
+                y "5%"
+                width "90%"
+                height "90%"
             }
         }
         item "Keybinding cheatsheet" {
             Run "ide.cmd" "--keys" {
                 floating true
                 close_on_exit true
+                x "6%"
+                y "10%"
+                width "88%"
+                height "80%"
             }
         }
         item "Show bars" { ShowBars; }
@@ -299,6 +307,10 @@ keybinds clear-defaults=true {
             Run "ide.cmd" "--monitor" {
                 floating true
                 close_on_exit true
+                x "5%"
+                y "5%"
+                width "90%"
+                height "90%"
             }
             SwitchToMode "Normal"
         }
@@ -306,6 +318,10 @@ keybinds clear-defaults=true {
             Run "ide.cmd" "--keys" {
                 floating true
                 close_on_exit true
+                x "6%"
+                y "10%"
+                width "88%"
+                height "80%"
             }
             SwitchToMode "Normal"
         }
@@ -452,6 +468,10 @@ keybinds clear-defaults=true {
             Run "ide.cmd" "--monitor" {
                 floating true
                 close_on_exit true
+                x "5%"
+                y "5%"
+                width "90%"
+                height "90%"
             }
             SwitchToMode "Normal"
         }
@@ -459,6 +479,10 @@ keybinds clear-defaults=true {
             Run "ide.cmd" "--keys" {
                 floating true
                 close_on_exit true
+                x "6%"
+                y "10%"
+                width "88%"
+                height "80%"
             }
             SwitchToMode "Normal"
         }

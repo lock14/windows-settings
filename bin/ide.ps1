@@ -44,7 +44,7 @@ Options:
   --agy-hook <EVENT>       Internal Antigravity CLI hook adapter (PreInvocation, Stop, SessionStart)
   --ack-ai [SESSION...]    Acknowledge AI attention across one or more IDE sessions
   --open-pr [SESSION]      Open cached or active GitHub/GitLab Pull Request URL in browser
-  --monitor, --top         Launch interactive system monitor (btop4win -> btop -> ntop -> taskmgr)
+  --monitor, --top         Toggle interactive system monitor (btop4win -> btop -> btm -> ntop -> built-in TUI)
   --keys, --help-keys      Display the TrueColor IDE workspace & editor keybinding cheatsheet
   refresh, -r, --refresh [NAME]
                            Refresh active color theme across live IDE Neovim servers & Zellij config
@@ -536,94 +536,340 @@ function Invoke-NvimRemoteExpr([string]$PipePath, [string]$Expr, [int]$TimeoutMs
     }
 }
 
+function Enter-ZellijFloatingModal([string]$ModalName, [string]$X = '5%', [string]$Y = '5%', [string]$Width = '90%', [string]$Height = '90%') {
+    if (-not $env:ZELLIJ) { return '' }
+    $zellijBin = Resolve-ZellijExecutable
+    $rawSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME } elseif ($env:IDE_SESSION) { $env:IDE_SESSION } else { 'default' }
+    $sess = Get-SanitizedToken $rawSess
+    $curPaneId = ConvertTo-ZellijPaneId $env:ZELLIJ_PANE_ID
+    $modalFile = Join-Path (Get-IdeStateDir) ("modal-{0}-{1}.json" -f $ModalName, $sess)
+
+    if (Test-Path -LiteralPath $modalFile -PathType Leaf) {
+        try {
+            $saved = Get-Content -LiteralPath $modalFile -Raw | ConvertFrom-Json
+            $oldPid = if ($saved -and $saved.pid) { [int]$saved.pid } else { 0 }
+            $oldPaneId = if ($saved -and $saved.paneId) { "$($saved.paneId)".Trim() } else { '' }
+            if ($oldPid -gt 0 -and $oldPid -ne $PID) {
+                $alive = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+                if ($alive) {
+                    Remove-Item -LiteralPath $modalFile -Force -ErrorAction SilentlyContinue
+                    if ($zellijBin -and $oldPaneId) {
+                        & $zellijBin action close-pane --pane-id $oldPaneId *> $null
+                    }
+                    try {
+                        Get-CimInstance Win32_Process -Filter "ParentProcessId = $oldPid" -ErrorAction SilentlyContinue | ForEach-Object {
+                            Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue
+                        }
+                    } catch {
+                        Write-Verbose "Child process cleanup skipped: $_"
+                    }
+                    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+                    exit 0
+                }
+            }
+        } catch {
+            Write-Verbose "Stale modal state ignored: $_"
+        }
+    }
+
+    if ($zellijBin -and $curPaneId) {
+        & $zellijBin action change-floating-pane-coordinates --pane-id $curPaneId --x $X --y $Y --width $Width --height $Height *> $null
+    }
+    $payload = @{ pid = $PID; paneId = $curPaneId } | ConvertTo-Json -Compress
+    Write-TextUtf8NoBom -Path $modalFile -Content $payload
+    return $modalFile
+}
+
+function Exit-ZellijFloatingModal([string]$ModalFile) {
+    if (-not $ModalFile -or -not (Test-Path -LiteralPath $ModalFile -PathType Leaf)) { return }
+    try {
+        $saved = Get-Content -LiteralPath $ModalFile -Raw | ConvertFrom-Json
+        if ($saved -and ([int]$saved.pid) -eq $PID) {
+            Remove-Item -LiteralPath $ModalFile -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Remove-Item -LiteralPath $ModalFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Show-IdeKeysCheatsheet {
+    $modalFile = ''
+    if ($env:IDE_KEYS_NO_WAIT -ne '1') {
+        $modalFile = Enter-ZellijFloatingModal -ModalName 'keys' -X '6%' -Y '10%' -Width '88%' -Height '80%'
+    }
+    try {
+        $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+        $themeEnvPs1 = Join-Path (Join-Path (Join-Path $userHome '.cache') 'powershell') 'theme_env.ps1'
+        if (Test-Path -LiteralPath $themeEnvPs1 -PathType Leaf) {
+            try { . $themeEnvPs1 } catch { Write-Verbose "Theme env load skipped: $_" }
+        }
+        $esc = [char]27
+        $cOrange = if ($env:_HS_ESC_ORANGE) { $env:_HS_ESC_ORANGE } else { "${esc}[38;2;203;75;22m" }
+        $cBlue   = if ($env:_HS_ESC_BLUE)   { $env:_HS_ESC_BLUE }   else { "${esc}[38;2;38;139;210m" }
+        $cCyan   = if ($env:_HS_ESC_CYAN)   { $env:_HS_ESC_CYAN }   else { "${esc}[38;2;42;161;152m" }
+        $cBase0  = if ($env:_HS_ESC_BASE0)  { $env:_HS_ESC_BASE0 }  else { "${esc}[38;2;131;148;150m" }
+        $cBase01 = if ($env:_HS_ESC_BASE01) { $env:_HS_ESC_BASE01 } else { "${esc}[38;2;88;110;117m" }
+        $cReset  = "${esc}[0m"
+        $rule    = '─' * 86
+
+        $rowsPanes = @(
+            @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
+            @('Alt+a / e / t', 'Jump to AI / Editor / Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
+            @('Alt+; / Space a', 'Bounce last focused pane', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
+            @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
+            @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
+            @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
+            @('Alt+? / Alt+m', 'Toggle keys / system monitor', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
+            @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
+        )
+        $rowsEditor = @(
+            @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
+            @('Space fg', 'Search text (live grep)', 'Alt+c', 'Copy & clear highlight'),
+            @('Space gs', 'Review Git status', 'Alt+v', 'Paste from clipboard'),
+            @('Space m', 'Toggle Markdown preview', 'Ctrl+Click', 'Open URL, #heading, or file'),
+            @('H / L  (Normal)', 'Prev / next buffer', 'Alt+Click', 'Jump to LSP definition'),
+            @('Ctrl+h / j / k / l', 'Move between Neovim splits', 'Mouse4/5 or C-o/i', 'Jump back or forward')
+        )
+        $rowsTree = @(
+            @('Space e / Space E', 'Open mini.files tree', 'Space a  (Visual)', 'Paste selected ref into AI'),
+            @('h/l or Left/Right', 'Parent dir / open item', 'Space il (Normal)', 'Paste current line ref to AI'),
+            @('Enter  (in tree)', 'Open file or enter dir', 'Space id (Normal)', 'Paste buffer diagnostics'),
+            @('=      (in tree)', 'Apply file edits', ':IdeSend[!] [ws]', 'Paste selection to session'),
+            @('g? / q (in tree)', 'Tree help / close tree', ':Theme [slug]', 'Live-switch 17 color themes')
+        )
+
+        Write-Output ''
+        Write-Output ("  {0} IDE Workspace & Agent Fleet Keybindings (Zellij 0.46+ + Neovim){1}  [q / Esc / Alt+?]{2}" -f $cOrange, $cBase01, $cReset)
+        Write-Output ("  {0}{1}{2}" -f $cBase01, $rule, $cReset)
+        Write-Output ("  {0}{1,-45}{2}SESSIONS & ATTENTION INBOX{3}" -f $cBlue, 'PANES & ROLES (Zellij Layer 2)', $cBlue, $cReset)
+        foreach ($r in $rowsPanes) {
+            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
+        }
+        Write-Output ''
+        Write-Output ("  {0}{1,-45}{2}CLIPBOARD & LINKS{3}" -f $cBlue, 'EDITOR (Space = Leader)', $cBlue, $cReset)
+        foreach ($r in $rowsEditor) {
+            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
+        }
+        Write-Output ''
+        Write-Output ("  {0}{1,-45}{2}DIRECT AI PASTE & THEMES{3}" -f $cBlue, 'FILE TREE (mini.files)', $cBlue, $cReset)
+        foreach ($r in $rowsTree) {
+            Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
+        }
+
+        if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and $env:IDE_KEYS_NO_WAIT -ne '1') {
+            try {
+                while ($true) {
+                    $keyInfo = [Console]::ReadKey($true)
+                    if ($keyInfo.Key -in @([ConsoleKey]::Q, [ConsoleKey]::Escape, [ConsoleKey]::Spacebar, [ConsoleKey]::Enter)) {
+                        break
+                    }
+                }
+            } catch {
+                Write-Verbose "Interactive key wait skipped: $_"
+            }
+        }
+    } finally {
+        Exit-ZellijFloatingModal -ModalFile $modalFile
+    }
+}
+
+function Resolve-SystemMonitorExecutable {
+    if ($env:IDE_FORCE_BUILTIN_MONITOR -eq '1') { return '' }
+
+    if ($env:LOCALAPPDATA) {
+        $wingetPkgs = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+        if (Test-Path -LiteralPath $wingetPkgs -PathType Container) {
+            $b4wDirs = @(Get-ChildItem -LiteralPath $wingetPkgs -Directory -Filter 'aristocratos.btop4win*' -ErrorAction SilentlyContinue)
+            foreach ($d in $b4wDirs) {
+                $hit = Get-ChildItem -LiteralPath $d.FullName -Filter 'btop4win.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hit) { return $hit.FullName }
+            }
+        }
+    }
+
+    foreach ($mon in @('btop4win.exe', 'btop4win', 'btop.exe', 'btm.exe', 'btm', 'ntop.exe', 'ntop')) {
+        $cmd = Get-Command $mon -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd -and $cmd.Source) {
+            try {
+                $item = Get-Item -LiteralPath $cmd.Source -Force -ErrorAction SilentlyContinue
+                if ($item -and $item.Target) {
+                    $tgt = @($item.Target)[0]
+                    if ($tgt -and (Test-Path -LiteralPath $tgt -PathType Leaf)) {
+                        return $tgt
+                    }
+                }
+            } catch {
+                Write-Verbose "Symlink resolution skipped: $_"
+            }
+            return $cmd.Source
+        }
+    }
+
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    foreach ($candidate in @(
+        (Join-Path $userHome 'scoop\apps\btop\current\btop.exe'),
+        (Join-Path $env:ProgramFiles 'btop4win\btop4win.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return $candidate
+        }
+    }
+    return ''
+}
+
+function Format-MonitorBar([double]$Percent, [int]$BarWidth, [string]$ColorGreen, [string]$ColorYellow, [string]$ColorRed, [string]$ColorDim, [string]$ColorReset) {
+    $clamped = [Math]::Max(0.0, [Math]::Min(100.0, $Percent))
+    $filled = [int][Math]::Round(($clamped / 100.0) * $BarWidth)
+    $empty = [Math]::Max(0, $BarWidth - $filled)
+    $accent = if ($clamped -ge 85.0) { $ColorRed } elseif ($clamped -ge 65.0) { $ColorYellow } else { $ColorGreen }
+    $fillStr = ([string][char]0x2588) * $filled
+    $emptyStr = ([string][char]0x2591) * $empty
+    return ("{0}{1}{2}{3}{4}" -f $accent, $fillStr, $ColorDim, $emptyStr, $ColorReset)
+}
+
+function Show-BuiltinSystemMonitor {
     $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
     $themeEnvPs1 = Join-Path (Join-Path (Join-Path $userHome '.cache') 'powershell') 'theme_env.ps1'
     if (Test-Path -LiteralPath $themeEnvPs1 -PathType Leaf) {
         try { . $themeEnvPs1 } catch { Write-Verbose "Theme env load skipped: $_" }
     }
     $esc = [char]27
-    $cOrange = if ($env:_HS_ESC_ORANGE) { $env:_HS_ESC_ORANGE } else { "${esc}[38;2;203;75;22m" }
-    $cBlue   = if ($env:_HS_ESC_BLUE)   { $env:_HS_ESC_BLUE }   else { "${esc}[38;2;38;139;210m" }
-    $cCyan   = if ($env:_HS_ESC_CYAN)   { $env:_HS_ESC_CYAN }   else { "${esc}[38;2;42;161;152m" }
-    $cBase0  = if ($env:_HS_ESC_BASE0)  { $env:_HS_ESC_BASE0 }  else { "${esc}[38;2;131;148;150m" }
-    $cBase01 = if ($env:_HS_ESC_BASE01) { $env:_HS_ESC_BASE01 } else { "${esc}[38;2;88;110;117m" }
+    $cOrange = if ($env:_HS_ESC_ORANGE)  { $env:_HS_ESC_ORANGE }  else { "${esc}[38;2;203;75;22m" }
+    $cBlue   = if ($env:_HS_ESC_BLUE)    { $env:_HS_ESC_BLUE }    else { "${esc}[38;2;38;139;210m" }
+    $cCyan   = if ($env:_HS_ESC_CYAN)    { $env:_HS_ESC_CYAN }    else { "${esc}[38;2;42;161;152m" }
+    $cGreen  = if ($env:_HS_ESC_GREEN)   { $env:_HS_ESC_GREEN }   else { "${esc}[38;2;133;153;0m" }
+    $cYellow = if ($env:_HS_ESC_YELLOW)  { $env:_HS_ESC_YELLOW }  else { "${esc}[38;2;181;137;0m" }
+    $cRed    = if ($env:_HS_ESC_RED)     { $env:_HS_ESC_RED }     else { "${esc}[38;2;220;50;47m" }
+    $cMag    = if ($env:_HS_ESC_MAGENTA) { $env:_HS_ESC_MAGENTA } else { "${esc}[38;2;211;54;130m" }
+    $cBase0  = if ($env:_HS_ESC_BASE0)   { $env:_HS_ESC_BASE0 }   else { "${esc}[38;2;131;148;150m" }
+    $cBase01 = if ($env:_HS_ESC_BASE01)  { $env:_HS_ESC_BASE01 }  else { "${esc}[38;2;88;110;117m" }
     $cReset  = "${esc}[0m"
-    $rule    = '─' * 86
+    $eol     = "${esc}[K"
 
-    $rowsPanes = @(
-        @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
-        @('Alt+a / e / t', 'Jump to AI / Editor / Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
-        @('Alt+; / Space a', 'Bounce last focused pane', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
-        @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
-        @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
-        @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
-        @('Alt+? / Alt+m', 'Key cheatsheet / btop4win', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
-        @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
-    )
-    $rowsEditor = @(
-        @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
-        @('Space fg', 'Search text (live grep)', 'Alt+c', 'Copy & clear highlight'),
-        @('Space gs', 'Review Git status', 'Alt+v', 'Paste from clipboard'),
-        @('Space m', 'Toggle Markdown preview', 'Ctrl+Click', 'Open URL, #heading, or file'),
-        @('H / L  (Normal)', 'Prev / next buffer', 'Alt+Click', 'Jump to LSP definition'),
-        @('Ctrl+h / j / k / l', 'Move between Neovim splits', 'Mouse4/5 or C-o/i', 'Jump back or forward')
-    )
-    $rowsTree = @(
-        @('Space e / Space E', 'Open mini.files tree', 'Space a  (Visual)', 'Paste selected ref into AI'),
-        @('h/l or Left/Right', 'Parent dir / open item', 'Space il (Normal)', 'Paste current line ref to AI'),
-        @('Enter  (in tree)', 'Open file or enter dir', 'Space id (Normal)', 'Paste buffer diagnostics'),
-        @('=      (in tree)', 'Apply file edits', ':IdeSend[!] [ws]', 'Paste selection to session'),
-        @('g? / q (in tree)', 'Tree help / close tree', ':Theme [slug]', 'Live-switch 17 color themes')
-    )
+    $isSingleShot = ($env:IDE_MONITOR_ONCE -eq '1') -or (-not [Environment]::UserInteractive) -or [Console]::IsInputRedirected -or [Console]::IsOutputRedirected
 
-    Write-Output ''
-    Write-Output ("  {0} IDE Workspace & Agent Fleet Keybindings (Zellij 0.46+ + Neovim){1}  [q / Esc]{2}" -f $cOrange, $cBase01, $cReset)
-    Write-Output ("  {0}{1}{2}" -f $cBase01, $rule, $cReset)
-    Write-Output ("  {0}{1,-45}{2}SESSIONS & ATTENTION INBOX{3}" -f $cBlue, 'PANES & ROLES (Zellij Layer 2)', $cBlue, $cReset)
-    foreach ($r in $rowsPanes) {
-        Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
+    if (-not $isSingleShot) {
+        [Console]::Write("${esc}[?1049h${esc}[?25l${esc}[2J")
     }
-    Write-Output ''
-    Write-Output ("  {0}{1,-45}{2}CLIPBOARD & LINKS{3}" -f $cBlue, 'EDITOR (Space = Leader)', $cBlue, $cReset)
-    foreach ($r in $rowsEditor) {
-        Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
-    }
-    Write-Output ''
-    Write-Output ("  {0}{1,-45}{2}DIRECT AI PASTE & THEMES{3}" -f $cBlue, 'FILE TREE (mini.files)', $cBlue, $cReset)
-    foreach ($r in $rowsTree) {
-        Write-Output ("  {0}{1,-20}{2} {3,-22}  {4}{5,-18}{6} {7}{8}" -f $cCyan, $r[0], $cBase0, $r[1], $cCyan, $r[2], $cBase0, $r[3], $cReset)
-    }
-
-    if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and $env:IDE_KEYS_NO_WAIT -ne '1') {
-        try {
-            while ($true) {
-                $keyInfo = [Console]::ReadKey($true)
-                if ($keyInfo.Key -in @([ConsoleKey]::Q, [ConsoleKey]::Escape, [ConsoleKey]::Spacebar, [ConsoleKey]::Enter)) {
-                    break
+    try {
+        while ($true) {
+            $cpuPct = 0.0
+            try {
+                $cpus = @(Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue)
+                if ($cpus.Count -gt 0) {
+                    $cpuPct = [double](($cpus | Measure-Object -Property LoadPercentage -Average).Average)
                 }
+            } catch { Write-Verbose "CPU query skipped: $_" }
+
+            $memUsedGb = 0.0
+            $memTotalGb = 1.0
+            $memPct = 0.0
+            try {
+                $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+                if ($os -and $os.TotalVisibleMemorySize -gt 0) {
+                    $memTotalGb = [Math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+                    $memFreeGb = [Math]::Round($os.FreePhysicalMemory / 1MB, 1)
+                    $memUsedGb = [Math]::Round($memTotalGb - $memFreeGb, 1)
+                    $memPct = (($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) * 100.0) / $os.TotalVisibleMemorySize
+                }
+            } catch { Write-Verbose "Memory query skipped: $_" }
+
+            $diskName = if ($env:SystemDrive) { $env:SystemDrive.TrimEnd(':') } else { 'C' }
+            $diskUsedGb = 0.0
+            $diskTotalGb = 1.0
+            $diskPct = 0.0
+            try {
+                $drv = Get-PSDrive -Name $diskName -ErrorAction SilentlyContinue
+                if ($drv -and ($drv.Used + $drv.Free) -gt 0) {
+                    $totalBytes = [double]($drv.Used + $drv.Free)
+                    $diskTotalGb = [Math]::Round($totalBytes / 1GB, 1)
+                    $diskUsedGb = [Math]::Round($drv.Used / 1GB, 1)
+                    $diskPct = ($drv.Used * 100.0) / $totalBytes
+                }
+            } catch { Write-Verbose "Disk query skipped: $_" }
+
+            $procs = @(Get-Process -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 14)
+            $rule = ([string][char]0x2500) * 78
+            $cpuBar = Format-MonitorBar -Percent $cpuPct -BarWidth 28 -ColorGreen $cGreen -ColorYellow $cYellow -ColorRed $cRed -ColorDim $cBase01 -ColorReset $cReset
+            $memBar = Format-MonitorBar -Percent $memPct -BarWidth 28 -ColorGreen $cGreen -ColorYellow $cYellow -ColorRed $cRed -ColorDim $cBase01 -ColorReset $cReset
+            $dskBar = Format-MonitorBar -Percent $diskPct -BarWidth 28 -ColorGreen $cGreen -ColorYellow $cYellow -ColorRed $cRed -ColorDim $cBase01 -ColorReset $cReset
+            $nowStr = (Get-Date).ToString('HH:mm:ss')
+
+            $lines = [System.Collections.Generic.List[string]]::new()
+            $lines.Add("")
+            $lines.Add(("  {0}System Monitor{1}  ({2}){3}  [q / Esc / Alt+m to close]{4}" -f $cOrange, $cBase01, $nowStr, $cBase01, $cReset))
+            $lines.Add(("  {0}{1}{2}" -f $cBase01, $rule, $cReset))
+            $lines.Add(("  {0}CPU  {1} [{2}] {3}{4,5:N1}%{5}" -f $cBlue, $cReset, $cpuBar, $cMag, $cpuPct, $cReset))
+            $lines.Add(("  {0}MEM  {1} [{2}] {3}{4,5:N1}%{5}  {6}({7:N1} / {8:N1} GiB){9}" -f $cBlue, $cReset, $memBar, $cMag, $memPct, $cReset, $cBase01, $memUsedGb, $memTotalGb, $cReset))
+            $lines.Add(("  {0}DISK {1} [{2}] {3}{4,5:N1}%{5}  {6}({7}: {8:N1} / {9:N1} GiB){10}" -f $cBlue, $cReset, $dskBar, $cMag, $diskPct, $cReset, $cBase01, $diskName, $diskUsedGb, $diskTotalGb, $cReset))
+            $lines.Add("")
+            $lines.Add(("  {0}{1,-8} {2,-30} {3,12} {4,12} {5,10}{6}" -f $cBlue, 'PID', 'PROCESS', 'MEM (MiB)', 'CPU (s)', 'THREADS', $cReset))
+            $lines.Add(("  {0}{1}{2}" -f $cBase01, $rule, $cReset))
+
+            foreach ($p in $procs) {
+                $pName = "$($p.ProcessName)"
+                if ($pName.Length -gt 30) { $pName = $pName.Substring(0, 29) + [char]0x2026 }
+                $wsMb = [Math]::Round($p.WorkingSet64 / 1MB, 1)
+                $cpuSec = try { if ($null -ne $p.CPU) { [Math]::Round([double]$p.CPU, 1) } else { 0.0 } } catch { 0.0 }
+                $thCount = try { $p.Threads.Count } catch { 0 }
+                $lines.Add(("  {0}{1,-8}{2} {3,-30} {4}{5,12:N1}{6} {7,12:N1} {8,10}" -f $cCyan, $p.Id, $cBase0, $pName, $cMag, $wsMb, $cBase0, $cpuSec, $thCount))
             }
-        } catch {
-            Write-Verbose "Interactive key wait skipped: $_"
+            $lines.Add("")
+            $lines.Add(("  {0}Tip: install full graph monitor with 'winget install aristocratos.btop4win'{1}" -f $cBase01, $cReset))
+
+            if ($isSingleShot) {
+                foreach ($ln in $lines) { Write-Output $ln }
+                return
+            }
+
+            $frame = "${esc}[H" + (($lines | ForEach-Object { $_ + $eol }) -join "`r`n") + "${esc}[J"
+            [Console]::Write($frame)
+
+            for ($tick = 0; $tick -lt 20; $tick++) {
+                if ([Console]::KeyAvailable) {
+                    $keyInfo = [Console]::ReadKey($true)
+                    if ($keyInfo.Key -in @([ConsoleKey]::Q, [ConsoleKey]::Escape, [ConsoleKey]::Spacebar, [ConsoleKey]::Enter)) {
+                        return
+                    }
+                }
+                Start-Sleep -Milliseconds 75
+            }
+        }
+    } finally {
+        if (-not $isSingleShot) {
+            [Console]::Write("${esc}[?25h${esc}[?1049l")
         }
     }
 }
 
 function Invoke-SystemMonitor {
-    foreach ($mon in @('btop4win', 'btop', 'ntop')) {
-        $cmd = Get-Command $mon -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($cmd) {
-            & $cmd.Source
-            exit $LASTEXITCODE
+    $modalFile = ''
+    if ($env:IDE_MONITOR_ONCE -ne '1') {
+        $modalFile = Enter-ZellijFloatingModal -ModalName 'monitor' -X '5%' -Y '5%' -Width '90%' -Height '90%'
+    }
+    try {
+        $monExe = Resolve-SystemMonitorExecutable
+        if ($monExe) {
+            $monDir = Split-Path -Parent $monExe
+            $pushed = $false
+            if ($monExe -match '(?i)btop4win\.exe$' -and $monDir -and (Test-Path -LiteralPath $monDir -PathType Container)) {
+                Push-Location -LiteralPath $monDir
+                $pushed = $true
+            }
+            try {
+                & $monExe
+                $rc = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+            } finally {
+                if ($pushed) { Pop-Location }
+            }
+            exit $rc
         }
-    }
-    $tm = Get-Command taskmgr.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($tm) {
-        Start-Process -FilePath $tm.Source
+
+        Show-BuiltinSystemMonitor
         exit 0
+    } finally {
+        Exit-ZellijFloatingModal -ModalFile $modalFile
     }
-    [Console]::Error.WriteLine("Error: Neither 'btop4win', 'btop', nor 'ntop' is installed.")
-    exit 1
 }
 
 function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {

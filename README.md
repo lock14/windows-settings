@@ -205,7 +205,7 @@ The following table indexes keyboard shortcuts, editor commands, shell wrappers,
 | `Space a` | Neovim visual | Bracket-paste `@file#L1-L2` visual line reference into the AI Agent prompt (`ide --send`) |
 | `Alt+Left/Down/Up/Right` | Zellij | Resize the active pane directionally |
 | `Alt+z` | Zellij | Toggle full-window zoom on the active pane |
-| `Alt+m` or `Ctrl+b m` | Universal | Open floating system monitor (`ide --monitor` using `btop4win`) |
+| `Alt+m` or `Ctrl+b m` | Universal | Toggle floating system monitor (`ide --monitor` using `btop4win` or built-in TUI fallback) |
 | `Alt+?` or `Ctrl+b ?` | Universal | Open TrueColor IDE keybinding cheatsheet (`ide --keys`) |
 | `Right-click` (bar, tab, or pane) | Zellij | Open IDE workspace context menu (`Focus AI/Editor/Shell`, `Attention Inbox`, `Monitor`, `Keys`, `Quit`) |
 | `Ctrl+b d` | Zellij | Detach from the current workspace while keeping agents and Neovim running |

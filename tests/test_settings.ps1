@@ -1124,6 +1124,22 @@ try {
     $env:IDE_KEYS_NO_WAIT = $prevNoWait
 }
 
+$prevForceMon = $env:IDE_FORCE_BUILTIN_MONITOR
+$prevMonOnce = $env:IDE_MONITOR_ONCE
+try {
+    $env:IDE_FORCE_BUILTIN_MONITOR = '1'
+    $env:IDE_MONITOR_ONCE = '1'
+    $ideMonOut = (& $ideScript --monitor) -join "`n"
+    if ($ideMonOut -match 'System Monitor' -and $ideMonOut -match 'CPU' -and $ideMonOut -match 'MEM' -and $ideMonOut -match 'PROCESS') {
+        Pass "ide.ps1 --monitor renders built-in TrueColor TUI fallback monitor cleanly"
+    } else {
+        Fail "ide.ps1 --monitor" "Missing expected System Monitor sections"
+    }
+} finally {
+    $env:IDE_FORCE_BUILTIN_MONITOR = $prevForceMon
+    $env:IDE_MONITOR_ONCE = $prevMonOnce
+}
+
 # -------------------------------------------------------------
 # Test 5: Git Function Behavior & Safety Guards
 # -------------------------------------------------------------

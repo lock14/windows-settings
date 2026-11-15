@@ -50,15 +50,30 @@ function ds {
 
 # Interactive System Monitor (`btop` = btop4win on Windows)
 function btop {
-    $b4w = Get-Command btop4win -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($b4w) {
-        & $b4w.Source @args
-        return
+    if ($env:LOCALAPPDATA) {
+        $wingetPkgs = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+        if (Test-Path -LiteralPath $wingetPkgs -PathType Container) {
+            $b4wDirs = @(Get-ChildItem -LiteralPath $wingetPkgs -Directory -Filter 'aristocratos.btop4win*' -ErrorAction SilentlyContinue)
+            foreach ($d in $b4wDirs) {
+                $hit = Get-ChildItem -LiteralPath $d.FullName -Filter 'btop4win.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($hit) {
+                    Push-Location -LiteralPath $hit.DirectoryName
+                    try {
+                        & $hit.FullName @args
+                    } finally {
+                        Pop-Location
+                    }
+                    return
+                }
+            }
+        }
     }
-    $btopNative = Get-Command btop.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($btopNative) {
-        & $btopNative.Source @args
-        return
+    foreach ($binName in @('btop4win.exe', 'btop4win', 'btop.exe')) {
+        $btopCmd = Get-Command $binName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($btopCmd) {
+            & $btopCmd.Source @args
+            return
+        }
     }
     Write-Warning "btop4win is not installed (install via 'winget install aristocratos.btop4win')."
 }
