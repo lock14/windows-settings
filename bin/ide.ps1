@@ -572,12 +572,56 @@ function Enter-ZellijFloatingModal([string]$ModalName, [string]$X = '5%', [strin
         }
     }
 
-    if ($zellijBin -and $curPaneId) {
+    if ($env:IDE_MODAL_SIZED -ne '1' -and $zellijBin -and $curPaneId) {
         & $zellijBin action change-floating-pane-coordinates --pane-id $curPaneId --x $X --y $Y --width $Width --height $Height *> $null
     }
     $payload = @{ pid = $PID; paneId = $curPaneId } | ConvertTo-Json -Compress
     Write-TextUtf8NoBom -Path $modalFile -Content $payload
     return $modalFile
+}
+
+function Invoke-ToggleZellijModal([string]$ModalName) {
+    $zellijBin = Resolve-ZellijExecutable
+    if (-not $env:ZELLIJ -or -not $zellijBin) {
+        if ($ModalName -eq 'keys') { Show-IdeKeysCheatsheet; exit 0 }
+        Invoke-SystemMonitor
+    }
+
+    $rawSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME } elseif ($env:IDE_SESSION) { $env:IDE_SESSION } else { 'default' }
+    $sess = Get-SanitizedToken $rawSess
+    $modalFile = Join-Path (Get-IdeStateDir) ("modal-{0}-{1}.json" -f $ModalName, $sess)
+
+    if (Test-Path -LiteralPath $modalFile -PathType Leaf) {
+        try {
+            $saved = Get-Content -LiteralPath $modalFile -Raw | ConvertFrom-Json
+            $oldPid = if ($saved -and $saved.pid) { [int]$saved.pid } else { 0 }
+            $oldPaneId = if ($saved -and $saved.paneId) { "$($saved.paneId)".Trim() } else { '' }
+            if ($oldPid -gt 0) {
+                $alive = Get-Process -Id $oldPid -ErrorAction SilentlyContinue
+                if ($alive) {
+                    Remove-Item -LiteralPath $modalFile -Force -ErrorAction SilentlyContinue
+                    if ($oldPaneId) {
+                        & $zellijBin action close-pane --pane-id $oldPaneId *> $null
+                    }
+                    Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue
+                    exit 0
+                }
+            }
+        } catch {
+            Write-Verbose "Stale modal state ignored: $_"
+        }
+        Remove-Item -LiteralPath $modalFile -Force -ErrorAction SilentlyContinue
+    }
+
+    $pwshBin = (Get-Process -Id $PID).Path
+    if (-not $pwshBin) { $pwshBin = 'pwsh.exe' }
+    $env:IDE_MODAL_SIZED = '1'
+    if ($ModalName -eq 'keys') {
+        & $zellijBin action new-pane --floating --close-on-exit -x 6% -y 10% --width 88% --height 80% --name 'Keybindings' -- $pwshBin -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath --keys *> $null
+    } else {
+        & $zellijBin action new-pane --floating --close-on-exit -x 5% -y 5% --width 90% --height 90% --name 'System Monitor' -- $pwshBin -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath --monitor *> $null
+    }
+    exit 0
 }
 
 function Exit-ZellijFloatingModal([string]$ModalFile) {
@@ -1527,6 +1571,12 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         { $_ -in @('--keys', '--help-keys') } {
             Show-IdeKeysCheatsheet
             exit 0
+        }
+        '--toggle-keys' {
+            Invoke-ToggleZellijModal -ModalName 'keys'
+        }
+        '--toggle-monitor' {
+            Invoke-ToggleZellijModal -ModalName 'monitor'
         }
         { $_ -in @('--monitor', '--top', '--btop', 'top') } {
             Invoke-SystemMonitor
