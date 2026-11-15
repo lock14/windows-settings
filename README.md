@@ -1,6 +1,8 @@
 # windows-settings
 
-[![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
+[![CI](https://github.com/lock14/windows-settings/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lock14/windows-settings/actions/workflows/ci.yml)
+[![Security](https://github.com/lock14/windows-settings/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/lock14/windows-settings/actions/workflows/security.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Modern Windows developer workstation configuration, 17-theme TrueColor palette engine, cross-platform Zellij + Neovim RPC IDE & AI agent fleet manager, and setup automation for **PowerShell 7+**, **Zellij**, **Oh My Posh**, **Neovim**, **Command Prompt (`cmd.exe`)**, and **Windows Terminal**.
 
@@ -36,6 +38,12 @@ windows-settings/
 ├── mise.toml                      # Declarative polyglot toolchains & CLI tools (Go, Java, Node, Python, Rust, Lean, CLI suite)
 ├── bootstrap.ps1                  # Turnkey zero-dependency one-liner bootstrapper
 ├── setup.ps1                      # Declarative master setup engine (-Theme, -Uninstall*, diff backup, -DryRun)
+├── llms.txt                       # Concise LLM-oriented architecture & CLI index
+├── CONTRIBUTING.md                # Contributor guide, multi-file contracts & verification checklist
+├── SECURITY.md                    # Vulnerability reporting policy
+├── LICENSE                        # Apache License 2.0
+│
+├── .github/                       # CI & Security workflows, Dependabot, PR & YAML Issue templates
 │
 ├── assets/                        # Showcase media and documentation diagrams
 │
@@ -76,7 +84,7 @@ windows-settings/
 ├── sample-code/                   # 40-language polyglot sample suite for syntax & AST query validation
 │
 └── tests/
-    └── test_settings.ps1          # 219 automated tests across all 8 test modules
+    └── test_settings.ps1          # 234 automated tests across all 8 test modules
 ```
 
 ---
@@ -270,12 +278,20 @@ Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
 $null | pwsh -NoProfile -File ./tests/test_settings.ps1
 ```
 
-Runs **219 automated tests across all 8 modules**:
+Runs **234 automated tests across all 8 modules**:
 1. PowerShell Script & Module Syntax
-2. JSON, KDL, YAML, Theme, Query & Manifest Validity (`configuration.dsc.yaml`, `mise.toml`, `config/zellij/`, `p10k_single_line.omp.json`, `settings.json`, fragments, 17 `.theme` & `.tmTheme` files, 37 `bat` syntaxes, 43 `.scm` queries, `delta`, `tealdeer`, `clangd`, `btop`)
+2. JSON, KDL, YAML, Theme, Query, Governance & Manifest Validity (`configuration.dsc.yaml`, `mise.toml`, `config/zellij/`, `p10k_single_line.omp.json`, `settings.json`, fragments, 17 `.theme` & `.tmTheme` files, 37 `bat` syntaxes, 43 `.scm` queries, `delta`, `tealdeer`, `clangd`, `btop`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `llms.txt`, `.github/`)
 3. WindowsSettings Module Import, Aliases & Function Exports (82 functions)
 4. Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`, `theme`, `ide`, `update-system`)
 5. Git Workflow Behavior & Safety Guards (`gsync`, `gprune`, `gpurge`, `guser-branch`, `fix-abcxyz-branch-name`)
 6. Completions, CMD AutoRun & Prompt Rendering (including OSC 8 PR badge hyperlinks)
-7. Path Invariants & Dual Execution Wrappers (all 7 `.ps1` + `.cmd` pairs in `bin/`)
+7. Path, Line-Ending, Startup Hygiene & Dual Execution Wrappers (all 7 `.ps1` + `.cmd` pairs in `bin/`)
 8. Setup Script Idempotency, DryRun, `-Theme`, Clean `-Uninstall*` & Backup Policy
+
+---
+
+## Contributing & Security
+
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for local `-DryRun` workflows, multi-file component contracts, and pre-PR checks.
+- **Security**: Please report vulnerabilities privately per [SECURITY.md](SECURITY.md).
+- **License**: Licensed under the [Apache License 2.0](LICENSE).

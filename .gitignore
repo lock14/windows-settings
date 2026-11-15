@@ -1,12 +1,28 @@
-# Temporary files and backups
+# Temporary files, scratch directories, and backups
 *.bak
 *.bak_*
 *.tmp
 *.swp
+*.swo
+*~
 *.old
+tmp_*/
+tests/temp/
 
-# OS generated files
+# Operating system generated files
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Local environment and tool overrides
+.env
+.env.local
+.mise.local.toml

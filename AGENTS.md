@@ -26,7 +26,9 @@ Any agent modifying this repository must follow these core principles and constr
 | **Polyglot Sample Code** | `sample-code/` | Repository validation suite | 40 real-world sample files across languages for syntax & Tree-sitter query evaluation |
 | **Package Declarations** | `configuration.dsc.yaml` & `mise.toml` | System Provisioning | Microsoft DSC v3 and Mise declarative package & polyglot runtime specifications |
 | **Automation Scripts** | `setup.ps1`, `bootstrap.ps1` | Root orchestrators | Declarative provisioning, theme synchronization, and clean uninstallation runners supporting `-DryRun` |
-| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 219+ automated validation tests across 8 modules |
+| **Agent & LLM Context** | `AGENTS.md`, `llms.txt` | Repository root | Canonical agent guidelines (single root `AGENTS.md`) and concise `llms.txt` LLM index |
+| **Governance & CI** | `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/` | Repository & GitHub | Apache-2.0 license, contributor & security policies, PR/issue templates, Dependabot, CI & Security workflows |
+| **Automated Tests** | `tests/test_settings.ps1` | Test Suite | 234+ automated validation tests across 8 modules |
 
 ---
 
@@ -41,7 +43,7 @@ Any agent modifying this repository must follow these core principles and constr
   - Path Construction: Always use `Join-Path` or `Split-Path` rather than hardcoding string backslashes or slashes.
 - **Strict Line-Ending Discipline (`.gitattributes`)**:
   - `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files **must** use `CRLF` (`\r\n`) line endings. Critically, `cmd.exe` miscalculates byte offsets after `chcp 65001 >nul` if a `.cmd` script or generated `theme_env.cmd` uses `LF` instead of `CRLF`.
-  - `.md`, `.json`, `.toml`, `.yaml`, `.lua`, `.scm`, `.kdl`, and `.theme` files use `LF` (`\n`) line endings.
+  - `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, `.lua`, `.scm`, `.theme`, `.tmTheme`, `.sublime-syntax`, `.gitconfig`, `.conf`, `.txt`, and `LICENSE` files use `LF` (`\n`) line endings.
 - **Windows Terminal Dynamic Resolution & Fragments**:
   - Deploy JSON Fragment extensions under `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\WindowsSettings\` for zero-touch configuration without mutating base `settings.json`.
   - When merging or syncing active schemes into `settings.json`, search dynamically across all possible installation locations (`LocalState`, `Microsoft.WindowsTerminal_8wekyb3d8bbwe`, `Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe`).
@@ -219,21 +221,46 @@ Colors across the developer workstation fulfill invariant domain roles across al
 
 ---
 
-## 7. Documentation Boundaries & Continuous Learning
+## 7. Component Structure, Multi-File Contracts & Code Style
+
+- **Standardized Multi-File Component Contracts**:
+  - **CLI Utility (`bin/`)**: Every tool in `bin/` requires `bin/<name>.ps1` (`CRLF`), `bin/<name>.cmd` (`CRLF`), a wrapper/alias in `module/Utilities.ps1` or `module/Developer.ps1`, an export in `module/WindowsSettings.psd1`, tab completion in `module/Completions.ps1`, a `doskey` macro in `config/cmd/autorun.cmd`, and test coverage in `tests/test_settings.ps1`.
+  - **Theme Palette (`config/themes/`)**: Every built-in theme requires `config/themes/<slug>.theme`, synchronized static assets via `bin/theme.ps1 --sync-assets` (`config/bat/themes/*-TrueColor.tmTheme`, `config/btop/themes/*.theme`, `config/terminal/windows-settings.json`, `config/terminal/settings.json`), and a matching entry in standalone `config/vim/_vimrc`.
+  - **Language Highlighting**: Every supported language requires a fixture in `sample-code/`, a standalone `.sublime-syntax` grammar in `config/bat/syntaxes/`, a Tree-sitter `.scm` query in `config/nvim/queries/` or `config/nvim/after/queries/`, and an extension mapping in `config/colors/LS_COLORS`.
+  - **No Extraneous or Ad-Hoc Files**: Extraneous scratch scripts, temporary patch files, `tmp_*` folders, or `.bak` backups in the repository tree are prohibited. Scratch work belongs strictly in `<appDataDir>\brain\<conversation-id>\scratch\` or `$env:TEMP`.
+  - **Single Canonical `AGENTS.md`**: Maintain a single root `AGENTS.md` file (supported natively across Antigravity, Claude Code, and Codex). Do not create duplicate `CLAUDE.md` or `.agents/AGENTS.md` files or symlinks.
+- **Internal `.ps1` Script Section Ordering**:
+  1. Optional comment-based help (`<# .SYNOPSIS ... #>`), `[CmdletBinding()]`, and `param(...)` block.
+  2. `$ErrorActionPreference = 'Stop'` and strict execution settings.
+  3. Constants, defaults, and canonical path resolution (`Join-Path` / `Split-Path`).
+  4. Private helper functions (singular nouns; avoid state-changing verbs on pure helpers).
+  5. `-DryRun` / mode dispatch and main execution entrypoint.
+- **Identifier Anti-Shadowing & Encoding Discipline**:
+  - Never use parameter or local variable names that shadow PowerShell automatic variables (`$args`, `$input`, `$Host`, `$HOME`, `$PID`, `$PROFILE`, `$Error`, `$Matches`, `$PSItem`).
+  - Any `.ps1` file containing literal non-ASCII Unicode characters must include a UTF-8 BOM (or express codepoints via `[char]0x...` / `` "`u{...}" ``) to satisfy `PSUseBOMForUnicodeEncodedFile`.
+
+---
+
+## 8. Documentation Boundaries & Continuous Learning
 
 - **Mandatory Documentation Synchronization**:
-  - **Every agent change must update documentation**: Whenever new aliases, functions, CLI utilities, themes, setup parameters, or terminal configurations are added or modified, update both `README.md` and `AGENTS.md` in the same commit/PR.
+  - **Every agent change must update documentation**: Whenever new aliases, functions, CLI utilities, themes, setup parameters, or governance workflows are added or modified, update `README.md`, `AGENTS.md`, `llms.txt`, and (when contributor workflows change) `CONTRIBUTING.md` in the same commit/PR.
 - **`README.md` is for Users**:
   - Focus purely on user-facing concerns: prerequisites, quick start commands, architecture overview, theme & IDE workflows, shortcuts tables, and utility usage examples.
-- **`AGENTS.md` is for Agents & Contributors**:
-  - Architectural principles, path & line-ending invariant enforcement, linter rules, testing procedures, palette specs, and agent workflows belong exclusively in `AGENTS.md`.
+- **`AGENTS.md` is for Agents & Maintainers**:
+  - Architectural principles, path & line-ending invariant enforcement, multi-file contracts, linter rules, testing procedures, palette specs, and agent workflows belong exclusively in `AGENTS.md`.
 - **Persist User Corrections**:
   - Whenever an agent receives feedback, corrections, or instructions regarding repository conventions, it **must immediately encode the underlying principle into `AGENTS.md`** before concluding the task.
 
 ---
 
-## 8. CLI Execution & Markdown Escaping Safety
+## 9. Pull Request & CLI Markdown Escaping Conventions
 
+- **Branch Naming & Conventional Commits**:
+  - Use clear branch prefixes (`feat/*`, `fix/*`, `perf/*`, `docs/*`, `ci/*`) and concise Conventional Commit messages (`feat:`, `fix:`, `perf:`, `docs:`, `ci:`).
+- **Accurate & Synchronized PR Descriptions**:
+  - Follow `.github/PULL_REQUEST_TEMPLATE.md` and comprehensively capture all introduced features, CLI flags, performance considerations, and CI/toolchain updates.
+  - **PR Description Synchronization**: Whenever subsequent commits in a PR branch modify, fix, or expand upon the original changeset (e.g., CI adjustments, bug fixes, refactoring), proactively update the PR description via `gh pr edit --body-file <path>` so it reflects the latest state of the PR.
 - **Avoid Inline Backtick Expansion in PowerShell Commands**:
   - In PowerShell (`pwsh`), the backtick (`` ` ``) is the native escape character.
   - When passing markdown strings containing inline code (e.g. `` `eza` ``, `` `node` ``) within double quotes (`"..."`), PowerShell evaluates the backticks as escape sequences (` `e ` -> ESC, ` `n ` -> newline, ` `t ` -> tab), corrupting GitHub PRs, issues, or commit bodies.
@@ -244,7 +271,7 @@ Colors across the developer workstation fulfill invariant domain roles across al
 
 ---
 
-## 9. Verification Checklist for Agents
+## 10. Verification Checklist for Agents
 
 Before completing any task:
 1. **Run Static Analysis**:
@@ -256,18 +283,18 @@ Before completing any task:
    ```powershell
    $null | pwsh -NoProfile -File ./tests/test_settings.ps1
    ```
-   Ensure all **219+ tests pass across all 8 test modules**:
+   Ensure all **234+ tests pass across all 8 test modules**:
    - `[1/8]` PowerShell Script & Module Syntax
-   - `[2/8]` JSON, KDL, YAML, Theme, Query & Manifest Validity (`configuration.dsc.yaml`, `mise.toml`, `config/zellij/`, `p10k_single_line.omp.json`, `settings.json`, fragments, 17 `.theme` & `.tmTheme` files, 37 `bat` syntaxes, 43 `.scm` queries, `delta`, `tealdeer`, `clangd`, `btop`)
+   - `[2/8]` JSON, KDL, YAML, Theme, Query, Governance & Manifest Validity (`configuration.dsc.yaml`, `mise.toml`, `config/zellij/`, `p10k_single_line.omp.json`, `settings.json`, fragments, 17 `.theme` & `.tmTheme` files, 37 `bat` syntaxes, 43 `.scm` queries, `delta`, `tealdeer`, `clangd`, `btop`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `llms.txt`, `.github/`)
    - `[3/8]` WindowsSettings Module Import, Aliases & Function Exports (82 functions)
    - `[4/8]` Native CLI Utilities & Pipeline Handling (`sum`, `gen-passwd`, `repeat-until-success`, `theme`, `ide`, `update-system`)
    - `[5/8]` Git Workflow Behavior & Safety Guards (`gsync`, `gprune`, `gpurge`, `guser-branch`, `fix-abcxyz-branch-name`)
    - `[6/8]` Completions, CMD AutoRun & Prompt Rendering (including OSC 8 PR badge rendering)
-   - `[7/8]` Path Invariants & Dual Execution Wrappers (all 7 `.ps1` + `.cmd` pairs in `bin/`)
+   - `[7/8]` Path, Byte-Level Line-Ending, Startup Hygiene & Dual Execution Wrappers (all 7 `.ps1` + `.cmd` pairs in `bin/`)
    - `[8/8]` Setup Script Idempotency, DryRun, `-Theme`, Clean `-Uninstall*` & Backup Policy
 3. **Verify Path & Line-Ending Invariants**:
    - Confirm zero hardcoded personal usernames or machine-specific paths exist across the repository.
-   - Confirm `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files retain `CRLF` line endings and `.md`, `.json`, and `.kdl` files retain `LF` line endings per `.gitattributes`.
+   - Confirm `.ps1`, `.psm1`, `.psd1`, `.cmd`, and `.bat` files retain `CRLF` line endings and `.md`, `.json`, `.kdl`, `.yml`, `.yaml`, `.toml`, and `LICENSE` files retain `LF` line endings per `.gitattributes`.
 4. **Update Documentation**:
-   - Update `README.md` if user-facing behavior, aliases, utilities, themes, or configuration options changed.
-   - Update `AGENTS.md` if repository principles, architecture, or agent rules changed.
+   - Update `README.md` and `llms.txt` if user-facing behavior, aliases, utilities, themes, or configuration options changed.
+   - Update `AGENTS.md` (and `CONTRIBUTING.md` where applicable) if repository principles, architecture, or agent rules changed.

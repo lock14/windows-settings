@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Reporting
+    url: https://github.com/lock14/windows-settings/security/policy
+    about: Please report security vulnerabilities privately in accordance with our security policy.

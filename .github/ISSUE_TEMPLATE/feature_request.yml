@@ -1,0 +1,50 @@
+name: 💡 Feature Request
+description: Propose a new CLI utility, shell shortcut, IDE workflow, theme, or syntax grammar
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an enhancement! Please describe the use case and proposed design in detail.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What workflow friction or missing capability does this feature address?
+      placeholder: Describe the problem or developer workflow...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution / CLI Design
+      description: Describe proposed commands, flags, aliases, keybindings, or configuration options.
+      placeholder: |
+        # Example CLI usage
+        ide --status
+      render: powershell
+    validations:
+      required: true
+
+  - type: textarea
+    id: parity
+    attributes:
+      label: Cross-Tool & Performance Considerations
+      description: Note any impact on shell startup latency, `-DryRun` safety, `cmd.exe` parity, or the 17-theme Color Contract.
+      placeholder: |
+        - Dual `.ps1` + `.cmd` wrapper in `bin/`
+        - Supports `--dry-run`
+        - Zero impact on `WindowsSettings` module import latency
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative tools, aliases, or workarounds you have considered.
+    validations:
+      required: false
