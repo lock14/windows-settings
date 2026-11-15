@@ -337,11 +337,20 @@ function Sync-ZellijPluginPermission([string]$PermissionsPath = '', [switch]$Rem
         Join-Path (Join-Path (Join-Path $HOME '.cache') 'zellij') 'permissions.kdl'
     }
 
-    $desiredPerms = @('ChangeApplicationState', 'ReadApplicationState', 'RunActionsAsUser', 'RunCommands')
+    $desiredPerms = @(
+        'ChangeApplicationState',
+        'ReadApplicationState',
+        'ReadCliPipes',
+        'ReadSessionEnvironmentVariables',
+        'RunActionsAsUser',
+        'RunCommands'
+    )
     $desiredBlock = (@(
         'windows-settings-bar {'
         '    ChangeApplicationState'
         '    ReadApplicationState'
+        '    ReadCliPipes'
+        '    ReadSessionEnvironmentVariables'
         '    RunActionsAsUser'
         '    RunCommands'
         '}'

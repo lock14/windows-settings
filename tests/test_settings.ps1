@@ -1899,7 +1899,7 @@ try {
     Sync-ZellijPluginPermission -PermissionsPath $mockPermFile *>$null
     $permRaw1 = [System.IO.File]::ReadAllText($mockPermFile)
     $permBackups1 = @(Get-ChildItem -LiteralPath $sandboxDir -Filter 'permissions.kdl.bak_*')
-    if (-not $permRaw1.Contains("`r`n") -and $permRaw1 -match '"other-plugin"' -and $permRaw1 -match 'windows-settings-bar' -and $permRaw1 -match 'RunActionsAsUser' -and $permBackups1.Count -eq 1) {
+    if (-not $permRaw1.Contains("`r`n") -and $permRaw1 -match '"other-plugin"' -and $permRaw1 -match 'windows-settings-bar' -and $permRaw1 -match 'RunActionsAsUser' -and $permRaw1 -match 'ReadCliPipes' -and $permRaw1 -match 'ReadSessionEnvironmentVariables' -and $permBackups1.Count -eq 1) {
         Pass "Sync-ZellijPluginPermission pre-seeds LF permissions while preserving existing plugin entries and backup"
     } else {
         Fail "Sync-ZellijPluginPermission seed" "Unexpected permissions.kdl content or backup count ($($permBackups1.Count))"

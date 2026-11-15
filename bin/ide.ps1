@@ -2572,17 +2572,20 @@ function Invoke-IdeRefresh([string]$TargetArg, [bool]$IsDryRun) {
     $targetSess = if ($TargetArg) { Resolve-TargetSession $TargetArg } else { '' }
 
     if ($zellijBin) {
-        if ($env:ZELLIJ -and (-not $targetSess -or [string]::Equals($targetSess, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase))) {
-            if (Test-WasmBarDeployed) {
-                & $zellijBin action start-or-reload-plugin 'compact-bar' *> $null
-            }
-        }
+        $wasmDeployed = Test-WasmBarDeployed
         $zTargets = if ($targetSess) {
             if ($liveZellij[$targetSess] -eq 'live') { @($targetSess) } else { @() }
         } else {
             @($liveZellij.Keys | Where-Object { $liveZellij[$_] -eq 'live' })
         }
         foreach ($zs in $zTargets) {
+            if ($wasmDeployed) {
+                if ($env:ZELLIJ -and [string]::Equals($zs, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    & $zellijBin action start-or-reload-plugin 'compact-bar' *> $null
+                } else {
+                    & $zellijBin --session $zs action start-or-reload-plugin 'compact-bar' *> $null
+                }
+            }
             $zMeta = Read-SessionState $zs
             $kvParts = [System.Collections.Generic.List[string]]::new()
             $kvParts.Add("theme=$activeSlug")

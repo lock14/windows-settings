@@ -328,6 +328,8 @@ impl ZellijPlugin for State {
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
+            PermissionType::ReadCliPipes,
+            PermissionType::ReadSessionEnvironmentVariables,
             PermissionType::RunActionsAsUser,
             PermissionType::RunCommands,
         ]);
