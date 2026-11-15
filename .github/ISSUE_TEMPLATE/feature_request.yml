@@ -1,50 +1,59 @@
-name: 💡 Feature Request
+name: Feature request
 description: Propose a new CLI utility, shell shortcut, IDE workflow, theme, or syntax grammar
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
-  - type: markdown
+  - type: dropdown
+    id: category
     attributes:
-      value: |
-        Thank you for suggesting an enhancement! Please describe the use case and proposed design in detail.
+      label: Feature category
+      options:
+        - "Zellij and Neovim IDE workspace (bin/ide.ps1, config/zellij/)"
+        - "Color theme engine or built-in palette (bin/theme.ps1, config/themes/)"
+        - "PowerShell module or cmd.exe shortcut (module/, config/cmd/)"
+        - "Standalone CLI utility (bin/)"
+        - "Syntax grammar or Tree-sitter query (config/bat/, config/nvim/)"
+        - "Setup orchestrator or package manifest (setup.ps1, configuration.dsc.yaml, mise.toml)"
+        - "Other"
+    validations:
+      required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem or Use Case
-      description: What workflow friction or missing capability does this feature address?
-      placeholder: Describe the problem or developer workflow...
+      label: Problem or use case
+      description: Workflow limitation or missing capability this proposal addresses.
+      placeholder: Describe the workflow problem or use case...
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed Solution / CLI Design
-      description: Describe proposed commands, flags, aliases, keybindings, or configuration options.
-      placeholder: |
-        # Example CLI usage
-        ide --status
+      label: Proposed solution and CLI design
+      description: Describe the proposed commands, flags, aliases, keybindings, or configuration options.
       render: powershell
+      placeholder: |
+        ide --status
     validations:
       required: true
 
   - type: textarea
-    id: parity
+    id: considerations
     attributes:
-      label: Cross-Tool & Performance Considerations
-      description: Note any impact on shell startup latency, `-DryRun` safety, `cmd.exe` parity, or the 17-theme Color Contract.
+      label: Cross-tool and performance considerations
+      description: Note any impact on shell startup latency, dry-run safety, `cmd.exe` parity, or the 17-theme color contract.
       placeholder: |
-        - Dual `.ps1` + `.cmd` wrapper in `bin/`
-        - Supports `--dry-run`
-        - Zero impact on `WindowsSettings` module import latency
+        - Dual .ps1 and .cmd wrapper in bin/
+        - Supports --dry-run
+        - Zero impact on WindowsSettings module import latency
     validations:
       required: false
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives Considered
-      description: Any alternative tools, aliases, or workarounds you have considered.
+      label: Alternatives considered
+      description: Alternative approaches or workarounds evaluated.
     validations:
       required: false

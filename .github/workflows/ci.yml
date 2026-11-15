@@ -124,12 +124,12 @@ jobs:
           }).TotalMilliseconds
 
           $summary = @(
-              '## WindowsSettings CI Telemetry'
+              '## WindowsSettings CI telemetry'
               ''
               '| Metric | Result |'
               '| :--- | :--- |'
-              ('| Subprocess + Cold Import (`pwsh -NoProfile` + `Import-Module`) | `{0:N1} ms` |' -f $coldMs)
-              ('| In-Session Re-Import (`Import-Module -Force` w/ Disk Cache) | `{0:N1} ms` |' -f $warmMs)
+              ('| Subprocess and cold import (`pwsh -NoProfile` + `Import-Module`) | `{0:N1} ms` |' -f $coldMs)
+              ('| In-session re-import (`Import-Module -Force` with disk cache) | `{0:N1} ms` |' -f $warmMs)
           ) -join "`n"
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
@@ -149,12 +149,12 @@ jobs:
       - name: Evaluate Gatekeeper Status
         run: |
           echo "Evaluating CI pipeline job results:"
-          echo "Lint & Hygiene: ${LINT_RESULT}"
-          echo "Test Suite:     ${TEST_RESULT}"
+          echo "Lint and Hygiene: ${LINT_RESULT}"
+          echo "Test Suite:       ${TEST_RESULT}"
 
           if [ "${LINT_RESULT}" != "success" ] || [ "${TEST_RESULT}" != "success" ]; then
-            echo "❌ CI Gatekeeper failed: One or more upstream checks did not succeed."
+            echo "[FAIL] CI Gatekeeper failed: one or more upstream checks did not succeed."
             exit 1
           fi
 
-          echo "✅ All required CI checks passed successfully!"
+          echo "[PASS] All required CI checks passed."

@@ -1,83 +1,71 @@
-name: 🐛 Bug Report
-description: Report a bug, regression, setup failure, theme mismatch, or shell/IDE issue
+name: Bug report
+description: Report a bug, regression, setup failure, theme mismatch, or shell and IDE issue
 title: "[Bug]: "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thank you for reporting an issue! Please provide as much detail as possible so we can reproduce and resolve it quickly.
-
-  - type: textarea
-    id: description
-    attributes:
-      label: Description
-      description: A clear and concise description of what went wrong.
-      placeholder: Describe the issue...
-    validations:
-      required: true
-
   - type: dropdown
     id: component
     attributes:
-      label: Affected Component
-      description: Which part of `windows-settings` is affected?
+      label: Affected component
+      description: Subsystem experiencing the issue.
       options:
-        - Setup / Bootstrap (setup.ps1, bootstrap.ps1, configuration.dsc.yaml)
-        - PowerShell Module (module/WindowsSettings)
-        - Theme Engine (bin/theme.ps1, config/themes/)
-        - Zellij + Neovim IDE & Agent Fleet (bin/ide.ps1, config/zellij/)
-        - Neovim / Vim Configuration & Tree-sitter Queries (config/nvim/, config/vim/)
-        - Oh My Posh / Command Prompt AutoRun (p10k_single_line.omp.json, autorun.cmd)
-        - Windows Terminal / Bat / Modern CLI Configs
-    validations:
-      required: true
-
-  - type: textarea
-    id: reproduction
-    attributes:
-      label: Steps to Reproduce
-      description: |
-        Provide minimal PowerShell or `cmd.exe` commands to reproduce the issue (ensure any personal usernames or paths are redacted).
-      placeholder: |
-        .\setup.ps1 -DryRun -Theme nord
-        ide --3pane --dry-run
-      render: powershell
-    validations:
-      required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
-      placeholder: Explain the expected behavior...
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior & Output
-      description: What actually happened? Include error output or stack traces (with personal paths redacted).
-      placeholder: Paste relevant error messages...
-    validations:
-      required: true
-
-  - type: input
-    id: pwsh-version
-    attributes:
-      label: PowerShell Version
-      description: Output of `$PSVersionTable.PSVersion.ToString()`
-      placeholder: e.g. 7.5.0
+        - "Setup and bootstrap (setup.ps1, bootstrap.ps1, configuration.dsc.yaml)"
+        - "PowerShell module (module/WindowsSettings)"
+        - "Theme engine (bin/theme.ps1, config/themes/)"
+        - "Zellij and Neovim IDE workspace (bin/ide.ps1, config/zellij/)"
+        - "Neovim, Vim, and Tree-sitter queries (config/nvim/, config/vim/)"
+        - "Oh My Posh and Command Prompt AutoRun (p10k_single_line.omp.json, autorun.cmd)"
+        - "Windows Terminal, bat, and modern CLI configs"
+        - "Other"
     validations:
       required: true
 
   - type: input
     id: environment
     attributes:
-      label: Windows Version, Terminal Host & Active Theme
-      description: OS build, terminal host (`Windows Terminal`, `zellij`, `zellij terminal`, `cmd.exe`), and `theme --current`
-      placeholder: e.g. Windows 11 24H2 (x64), Windows Terminal + Zellij 0.46, solarized-dark
+      label: Operating system, terminal host, and active theme
+      description: Windows build, terminal host (`Windows Terminal`, `zellij`, `zellij terminal`, or `cmd.exe`), and output of `theme --current`.
+      placeholder: Windows 11 24H2 x64, Windows Terminal + Zellij 0.46, solarized-dark
+    validations:
+      required: true
+
+  - type: input
+    id: pwsh-version
+    attributes:
+      label: PowerShell version
+      description: Output of `$PSVersionTable.PSVersion.ToString()`.
+      placeholder: 7.5.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Numbered commands or steps executed to reproduce the issue (ensure personal paths are redacted).
+      placeholder: |
+        1. Run `.\setup.ps1 -DryRun -Theme nord`
+        2. Run `ide --3pane --dry-run`
+        3. Observe output
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Deterministic behavior expected from the command or configuration.
+      placeholder: Describe what should happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and terminal output
+      description: Exact terminal output, error messages, or stack traces (with personal paths redacted).
+      render: powershell
+      placeholder: |
+        Paste terminal output or error logs here...
     validations:
       required: true
