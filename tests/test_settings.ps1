@@ -134,6 +134,10 @@ if ((Test-Path $zellijCfgPath) -and (Test-Path $zellijLayout3Path) -and (Test-Pa
         $zellijCfgRaw -match 'Quit IDE workspace' -and
         $zellijCfgRaw -match 'attention \{' -and
         $zellijCfgRaw -match 'track_commands false' -and
+        $zellijCfgRaw -match 'tray_icon false' -and
+        $zellijCfgRaw -match 'notification_details false' -and
+        $zellijCfgRaw -notmatch '(?s)desktop_notifications\s*\{[^}]*\btrue\b' -and
+        $zellijCfgRaw -notmatch 'OpenSessionInTerminal' -and
         $zellijCfgRaw -match 'tray_badge_colors' -and
         $zellijCfgRaw -match 'terminal \{' -and
         $zellijCfgRaw -match 'GoToNextAttention' -and
@@ -1159,13 +1163,15 @@ $ideScript = Join-Path $RootDir "bin\ide.ps1"
 $ideDry3 = (& $ideScript --backend zellij --3pane --dry-run) -join "`n"
 $ideDry2 = (& $ideScript --backend zellij --2pane --detach --ai claude --dry-run) -join "`n"
 $ideDryDesktop = (& $ideScript --backend zellij --desktop --dry-run) -join "`n"
+$ideRawSource = Get-Content $ideScript -Raw
 if ($ideDry3 -match 'Backend\s*:\s*zellij' -and
     $ideDry3 -match 'ide-3pane' -and
     $ideDry3 -match '\\\\\.\\pipe\\nvim-ide-' -and
     $ideDry2 -match 'Layout\s*:\s*2pane' -and
     $ideDry2 -match '--create-background' -and
-    $ideDryDesktop -match 'zellij terminal --create') {
-    Pass "ide.ps1 --dry-run builds Zellij 3-pane, detached 2-pane, and 1-hop desktop GPU layouts"
+    $ideDryDesktop -match 'zellij terminal --standalone --create' -and
+    $ideRawSource -notmatch 'terminal --inbox') {
+    Pass "ide.ps1 --dry-run builds Zellij 3-pane, detached 2-pane, and standalone 1-hop desktop GPU layouts"
 } else {
     Fail "ide.ps1 Zellij --dry-run" "Unexpected output: $ideDry3 | $ideDry2 | $ideDryDesktop"
 }
