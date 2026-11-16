@@ -34,7 +34,7 @@ Keep components uniform across shells and tools, and never commit ad-hoc scratch
    * **Polyglot parity**: Add a representative sample in `sample-code/`, a standalone `.sublime-syntax` grammar in `config/bat/syntaxes/`, a Tree-sitter `.scm` query in `config/nvim/queries/` or `config/nvim/after/queries/`, and an extension mapping in `config/colors/LS_COLORS`.
 4. **Modifying the Zellij WASM top-bar plugin**:
    * **Source-only tracking**: Keep Rust sources and `Cargo.lock` (`LF`) in `plugin/ws-bar/` while never committing `target/` directories or compiled `.wasm` binaries.
-   * **Build, lint, and fallback**: Verify changes with `cargo test --manifest-path plugin/ws-bar/Cargo.toml`, `cargo clippy --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 -- -D warnings`, and `cargo build --release --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1`, and preserve automatic fallback to `zellij:bars` (`role "compact-bar"`) in `setup.ps1` when Rust is absent.
+   * **Build, lint, and fallback**: Verify changes with `cargo test --manifest-path plugin/ws-bar/Cargo.toml`, `cargo clippy --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 -- -D warnings`, and `cargo build --release --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1`, and preserve automatic fallback to `zellij:bars` (`role "compact-bar"`) and geometric `MoveFocus` role bindings in `setup.ps1` when Rust is absent.
 
 ## Development setup and local workflow
 

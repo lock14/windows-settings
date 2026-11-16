@@ -1,4 +1,6 @@
-use zellij_tile::prelude::{AttentionItem, AttentionStatus, GlobalAttention, PaneId, PaneInfo};
+use zellij_tile::prelude::{
+    AttentionItem, AttentionStatus, BlockedKind, GlobalAttention, PaneId, PaneInfo,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdeRole {
@@ -15,6 +17,7 @@ pub struct RoleSlot {
     pub hidden: bool,
     pub label: String,
     pub attention: AttentionStatus,
+    pub quota: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -22,6 +25,7 @@ pub struct RoleStrip {
     pub ai: Option<RoleSlot>,
     pub editor: Option<RoleSlot>,
     pub shell: Option<RoleSlot>,
+    pub visible_tiled_count: usize,
 }
 
 impl RoleStrip {
@@ -115,22 +119,27 @@ fn normalize_ai_name(raw: &str) -> String {
     }
 }
 
-fn pane_attention_state(pane_id: u32, items: &[AttentionItem]) -> (AttentionStatus, Option<String>) {
+fn pane_attention_state(
+    pane_id: u32,
+    items: &[AttentionItem],
+) -> (AttentionStatus, bool, Option<String>) {
     let target = PaneId::Terminal(pane_id);
     for item in items {
         if item.pane_id == target {
             let app = item.attention.detail.app.clone();
             if item.attention.is_muted() {
-                return (AttentionStatus::Idle, app);
+                return (AttentionStatus::Idle, false, app);
             }
             let status = match item.attention.status {
                 AttentionStatus::Done if item.attention.seen => AttentionStatus::Idle,
                 other => other,
             };
-            return (status, app);
+            let quota = status == AttentionStatus::NeedsYou
+                && item.attention.detail.kind == Some(BlockedKind::Auth);
+            return (status, quota, app);
         }
     }
-    (AttentionStatus::Idle, None)
+    (AttentionStatus::Idle, false, None)
 }
 
 pub fn current_session_items(global: Option<&GlobalAttention>) -> &[AttentionItem] {
@@ -228,10 +237,15 @@ pub fn classify_ide_roles(
         }
     }
 
+    let visible_tiled_count = candidates
+        .iter()
+        .filter(|p| !p.is_floating && !p.is_suppressed)
+        .count();
+
     let build_slot = |role: IdeRole, pane: &PaneInfo| -> RoleSlot {
         let hidden = pane.is_suppressed || (pane.is_floating && !are_floating_visible);
         let focused = pane.is_focused && !hidden;
-        let (attention, app) = pane_attention_state(pane.id, attn_items);
+        let (attention, quota, app) = pane_attention_state(pane.id, attn_items);
         let label = match role {
             IdeRole::Ai => detect_ai_label(pane, app.as_deref()),
             IdeRole::Editor => "Editor".to_owned(),
@@ -244,6 +258,7 @@ pub fn classify_ide_roles(
             hidden,
             label,
             attention,
+            quota,
         }
     };
 
@@ -251,6 +266,7 @@ pub fn classify_ide_roles(
         ai: ai_pane.map(|p| build_slot(IdeRole::Ai, p)),
         editor: ed_pane.map(|p| build_slot(IdeRole::Editor, p)),
         shell: sh_pane.map(|p| build_slot(IdeRole::Shell, p)),
+        visible_tiled_count,
     }
 }
 
@@ -343,7 +359,38 @@ mod tests {
         let strip = classify_ide_roles(&panes, false, &items);
         let ai = strip.ai.unwrap();
         assert_eq!(ai.attention, AttentionStatus::NeedsYou);
+        assert!(!ai.quota);
         assert_eq!(ai.label, "agy");
         assert_eq!(strip.editor.unwrap().attention, AttentionStatus::Idle);
+        assert_eq!(strip.visible_tiled_count, 2);
+    }
+
+    #[test]
+    fn distinguishes_quota_auth_blocks_and_suppressed_panes() {
+        let mut ed = sample_pane(21, "Editor", Some("ide.cmd --pane-init editor"), false, 60, 1);
+        ed.is_suppressed = true;
+        let panes = vec![
+            sample_pane(20, "claude", Some("ide.cmd --pane-init ai"), true, 0, 1),
+            ed,
+        ];
+        let mut quota_attn = PaneAttention {
+            status: AttentionStatus::NeedsYou,
+            seen: false,
+            ..Default::default()
+        };
+        quota_attn.detail.kind = Some(BlockedKind::Auth);
+        let items = vec![AttentionItem {
+            pane_id: PaneId::Terminal(20),
+            tab_id: 0,
+            tab_name: "ide".to_owned(),
+            pane_title: "claude".to_owned(),
+            attention: quota_attn,
+        }];
+        let strip = classify_ide_roles(&panes, false, &items);
+        let ai = strip.ai.unwrap();
+        assert_eq!(ai.attention, AttentionStatus::NeedsYou);
+        assert!(ai.quota);
+        assert!(strip.editor.unwrap().hidden);
+        assert_eq!(strip.visible_tiled_count, 1);
     }
 }

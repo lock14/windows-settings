@@ -195,7 +195,7 @@ set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
 if defined NVIM_EXE "%NVIM_EXE%" --headless --server "\\.\pipe\nvim-ide-%SESS%" --remote-expr "luaeval('_G.try_ide_quit and _G.try_ide_quit(true) or 0')" >nul 2>nul
 
 :fast_quit_cleanup
-del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" >nul 2>nul
+del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.ai-active" "%STATE_DIR%\%SESS%.ai-shell" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" >nul 2>nul
 "%ZELLIJ_EXE%" delete-session --force "%SESS%" >nul 2>nul
 exit /b 0
 

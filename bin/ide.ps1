@@ -30,24 +30,28 @@ Options:
   --ai, --agent <CLI>      Select AI CLI agent: agy (default), claude, or codex (overrides `$env:IDE_AI_CLI)
   -s, --sessions           Open Zellij Session Manager + Attention Inbox (or fzf session switcher outside Zellij)
   --next-attention         Jump directly to the next agent pane needing attention across all sessions
-  --toggle                 Bounce focus between Editor and AI Agent panes
-  --focus-role <ROLE>      Focus pane role (ai, editor, or term), bouncing back if already focused
+  --toggle                 Bounce focus between Editor and AI Agent panes (unparking if hidden)
+  --focus-role <ROLE>      Focus pane role (ai, editor, or term), unparking or bouncing back if focused
+  --toggle-editor          Hide or restore the Text Editor pane without stopping Neovim (Alt+Shift+E)
+  --toggle-term            Hide or restore the Interactive Shell pane without stopping processes (Alt+Shift+T)
+  --toggle-ai              Hide or restore the AI Agent pane without stopping the agent
+  --swap <DIR>             Swap/move the focused pane in <DIR> (left, down, up, or right)
   -n, --dry-run            Preview workspace session metadata and launch command without mutating state
   --open <FILE> [LINE]     Open <FILE> in the IDE Editor pane via Named Pipe RPC
   --preview <FILE> [LINE]  Preview <FILE> in the IDE Editor pane via Named Pipe RPC
   --open-or-edit <FILE> [LINE] Open <FILE> in IDE Editor via RPC if live, else launch local Neovim
   cd, --cd [DIR]           Dive into <DIR> (or --reset / ~ for initial root) across Editor and session state
   --send [OPTS] [SESSION]  Inject context (--stdin, --ref <PATH>[:L1[-L2]], --text <TEXT>, --no-focus, --switch)
-                           directly into target session's AI Agent prompt via bracketed paste
+                           directly into target session's AI Agent prompt via bracketed paste (preserves clipboard)
   --agent-state <STATE> [--message <TEXT>] [SESSION]
-                           Emit OSC 7501 status & record state: running, approval, quota, done, error, or idle
+                           Emit OSC 7501 status & record state: running, approval, quota, done, or idle
   --agy-hook <EVENT>       Internal Antigravity CLI hook adapter (PreInvocation, Stop, SessionStart)
   --ack-ai [SESSION...]    Acknowledge AI attention across one or more IDE sessions
-  --open-pr [SESSION]      Open cached or active GitHub/GitLab Pull Request URL in browser
+  --open-pr [SESSION]      Open cached or active GitHub, GitLab, Bitbucket, or Gitea PR/MR URL in browser
   --monitor, --top         Toggle interactive system monitor (btop4win -> btop -> btm -> ntop -> built-in TUI)
   --keys, --help-keys      Display the TrueColor IDE workspace & editor keybinding cheatsheet
   refresh, -r, --refresh [NAME]
-                           Refresh active color theme across live IDE Neovim servers & Zellij config
+                           Re-apply active color theme, rebuild cheatsheet cache, reload top bar, and heal Editor CWDs
   quit, -q, --quit [NAME...]
                            Safely quit IDE session(s) NAME (verifies zero unsaved Neovim buffers first)
   -f, --force              Force-quit when used with --quit (discards unsaved Neovim buffers)
@@ -265,6 +269,63 @@ function Test-IdePipeLive([string]$PipePath) {
     return $false
 }
 
+function Get-ActiveThemeSlug {
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    $cfgBase = if ($env:XDG_CONFIG_HOME -and $env:XDG_CONFIG_HOME.Trim()) {
+        $env:XDG_CONFIG_HOME.Trim()
+    } else {
+        Join-Path $userHome '.config'
+    }
+    foreach ($sub in @('windows-settings', 'home-settings')) {
+        $f = Join-Path (Join-Path $cfgBase $sub) 'theme'
+        if ([System.IO.File]::Exists($f)) {
+            $val = ([System.IO.File]::ReadAllText($f)).Trim()
+            if ($val) { return $val }
+        }
+    }
+    return 'solarized-dark'
+}
+
+function Test-WasmBarDeployed {
+    if (-not $env:APPDATA) { return $false }
+    $barWasm = Join-Path (Join-Path (Join-Path (Join-Path $env:APPDATA 'Zellij') 'data') 'plugins') 'windows-settings-bar.wasm'
+    return [System.IO.File]::Exists($barWasm)
+}
+
+function Invoke-ZellijPipe([string]$SessionName, [string]$PipeName, [string]$Payload, [int]$TimeoutMs = 1500) {
+    $zellijBin = Resolve-ZellijExecutable
+    if (-not $zellijBin -or -not $Payload) { return $false }
+    $curSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    try {
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $zellijBin
+        if ($SessionName -and (-not $env:ZELLIJ -or -not [string]::Equals($SessionName, $curSess, [System.StringComparison]::OrdinalIgnoreCase))) {
+            $psi.ArgumentList.Add('--session')
+            $psi.ArgumentList.Add($SessionName)
+        }
+        $psi.ArgumentList.Add('pipe')
+        $psi.ArgumentList.Add('--name')
+        $psi.ArgumentList.Add($PipeName)
+        $psi.ArgumentList.Add('--')
+        $psi.ArgumentList.Add($Payload)
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        if (-not $proc) { return $false }
+        try { $proc.StandardInput.Close() } catch { Write-Verbose 'zellij pipe stdin close skipped' }
+        if (-not $proc.WaitForExit($TimeoutMs)) {
+            try { $proc.Kill($true) } catch { Write-Verbose 'Timed-out zellij pipe terminated' }
+            return $false
+        }
+        return ($proc.ExitCode -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Read-SessionState([string]$SessionName) {
     $metaPath = Get-SessionStatePath $SessionName
     if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) {
@@ -274,13 +335,25 @@ function Read-SessionState([string]$SessionName) {
         $raw = Get-Content -LiteralPath $metaPath -Raw
         $obj = $raw | ConvertFrom-Json
         $agentState = if ($obj.agent_state) { [string]$obj.agent_state } else { 'idle' }
+        $stateTs = if ($null -ne $obj.state_ts) { [long]$obj.state_ts } else { 0L }
+        $attnTs = if ($null -ne $obj.attn_ts) { [long]$obj.attn_ts } else { 0L }
         $sidecarStatePath = Join-Path (Get-IdeStateDir) "$SessionName.state"
         if ([System.IO.File]::Exists($sidecarStatePath)) {
-            $sidecarTicks = [System.IO.File]::GetLastWriteTimeUtc($sidecarStatePath).Ticks
+            $sidecarTime = [System.IO.File]::GetLastWriteTimeUtc($sidecarStatePath)
             $metaTicks = [System.IO.File]::GetLastWriteTimeUtc($metaPath).Ticks
-            if ($sidecarTicks -ge $metaTicks) {
+            if ($sidecarTime.Ticks -ge $metaTicks) {
                 $fastState = [System.IO.File]::ReadAllText($sidecarStatePath).Trim()
-                if ($fastState) { $agentState = $fastState }
+                if ($fastState) {
+                    if ($fastState -ne $agentState) {
+                        $stateTs = [DateTimeOffset]::new($sidecarTime).ToUnixTimeSeconds()
+                        if ($fastState -in @('approval', 'done', 'error')) {
+                            $attnTs = $stateTs
+                        } else {
+                            $attnTs = 0L
+                        }
+                    }
+                    $agentState = $fastState
+                }
             }
         }
         $ht = [ordered]@{
@@ -293,6 +366,8 @@ function Read-SessionState([string]$SessionName) {
             ai_cli        = if ($obj.ai_cli) { [string]$obj.ai_cli } else { 'agy' }
             agent_state   = $agentState
             agent_message = if ($obj.agent_message) { [string]$obj.agent_message } else { '' }
+            state_ts      = $stateTs
+            attn_ts       = $attnTs
             created_at    = if ($obj.created_at) { [string]$obj.created_at } else { '' }
             updated_at    = if ($obj.updated_at) { [string]$obj.updated_at } else { '' }
         }
@@ -444,7 +519,10 @@ function Invoke-AgyHook([string]$HookEventArg) {
     } else {
         try {
             if ([Console]::IsInputRedirected) {
-                $stdinRaw = [Console]::In.ReadToEnd()
+                $readTask = [Console]::In.ReadToEndAsync()
+                if ($readTask.Wait(75)) {
+                    $stdinRaw = $readTask.Result
+                }
             }
         } catch {
             $stdinRaw = ''
@@ -677,13 +755,13 @@ function Get-IdeKeysCheatsheetText {
 
     $rowsPanes = @(
         @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
-        @('Alt+a / e / t', 'Jump to AI / Editor / Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
-        @('Alt+; / Space a', 'Bounce last focused pane', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
+        @('Alt+a / e / t', 'Jump/bounce AI/Editor/Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
+        @('Alt+Shift+E / T', 'Hide/restore Editor / Shell', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
         @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
         @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
         @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
         @('Alt+? / Alt+m', 'Toggle keys / system monitor', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
-        @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b b', 'Hide or show top bar')
+        @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b r / b', 'Refresh all / toggle top bar')
     )
     $rowsEditor = @(
         @('Space ff', 'Find files by name', 'Mouse drag / 2x', 'Select text and auto-copy'),
@@ -691,7 +769,7 @@ function Get-IdeKeysCheatsheetText {
         @('Space gs', 'Review Git status', 'Alt+v', 'Paste from clipboard'),
         @('Space m', 'Toggle Markdown preview', 'Ctrl+Click', 'Open URL, #heading, or file'),
         @('H / L  (Normal)', 'Prev / next buffer', 'Alt+Click', 'Jump to LSP definition'),
-        @('Ctrl+h / j / k / l', 'Move between Neovim splits', 'Mouse4/5 or C-o/i', 'Jump back or forward')
+        @('Home   (Any mode)', 'Smart-Home (^ / col 1)', 'Mouse4/5 or C-o/i', 'Jump back or forward')
     )
     $rowsTree = @(
         @('Space e / Space E', 'Open mini.files tree', 'Space a  (Visual)', 'Paste selected ref into AI'),
@@ -978,7 +1056,7 @@ function Invoke-SystemMonitor {
 
 function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {
     $zellijBin = Resolve-ZellijExecutable
-    if (-not $zellijBin -or -not $env:ZELLIJ) {
+    if (-not $zellijBin -or (-not $env:ZELLIJ -and -not $SessionArg)) {
         exit 0
     }
     $normRole = switch ($Role.ToLowerInvariant()) {
@@ -988,7 +1066,15 @@ function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {
         'shell'  { 'term' }
         default  { 'ai' }
     }
+    $pipeRole = if ($normRole -eq 'term') { 'shell' } else { $normRole }
     $sess = Resolve-TargetSession $SessionArg
+    if (Test-WasmBarDeployed) {
+        if (Invoke-ZellijPipe -SessionName $sess -PipeName 'ws-ide-role' -Payload "focus:$pipeRole") {
+            exit 0
+        }
+    }
+    if (-not $env:ZELLIJ) { exit 0 }
+
     $targetId = Get-RolePaneId -SessionName $sess -Role $normRole
     $curId = ConvertTo-ZellijPaneId $env:ZELLIJ_PANE_ID
 
@@ -1013,6 +1099,39 @@ function Invoke-FocusRole([string]$Role, [string]$SessionArg = '') {
         'term' {
             & $zellijBin action move-focus down *> $null
         }
+    }
+    exit 0
+}
+
+function Invoke-ToggleRole([string]$Role, [string]$SessionArg = '') {
+    $zellijBin = Resolve-ZellijExecutable
+    if (-not $zellijBin) { exit 0 }
+    $pipeRole = switch ($Role.ToLowerInvariant()) {
+        'editor' { 'editor' }
+        'nvim'   { 'editor' }
+        'term'   { 'shell' }
+        'shell'  { 'shell' }
+        default  { 'ai' }
+    }
+    $sess = Resolve-TargetSession $SessionArg
+    [void](Invoke-ZellijPipe -SessionName $sess -PipeName 'ws-ide-role' -Payload "toggle:$pipeRole")
+    exit 0
+}
+
+function Invoke-SwapPane([string]$Direction, [string]$SessionArg = '') {
+    $dir = if ($Direction) { $Direction.Trim().ToLowerInvariant() } else { '' }
+    if ($dir -notin @('left', 'down', 'up', 'right')) {
+        [Console]::Error.WriteLine("Error: Invalid '--swap' direction '$Direction'. Expected: left, down, up, or right.")
+        exit 1
+    }
+    $zellijBin = Resolve-ZellijExecutable
+    if (-not $zellijBin) { exit 0 }
+    $sess = Resolve-TargetSession $SessionArg
+    $curSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    if ($env:ZELLIJ -and (-not $SessionArg -or [string]::Equals($sess, $curSess, [System.StringComparison]::OrdinalIgnoreCase))) {
+        & $zellijBin action move-pane $dir *> $null
+    } elseif ($sess) {
+        & $zellijBin --session $sess action move-pane $dir *> $null
     }
     exit 0
 }
@@ -1101,12 +1220,23 @@ function Invoke-PaneInit([string]$Role) {
         }
         'ai' {
             $aiInfo = Resolve-AiExecutable $aiName
+            $stateDir = Get-IdeStateDir
+            $aiActivePath = Join-Path $stateDir "$sess.ai-active"
+            $aiShellPath = Join-Path $stateDir "$sess.ai-shell"
+            Remove-Item -LiteralPath $aiShellPath -Force -ErrorAction SilentlyContinue
             $Host.UI.RawUI.WindowTitle = "$sess [AI: $($aiInfo.Name)]"
             if ($aiInfo.Path) {
-                & $aiInfo.Path
+                Write-TextUtf8NoBom -Path $aiActivePath -Content "$PID`n"
+                try {
+                    & $aiInfo.Path
+                } finally {
+                    Remove-Item -LiteralPath $aiActivePath -Force -ErrorAction SilentlyContinue
+                }
             } else {
                 Write-Host "IDE session '$sess' ready (install '$($aiInfo.Name)' or set `$env:IDE_AI_CLI)." -ForegroundColor Cyan
             }
+            Write-TextUtf8NoBom -Path $aiShellPath -Content "$PID`n"
+            $Host.UI.RawUI.WindowTitle = "$sess [AI: shell]"
             & $pwshBin -NoLogo
             exit $LASTEXITCODE
         }
@@ -1118,30 +1248,505 @@ function Invoke-PaneInit([string]$Role) {
     }
 }
 
+function ConvertTo-ForgeHttpsBase([string]$RemoteUrl) {
+    if (-not $RemoteUrl) { return '' }
+    $u = $RemoteUrl.Trim()
+    if ($u -match '^https?://([^/]+)/(.+?)(?:\.git)?/?$') {
+        $hostPart = $Matches[1] -replace '^[^@]+@', ''
+        return "https://$hostPart/$($Matches[2])"
+    }
+    if ($u -match '^ssh://(?:[^@]+@)?([^:/]+)(?::[0-9]+)?/(.+?)(?:\.git)?/?$') {
+        return "https://$($Matches[1])/$($Matches[2])"
+    }
+    if ($u -match '^(?:[^@]+@)?([A-Za-z0-9._-]+):([A-Za-z0-9._/-]+?)(?:\.git)?/?$' -and $Matches[1] -notmatch '^[A-Za-z]$') {
+        return "https://$($Matches[1])/$($Matches[2])"
+    }
+    return ''
+}
+
+function Get-FastGitSummary([string]$Workdir) {
+    $empty = @{
+        Root     = ''
+        Branch   = ''
+        PrBadge  = ''
+        PrUrl    = ''
+        ForgeUrl = ''
+    }
+    if (-not $Workdir -or -not [System.IO.Directory]::Exists($Workdir)) {
+        return $empty
+    }
+    $cur = $Workdir
+    $repoRoot = ''
+    $gitDir = ''
+    $commonGitDir = ''
+    while ($cur) {
+        $dotGit = Join-Path $cur '.git'
+        if ([System.IO.Directory]::Exists($dotGit)) {
+            $repoRoot = $cur
+            $gitDir = $dotGit
+            $commonGitDir = $dotGit
+            break
+        }
+        if ([System.IO.File]::Exists($dotGit)) {
+            try {
+                $firstLine = [System.IO.File]::ReadAllText($dotGit).Trim()
+                if ($firstLine -match '^gitdir:\s*(.+)$') {
+                    $resolvedGit = $Matches[1].Trim()
+                    if (-not [System.IO.Path]::IsPathRooted($resolvedGit)) {
+                        $resolvedGit = [System.IO.Path]::GetFullPath((Join-Path $cur $resolvedGit))
+                    }
+                    $repoRoot = $cur
+                    $gitDir = $resolvedGit
+                    $commonFile = Join-Path $resolvedGit 'commondir'
+                    if ([System.IO.File]::Exists($commonFile)) {
+                        $relCommon = [System.IO.File]::ReadAllText($commonFile).Trim()
+                        $commonGitDir = if ([System.IO.Path]::IsPathRooted($relCommon)) {
+                            $relCommon
+                        } else {
+                            [System.IO.Path]::GetFullPath((Join-Path $resolvedGit $relCommon))
+                        }
+                    } else {
+                        $commonGitDir = $resolvedGit
+                    }
+                }
+            } catch {
+                return $empty
+            }
+            break
+        }
+        $parent = [System.IO.Path]::GetDirectoryName($cur)
+        if (-not $parent -or $parent -eq $cur) { break }
+        $cur = $parent
+    }
+    if (-not $repoRoot -or -not $gitDir) { return $empty }
+
+    $headFile = Join-Path $gitDir 'HEAD'
+    if (-not [System.IO.File]::Exists($headFile)) { return $empty }
+    $branch = ''
+    try {
+        $headRaw = [System.IO.File]::ReadAllText($headFile).Trim()
+        if ($headRaw -match '^ref:\s*refs/heads/(.+)$') {
+            $branch = $Matches[1].Trim()
+        } elseif ($headRaw.Length -ge 7) {
+            $branch = $headRaw.Substring(0, 7)
+        }
+    } catch {
+        return $empty
+    }
+
+    $prBadge = ''
+    $prUrl = ''
+    if ($branch -and $branch -notin @('main', 'master', 'trunk')) {
+        $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+        $prCacheDir = Join-Path (Join-Path $userHome '.cache') 'git-pr-prompt'
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes("$repoRoot|$branch")
+        $hashBytes = [System.Security.Cryptography.SHA256]::HashData($bytes)
+        $key = [System.BitConverter]::ToString($hashBytes, 0, 8).Replace('-', '').ToLowerInvariant()
+        $stateFile = Join-Path $prCacheDir "$key.state"
+        if ([System.IO.File]::Exists($stateFile)) {
+            try {
+                $lines = [System.IO.File]::ReadAllLines($stateFile)
+                if ($lines.Count -ge 2 -and $lines[0].Trim() -and $lines[1].Trim()) {
+                    $prBadge = $lines[0].Trim()
+                    $prUrl = $lines[1].Trim()
+                }
+            } catch {
+                Write-Verbose "PR cache read skipped: $_"
+            }
+        }
+    }
+
+    $forgeUrl = ''
+    $cfgFile = Join-Path $commonGitDir 'config'
+    if ([System.IO.File]::Exists($cfgFile)) {
+        try {
+            $inOrigin = $false
+            foreach ($cfgLine in [System.IO.File]::ReadLines($cfgFile)) {
+                $trimmed = $cfgLine.Trim()
+                if ($trimmed.StartsWith('[')) {
+                    $inOrigin = ($trimmed -match '^\[remote\s+"origin"\]')
+                    continue
+                }
+                if ($inOrigin -and $trimmed -match '^url\s*=\s*(.+)$') {
+                    $forgeUrl = ConvertTo-ForgeHttpsBase $Matches[1].Trim()
+                    break
+                }
+            }
+        } catch {
+            Write-Verbose "Git config origin parse skipped: $_"
+        }
+    }
+
+    return @{
+        Root     = $repoRoot
+        Branch   = $branch
+        PrBadge  = $prBadge
+        PrUrl    = $prUrl
+        ForgeUrl = $forgeUrl
+    }
+}
+
+function Format-ElapsedAge([long]$EpochSec) {
+    if ($EpochSec -le 0) { return '' }
+    $nowSec = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $delta = $nowSec - $EpochSec
+    if ($delta -lt 60) { return '' }
+    if ($delta -lt 3600) { return "$([long]($delta / 60))m" }
+    if ($delta -lt 86400) { return "$([long]($delta / 3600))h" }
+    return "$([long]($delta / 86400))d"
+}
+
+function Get-ActivePaletteMap {
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    $themeEnvPs1 = Join-Path (Join-Path (Join-Path $userHome '.cache') 'powershell') 'theme_env.ps1'
+    if ([System.IO.File]::Exists($themeEnvPs1)) {
+        try { . $themeEnvPs1 } catch { Write-Verbose "Theme env load skipped: $_" }
+    }
+    $esc = [char]27
+    return @{
+        BASE03  = if ($env:_HS_HEX_BASE03)  { $env:_HS_HEX_BASE03 }  else { '#002B36' }
+        BASE02  = if ($env:_HS_HEX_BASE02)  { $env:_HS_HEX_BASE02 }  else { '#073642' }
+        BASE01  = if ($env:_HS_HEX_BASE01)  { $env:_HS_HEX_BASE01 }  else { '#586E75' }
+        BASE0   = if ($env:_HS_HEX_BASE0)   { $env:_HS_HEX_BASE0 }   else { '#839496' }
+        BASE1   = if ($env:_HS_HEX_BASE1)   { $env:_HS_HEX_BASE1 }   else { '#93A1A1' }
+        YELLOW  = if ($env:_HS_HEX_YELLOW)  { $env:_HS_HEX_YELLOW }  else { '#B58900' }
+        ORANGE  = if ($env:_HS_HEX_ORANGE)  { $env:_HS_HEX_ORANGE }  else { '#CB4B16' }
+        RED     = if ($env:_HS_HEX_RED)     { $env:_HS_HEX_RED }     else { '#DC322F' }
+        GREEN   = if ($env:_HS_HEX_GREEN)   { $env:_HS_HEX_GREEN }   else { '#859900' }
+        BLUE    = if ($env:_HS_HEX_BLUE)    { $env:_HS_HEX_BLUE }    else { '#268BD2' }
+        CYAN    = if ($env:_HS_HEX_CYAN)    { $env:_HS_HEX_CYAN }    else { '#2AA198' }
+        E_B01   = if ($env:_HS_ESC_BASE01)  { $env:_HS_ESC_BASE01 }  else { "${esc}[38;2;88;110;117m" }
+        E_B0    = if ($env:_HS_ESC_BASE0)   { $env:_HS_ESC_BASE0 }   else { "${esc}[38;2;131;148;150m" }
+        E_B1    = if ($env:_HS_ESC_BASE1)   { $env:_HS_ESC_BASE1 }   else { "${esc}[38;2;147;161;161m" }
+        E_YLW   = if ($env:_HS_ESC_YELLOW)  { $env:_HS_ESC_YELLOW }  else { "${esc}[38;2;181;137;0m" }
+        E_ORG   = if ($env:_HS_ESC_ORANGE)  { $env:_HS_ESC_ORANGE }  else { "${esc}[38;2;203;75;22m" }
+        E_RED   = if ($env:_HS_ESC_RED)     { $env:_HS_ESC_RED }     else { "${esc}[38;2;220;50;47m" }
+        E_GRN   = if ($env:_HS_ESC_GREEN)   { $env:_HS_ESC_GREEN }   else { "${esc}[38;2;133;153;0m" }
+        E_BLU   = if ($env:_HS_ESC_BLUE)    { $env:_HS_ESC_BLUE }    else { "${esc}[38;2;38;139;210m" }
+        E_CYN   = if ($env:_HS_ESC_CYAN)    { $env:_HS_ESC_CYAN }    else { "${esc}[38;2;42;161;152m" }
+        E_RST   = "${esc}[0m"
+    }
+}
+
+function Get-ClassifiedIdeFleet([bool]$IncludeGit = $true) {
+    $stateDir = Get-IdeStateDir
+    $livePipes = Get-LiveIdePipeMap
+    $liveZellij = Get-LiveZellijSessionMap
+    $sessions = [ordered]@{}
+
+    if (Test-Path -LiteralPath $stateDir -PathType Container) {
+        $files = @(Get-ChildItem -LiteralPath $stateDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+        foreach ($f in $files) {
+            $sName = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            $meta = Read-SessionState $sName
+            if ($meta) {
+                $sessions[$sName] = $meta
+            }
+        }
+    }
+    foreach ($zName in ($liveZellij.Keys | Sort-Object)) {
+        if (-not $sessions.Contains($zName)) {
+            $sessions[$zName] = [ordered]@{
+                session       = $zName
+                root          = ''
+                workdir       = ''
+                pipe          = Get-SessionPipePath $zName
+                layout        = '3pane'
+                backend       = 'zellij'
+                ai_cli        = if ($env:IDE_AI_CLI) { $env:IDE_AI_CLI } else { 'agy' }
+                agent_state   = 'idle'
+                agent_message = ''
+                state_ts      = 0L
+                attn_ts       = 0L
+            }
+        }
+    }
+    foreach ($liveName in ($livePipes.Keys | Sort-Object)) {
+        if (-not $sessions.Contains($liveName)) {
+            $sessions[$liveName] = [ordered]@{
+                session       = $liveName
+                root          = ''
+                workdir       = ''
+                pipe          = $livePipes[$liveName]
+                layout        = '3pane'
+                backend       = 'wt'
+                ai_cli        = if ($env:IDE_AI_CLI) { $env:IDE_AI_CLI } else { 'agy' }
+                agent_state   = 'idle'
+                agent_message = ''
+                state_ts      = 0L
+                attn_ts       = 0L
+            }
+        }
+    }
+
+    $curSess = if ($env:ZELLIJ_SESSION_NAME -and $env:ZELLIJ_SESSION_NAME.Trim()) {
+        Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim()
+    } elseif ($env:IDE_SESSION -and $env:IDE_SESSION.Trim()) {
+        Get-SanitizedToken $env:IDE_SESSION.Trim()
+    } else {
+        ''
+    }
+
+    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+    $normHome = if ($userHome) { $userHome.TrimEnd('\', '/') } else { '' }
+    $liveWorkdirCounts = @{}
+    foreach ($k in $sessions.Keys) {
+        $m = $sessions[$k]
+        $zSt = $liveZellij[$k]
+        $pUp = $livePipes.ContainsKey($k) -or (Test-IdePipeLive ([string]$m['pipe']))
+        if ($zSt -eq 'live' -or $pUp) {
+            $wd = if ($m['workdir']) { [string]$m['workdir'] } elseif ($m['root']) { [string]$m['root'] } else { '' }
+            if ($wd) {
+                $normWd = $wd.TrimEnd('\', '/').ToLowerInvariant()
+                $liveWorkdirCounts[$normWd] = $(if ($liveWorkdirCounts.ContainsKey($normWd)) { $liveWorkdirCounts[$normWd] } else { 0 }) + 1
+            }
+        }
+    }
+
+    $entries = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($k in $sessions.Keys) {
+        $m = $sessions[$k]
+        $zStatus = $liveZellij[$k]
+        $pipeUp = $livePipes.ContainsKey($k) -or (Test-IdePipeLive ([string]$m['pipe']))
+        $status = if ($zStatus -eq 'live' -or $pipeUp) {
+            'live'
+        } elseif ($zStatus -eq 'exited') {
+            'exited'
+        } else {
+            'saved'
+        }
+        $rawState = ([string]$m['agent_state']).ToLowerInvariant()
+        $aiCli = if ($m['ai_cli']) { [string]$m['ai_cli'] } else { 'agy' }
+        $tier = 4
+        $dispState = 'IDLE'
+        $needsAttn = $false
+        if ($status -ne 'live') {
+            $tier = 4
+            $dispState = $status.ToUpperInvariant()
+        } elseif ($aiCli -eq 'shell') {
+            $tier = 4
+            $dispState = 'SHELL'
+        } else {
+            switch ($rawState) {
+                { $_ -in @('approval', 'blocked', 'question', 'error', 'failed') } {
+                    $tier = 0
+                    $dispState = if ($_ -in @('error', 'failed')) { 'ERROR' } else { 'ATTN' }
+                    $needsAttn = $true
+                }
+                'done' {
+                    $tier = 1
+                    $dispState = 'DONE'
+                    $needsAttn = $true
+                }
+                'quota' {
+                    $tier = 2
+                    $dispState = 'QUOTA'
+                }
+                { $_ -in @('running', 'working') } {
+                    $tier = 2
+                    $dispState = 'WORKING'
+                }
+                default {
+                    $tier = 3
+                    $dispState = 'IDLE'
+                }
+            }
+        }
+
+        $stateTs = if ($null -ne $m['state_ts']) { [long]$m['state_ts'] } else { 0L }
+        $attnTs = if ($null -ne $m['attn_ts']) { [long]$m['attn_ts'] } else { 0L }
+        $age = if ($status -eq 'live' -and $dispState -in @('ATTN', 'ERROR', 'DONE', 'QUOTA', 'WORKING')) {
+            Format-ElapsedAge $stateTs
+        } else {
+            ''
+        }
+        $stateLabel = if ($age) { "$dispState $age" } else { $dispState }
+
+        $wdir = if ($m['workdir']) { [string]$m['workdir'] } elseif ($m['root']) { [string]$m['root'] } else { '' }
+        $shortPath = if (-not $wdir) {
+            '-'
+        } elseif ($normHome -and $wdir.StartsWith($normHome, [System.StringComparison]::OrdinalIgnoreCase)) {
+            '~' + $wdir.Substring($normHome.Length)
+        } else {
+            $wdir
+        }
+        $hasWtWarn = $false
+        if ($status -eq 'live' -and $wdir) {
+            $normWd = $wdir.TrimEnd('\', '/').ToLowerInvariant()
+            if ($liveWorkdirCounts[$normWd] -gt 1) {
+                $hasWtWarn = $true
+            }
+        }
+
+        $branchLabel = '-'
+        if ($IncludeGit -and $wdir) {
+            $git = Get-FastGitSummary $wdir
+            if ($git.Branch) {
+                $branchLabel = "$($git.Branch)$($git.PrBadge)"
+            }
+        }
+
+        $entries.Add(@{
+            Session       = $k
+            Status        = $status
+            Layout        = if ($m['layout']) { [string]$m['layout'] } else { '3pane' }
+            AiCli         = $aiCli
+            State         = $dispState
+            StateLabel    = $stateLabel
+            NeedsAttn     = $needsAttn
+            Tier          = $tier
+            SortTs        = if ($attnTs -gt 0) { $attnTs } else { $stateTs }
+            BranchLabel   = $branchLabel
+            Workdir       = if ($wdir) { $wdir } else { '-' }
+            ShortPath     = $shortPath
+            HasPeerWarn   = $hasWtWarn
+            IsCurrent     = ($curSess -and [string]::Equals($k, $curSess, [System.StringComparison]::OrdinalIgnoreCase))
+            Message       = if ($m['agent_message']) { [string]$m['agent_message'] } else { '' }
+        })
+    }
+
+    return @($entries | Sort-Object `
+        @{ Expression = { $_.Tier }; Ascending = $true }, `
+        @{ Expression = { $_.SortTs }; Ascending = $true }, `
+        @{ Expression = { $_.Session }; Ascending = $true })
+}
+
+function Format-FleetTableLine([hashtable]$Entry, [hashtable]$Pal, [int]$SessW, [int]$CliW, [int]$StateW, [int]$GitW, [bool]$UseColor) {
+    $sPad = ([string]$Entry.Session).PadRight($SessW)
+    $cPad = ([string]$Entry.AiCli).PadRight($CliW)
+    $stPad = ([string]$Entry.StateLabel).PadRight($StateW)
+    $gPad = ([string]$Entry.BranchLabel).PadRight($GitW)
+    if ($UseColor) {
+        $attnC = if ($Entry.State -eq 'DONE') { $Pal.E_GRN } elseif ($Entry.State -eq 'ERROR') { $Pal.E_RED } else { $Pal.E_ORG }
+        $marker = if ($Entry.IsCurrent) {
+            "$($Pal.E_CYN)▸$($Pal.E_RST)"
+        } elseif ($Entry.NeedsAttn) {
+            "${attnC}󰂚$($Pal.E_RST)"
+        } else {
+            ' '
+        }
+        $cSess = if ($Entry.IsCurrent) { $Pal.E_B1 } elseif ($Entry.NeedsAttn) { $attnC } elseif ($Entry.Status -ne 'live') { $Pal.E_B01 } else { $Pal.E_BLU }
+        $cState = switch ($Entry.State) {
+            'ATTN'    { $Pal.E_ORG }
+            'ERROR'   { $Pal.E_RED }
+            'DONE'    { $Pal.E_GRN }
+            'QUOTA'   { $Pal.E_YLW }
+            'WORKING' { $Pal.E_BLU }
+            'IDLE'    { $Pal.E_CYN }
+            default   { $Pal.E_B01 }
+        }
+        $cGit = if ($Entry.BranchLabel -eq '-') { $Pal.E_B01 } elseif ($Entry.BranchLabel -match '[@!][0-9]+$') { $Pal.E_CYN } else { $Pal.E_GRN }
+        $wtSfx = if ($Entry.HasPeerWarn) { " $($Pal.E_YLW)!$($Pal.E_RST)" } else { '' }
+        return "$marker ${cSess}${sPad}$($Pal.E_RST)  $($Pal.E_B0)${cPad}$($Pal.E_RST)  ${cState}${stPad}$($Pal.E_RST)  ${cGit}${gPad}$($Pal.E_RST)  $($Pal.E_B0)$($Entry.ShortPath)$($Pal.E_RST)${wtSfx}"
+    }
+    $plainMarker = if ($Entry.IsCurrent) { '*' } elseif ($Entry.NeedsAttn) { '!' } else { ' ' }
+    $plainSfx = if ($Entry.HasPeerWarn) { ' !' } else { '' }
+    return "$plainMarker $sPad  $cPad  $stPad  $gPad  $($Entry.ShortPath)$plainSfx"
+}
+
+function Format-FzfSessionRowList {
+    $fleet = Get-ClassifiedIdeFleet -IncludeGit $true
+    if ($fleet.Count -eq 0) { return @() }
+    $pal = Get-ActivePaletteMap
+    $sessW = 7
+    $cliW = 5
+    $stateW = 5
+    $gitW = 6
+    foreach ($e in $fleet) {
+        if ($e.Session.Length -gt $sessW) { $sessW = [Math]::Min(28, $e.Session.Length) }
+        if ($e.AiCli.Length -gt $cliW) { $cliW = [Math]::Min(12, $e.AiCli.Length) }
+        if ($e.StateLabel.Length -gt $stateW) { $stateW = [Math]::Min(16, $e.StateLabel.Length) }
+        if ($e.BranchLabel.Length -gt $gitW) { $gitW = [Math]::Min(28, $e.BranchLabel.Length) }
+    }
+    $rows = [System.Collections.Generic.List[string]]::new()
+    foreach ($e in $fleet) {
+        $line = Format-FleetTableLine -Entry $e -Pal $pal -SessW $sessW -CliW $cliW -StateW $stateW -GitW $gitW -UseColor $true
+        $rows.Add("$($e.Session)`t$line")
+    }
+    return $rows.ToArray()
+}
+
 function Invoke-SessionSwitcher {
     $zellijBin = Resolve-ZellijExecutable
-    if ($zellijBin -and $env:ZELLIJ) {
+    if ($zellijBin -and $env:ZELLIJ -and $env:IDE_FZF_SESSIONS -ne '1') {
         & $zellijBin action launch-or-focus-plugin --floating --move-to-focused-tab 'zellij:session-manager' *> $null
         exit 0
     }
     $fzfCmd = Get-Command fzf -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($zellijBin -and $fzfCmd -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) {
-        $rows = @(Show-IdeSessionList -Plain $false | Where-Object { $_ -and $_ -notmatch '^(SESSION\s+|-{5,}|No IDE workspace)' })
+        $rows = @(Format-FzfSessionRowList)
         if ($rows.Count -eq 0) {
             Write-Output 'No IDE workspace sessions found.'
             exit 0
         }
-        $selected = $rows | & $fzfCmd.Source --no-multi --reverse --height=60% --border=rounded '--prompt=IDE Session > ' '--header=Enter to attach/resurrect session, Esc to cancel'
-        if ($LASTEXITCODE -eq 0 -and $selected) {
-            $chosen = ($selected.Trim() -split '\s+')[0]
-            if ($chosen) {
-                $env:ZELLIJ_CONFIG_DIR = Get-ZellijConfigDir
-                $meta = Read-SessionState $chosen
-                $wdir = if ($meta -and $meta['workdir'] -and (Test-Path -LiteralPath $meta['workdir'])) { [string]$meta['workdir'] } else { (Get-Location).ProviderPath }
-                $lay = if ($meta -and $meta['layout'] -eq '2pane') { 'ide-2pane' } else { 'ide-3pane' }
-                & $zellijBin attach --create $chosen options --default-layout $lay --default-cwd $wdir
-                exit $LASTEXITCODE
+        $pal = Get-ActivePaletteMap
+        $pwshExe = (Get-Process -Id $PID).Path
+        if (-not $pwshExe) { $pwshExe = 'pwsh' }
+        $selfQuoted = "`"$PSCommandPath`""
+        $pwshQuoted = "`"$pwshExe`" -NoProfile -ExecutionPolicy Bypass -File $selfQuoted"
+        $reloadCmd = "$pwshQuoted --sessions-lines"
+        $fzfColors = "--color=bg+:$($pal.BASE02),bg:$($pal.BASE03),spinner:$($pal.GREEN),hl:$($pal.BASE01),fg:$($pal.BASE0),header:$($pal.BASE01),info:$($pal.YELLOW),pointer:$($pal.GREEN),marker:$($pal.GREEN),fg+:$($pal.BASE1),prompt:$($pal.YELLOW),hl+:$($pal.BLUE),label:$($pal.BASE01)"
+
+        $rawOut = @($rows | & $fzfCmd.Source `
+            --ansi `
+            "--delimiter=`t" `
+            --with-nth=2.. `
+            --multi `
+            --layout=reverse `
+            --height=70% `
+            --info=inline-right `
+            '--prompt=IDE > ' `
+            --border=rounded `
+            '--border-label= Enter: attach | C-a/e/t: role | C-y: ack | C-o: PR | M-n: new | C-x: quit | C-r: reload ' `
+            --border-label-pos=bottom `
+            --expect=ctrl-a,ctrl-e,ctrl-t,alt-n `
+            "--bind=ctrl-r:reload($reloadCmd)" `
+            "--bind=ctrl-y:execute-silent($pwshQuoted --ack-ai {+1})+reload($reloadCmd)" `
+            "--bind=ctrl-o:execute-silent($pwshQuoted --open-pr {1})" `
+            "--bind=ctrl-x:execute-silent($pwshQuoted --quit {+1})+reload($reloadCmd)" `
+            $fzfColors)
+
+        if ($LASTEXITCODE -ne 0 -or $rawOut.Count -eq 0) {
+            exit 0
+        }
+        $keyPressed = "$($rawOut[0])".Trim()
+        if ($keyPressed -eq 'alt-n') {
+            $zoxCmd = Get-Command zoxide -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($zoxCmd) {
+                $dirs = @(& $zoxCmd.Source query -l 2>$null)
+                if ($dirs.Count -gt 0) {
+                    $pickedDir = ($dirs | & $fzfCmd.Source --layout=reverse --height=60% --border=rounded '--prompt=New IDE Dir > ' $fzfColors | Out-String).Trim()
+                    if ($LASTEXITCODE -eq 0 -and $pickedDir -and (Test-Path -LiteralPath $pickedDir -PathType Container)) {
+                        & $pwshExe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath $pickedDir
+                        exit $LASTEXITCODE
+                    }
+                }
             }
+            exit 0
+        }
+
+        $selLine = if ($rawOut.Count -ge 2) { "$($rawOut[1])" } else { '' }
+        $chosen = ($selLine -split "`t")[0].Trim()
+        if ($chosen) {
+            $env:ZELLIJ_CONFIG_DIR = Get-ZellijConfigDir
+            $meta = Read-SessionState $chosen
+            $wdir = if ($meta -and $meta['workdir'] -and (Test-Path -LiteralPath $meta['workdir'])) { [string]$meta['workdir'] } else { (Get-Location).ProviderPath }
+            $lay = if ($meta -and $meta['layout'] -eq '2pane') { 'ide-2pane' } else { 'ide-3pane' }
+            $focusRole = switch ($keyPressed) {
+                'ctrl-a' { 'ai' }
+                'ctrl-e' { 'editor' }
+                'ctrl-t' { 'shell' }
+                default  { '' }
+            }
+            if ($focusRole) {
+                [void](Invoke-ZellijPipe -SessionName $chosen -PipeName 'ws-ide-role' -Payload "ensure:$focusRole")
+            }
+            if ($env:ZELLIJ) {
+                & $zellijBin action switch-session --layout $lay --cwd $wdir $chosen
+            } else {
+                & $zellijBin attach --create $chosen options --default-layout $lay --default-cwd $wdir
+            }
+            exit $LASTEXITCODE
         }
         exit 0
     }
@@ -1279,6 +1884,10 @@ function Invoke-IdeCd([string]$TargetArg) {
         [void](Invoke-NvimRemoteExpr -PipePath $pipePath -Expr "luaeval('(function(d) vim.schedule(function() pcall(vim.fn.chdir, d) end); return ""OK"" end)(_A)', '$vimSingleDir')")
     }
 
+    if ($env:ZELLIJ -or (Resolve-ZellijExecutable)) {
+        [void](Invoke-ZellijPipe -SessionName $sess -PipeName 'ws-ide-state' -Payload "root=$initRoot;workdir=$resolved")
+    }
+
     Write-Output $resolved
 }
 
@@ -1316,7 +1925,31 @@ function Format-RelativeFileRef([string]$RawRef, [string]$BaseDir) {
     return "@${relPath} "
 }
 
-function Invoke-IdeSend([string[]]$SendArgs) {
+function ConvertTo-SanitizedPasteText([string]$Text) {
+    if (-not $Text) { return '' }
+    $esc = [char]27
+    $csi = [char]0x9B
+    $markers = @(
+        "${esc}[200~",
+        "${esc}[201~",
+        "${csi}200~",
+        "${csi}201~"
+    )
+    $clean = $Text
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($m in $markers) {
+            if ($clean.Contains($m)) {
+                $clean = $clean.Replace($m, '')
+                $changed = $true
+            }
+        }
+    }
+    return $clean
+}
+
+function Invoke-IdeSend([string[]]$SendArgs, [string]$PipedInput = '') {
     $mode = ''
     $payload = ''
     $targetSessArg = ''
@@ -1373,19 +2006,21 @@ function Invoke-IdeSend([string[]]$SendArgs) {
     }
 
     if ($mode -eq 'stdin') {
-        $payload = [Console]::In.ReadToEnd()
+        $payload = if ($PipedInput) { $PipedInput } elseif ([Console]::IsInputRedirected) { [Console]::In.ReadToEnd() } else { '' }
     } elseif ($mode -eq 'ref' -and $payload) {
         $payload = Format-RelativeFileRef -RawRef $payload -BaseDir $baseDir
     }
 
+    $payload = ConvertTo-SanitizedPasteText $payload
     if (-not $payload) {
         exit 0
     }
 
-    $stageFile = Join-Path (Get-IdeStateDir) "$sess.send.txt"
+    $stateDir = Get-IdeStateDir
+    $stageFile = Join-Path $stateDir "$sess.send.txt"
     Write-TextUtf8NoBom -Path $stageFile -Content $payload
 
-    if ($env:WS_IDE_SKIP_CLIPBOARD -ne '1') {
+    if ($env:WS_IDE_COPY_CLIPBOARD -eq '1' -and $env:WS_IDE_SKIP_CLIPBOARD -ne '1') {
         try {
             Set-Clipboard -Value $payload -ErrorAction Stop
         } catch {
@@ -1401,15 +2036,73 @@ function Invoke-IdeSend([string[]]$SendArgs) {
         $liveZellij = Get-LiveZellijSessionMap
         if ($liveZellij[$sess] -eq 'live') {
             $curZellijSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
-            if ($env:ZELLIJ -and $curZellijSess -eq $sess) {
-                & $zellijBin action paste -p $aiPaneId $payload *> $null
+            $inSameSession = ($env:ZELLIJ -and [string]::Equals($curZellijSess, $sess, [System.StringComparison]::OrdinalIgnoreCase))
+
+            $panesJson = try {
+                if ($inSameSession) {
+                    (& $zellijBin action list-panes --all --json 2>$null) -join "`n"
+                } else {
+                    (& $zellijBin --session $sess action list-panes --all --json 2>$null) -join "`n"
+                }
+            } catch {
+                ''
+            }
+
+            $aiEntry = $null
+            if ($panesJson) {
+                try {
+                    $allPanes = @($panesJson | ConvertFrom-Json)
+                    $rawNum = 0
+                    if (($aiPaneId -replace '^terminal_', '') -match '^[0-9]+$') {
+                        $rawNum = [int]($aiPaneId -replace '^terminal_', '')
+                        $aiEntry = $allPanes | Where-Object { -not $_.is_plugin -and $_.id -eq $rawNum } | Select-Object -First 1
+                    }
+                    if (-not $aiEntry) {
+                        $aiEntry = $allPanes | Where-Object { -not $_.is_plugin -and "$($_.title)" -match '(?i)(^AI$|\bAI:|\bagy\b|\bclaude\b|\bcodex\b)' } | Select-Object -First 1
+                    }
+                    if ($aiEntry) {
+                        $aiPaneId = "terminal_$($aiEntry.id)"
+                    }
+                } catch {
+                    Write-Verbose "Pane JSON inspection skipped: $_"
+                }
+            }
+
+            if ($aiEntry -and $aiEntry.exited -eq $true) {
+                [Console]::Error.WriteLine("Error: AI pane in session '$sess' has exited; refusing to paste into dead pane.")
+                exit 1
+            }
+
+            $aiShellMarker = Join-Path $stateDir "$sess.ai-shell"
+            if ($env:IDE_ALLOW_SHELL_SEND -ne '1' -and (
+                [System.IO.File]::Exists($aiShellMarker) -or
+                ($meta -and $meta['ai_cli'] -eq 'shell') -or
+                ($aiEntry -and "$($aiEntry.title)" -match '\[AI:\s*shell\]')
+            )) {
+                $hasLiveAgentProc = @(Get-Process -Name 'agy', 'claude', 'codex' -ErrorAction SilentlyContinue).Count -gt 0
+                if (-not $hasLiveAgentProc) {
+                    [Console]::Error.WriteLine("Error: No active AI agent running in session '$sess' (pane is at an interactive shell); start an agent or set IDE_ALLOW_SHELL_SEND=1.")
+                    exit 1
+                }
+            }
+
+            if ($aiEntry -and $aiEntry.is_suppressed -eq $true) {
+                [void](Invoke-ZellijPipe -SessionName $sess -PipeName 'ws-ide-role' -Payload 'toggle:ai')
+            }
+
+            if ($inSameSession) {
+                & $zellijBin action paste --pane-id $aiPaneId -- $payload *> $null
                 if (-not $noFocus) {
                     & $zellijBin action focus-pane-id $aiPaneId *> $null
                 }
             } else {
-                & $zellijBin --session $sess action paste -p $aiPaneId $payload *> $null
-                if ($switchSession -and $env:ZELLIJ) {
-                    & $zellijBin action switch-session --pane-id $aiPaneId $sess *> $null
+                & $zellijBin --session $sess action paste --pane-id $aiPaneId -- $payload *> $null
+                if ($switchSession) {
+                    if ($env:ZELLIJ) {
+                        & $zellijBin action switch-session --pane-id $aiPaneId $sess *> $null
+                    } else {
+                        & $zellijBin attach $sess
+                    }
                 }
             }
         }
@@ -1417,91 +2110,41 @@ function Invoke-IdeSend([string[]]$SendArgs) {
 }
 
 function Show-IdeSessionList([bool]$Plain) {
-    $stateDir = Get-IdeStateDir
-    $livePipes = Get-LiveIdePipeMap
-    $liveZellij = Get-LiveZellijSessionMap
-    $sessions = [ordered]@{}
-
-    if (Test-Path -LiteralPath $stateDir -PathType Container) {
-        $files = @(Get-ChildItem -LiteralPath $stateDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)
-        foreach ($f in $files) {
-            $sName = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-            $meta = Read-SessionState $sName
-            if ($meta) {
-                $sessions[$sName] = $meta
-            }
-        }
-    }
-    foreach ($zName in ($liveZellij.Keys | Sort-Object)) {
-        if (-not $sessions.Contains($zName)) {
-            $sessions[$zName] = [ordered]@{
-                session       = $zName
-                root          = ''
-                workdir       = ''
-                pipe          = Get-SessionPipePath $zName
-                layout        = '3pane'
-                backend       = 'zellij'
-                ai_cli        = if ($env:IDE_AI_CLI) { $env:IDE_AI_CLI } else { 'agy' }
-                agent_state   = 'idle'
-                agent_message = ''
-            }
-        }
-    }
-    foreach ($liveName in ($livePipes.Keys | Sort-Object)) {
-        if (-not $sessions.Contains($liveName)) {
-            $sessions[$liveName] = [ordered]@{
-                session       = $liveName
-                root          = ''
-                workdir       = ''
-                pipe          = $livePipes[$liveName]
-                layout        = '3pane'
-                backend       = 'wt'
-                ai_cli        = if ($env:IDE_AI_CLI) { $env:IDE_AI_CLI } else { 'agy' }
-                agent_state   = 'idle'
-                agent_message = ''
-            }
-        }
-    }
-
+    $fleet = Get-ClassifiedIdeFleet -IncludeGit (-not $Plain)
     if ($Plain) {
-        foreach ($k in $sessions.Keys) {
-            Write-Output $k
+        foreach ($e in $fleet) {
+            Write-Output $e.Session
         }
         return
     }
 
-    if ($sessions.Count -eq 0) {
+    if ($fleet.Count -eq 0) {
         Write-Output 'No IDE workspace sessions found.'
         return
     }
 
-    Write-Output ('{0,-22} {1,-8} {2,-7} {3,-8} {4,-10} {5,-18} {6}' -f 'SESSION', 'STATUS', 'LAYOUT', 'AI', 'STATE', 'BRANCH', 'WORKDIR')
-    Write-Output ('-' * 105)
-    foreach ($k in $sessions.Keys) {
-        $m = $sessions[$k]
-        $zStatus = $liveZellij[$k]
-        $pipeUp = $livePipes.ContainsKey($k) -or (Test-IdePipeLive ([string]$m['pipe']))
-        $status = if ($zStatus -eq 'live' -or $pipeUp) {
-            'live'
-        } elseif ($zStatus -eq 'exited') {
-            'exited'
-        } else {
-            'saved'
-        }
-        $wdir = if ($m['workdir']) { [string]$m['workdir'] } elseif ($m['root']) { [string]$m['root'] } else { '-' }
-        $branch = '-'
-        if ($wdir -ne '-' -and (Test-Path -LiteralPath $wdir -PathType Container)) {
-            $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-            if ($gitCmd) {
-                try {
-                    $b = & $gitCmd.Source -C $wdir symbolic-ref --quiet --short HEAD 2>$null
-                    if ($LASTEXITCODE -eq 0 -and $b) { $branch = "$b".Trim() }
-                } catch {
-                    $branch = '-'
-                }
-            }
-        }
-        Write-Output ('{0,-22} {1,-8} {2,-7} {3,-8} {4,-10} {5,-18} {6}' -f $k, $status, $m['layout'], $m['ai_cli'], $m['agent_state'], $branch, $wdir)
+    $useColor = (-not [Console]::IsOutputRedirected) -and (-not $env:NO_COLOR)
+    $pal = Get-ActivePaletteMap
+    $sessW = 7
+    $cliW = 5
+    $stateW = 5
+    $gitW = 6
+    foreach ($e in $fleet) {
+        if ($e.Session.Length -gt $sessW) { $sessW = [Math]::Min(28, $e.Session.Length) }
+        if ($e.AiCli.Length -gt $cliW) { $cliW = [Math]::Min(12, $e.AiCli.Length) }
+        if ($e.StateLabel.Length -gt $stateW) { $stateW = [Math]::Min(16, $e.StateLabel.Length) }
+        if ($e.BranchLabel.Length -gt $gitW) { $gitW = [Math]::Min(28, $e.BranchLabel.Length) }
+    }
+
+    $hdr = ('  {0}  {1}  {2}  {3}  WORKSPACE' -f 'SESSION'.PadRight($sessW), 'AGENT'.PadRight($cliW), 'STATE'.PadRight($stateW), 'BRANCH'.PadRight($gitW))
+    if ($useColor) {
+        Write-Output "$($pal.E_B01)${hdr}$($pal.E_RST)"
+    } else {
+        Write-Output $hdr
+    }
+
+    foreach ($e in $fleet) {
+        Write-Output (Format-FleetTableLine -Entry $e -Pal $pal -SessW $sessW -CliW $cliW -StateW $stateW -GitW $gitW -UseColor $useColor)
     }
 }
 
@@ -1581,6 +2224,8 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
             "$sess.json",
             "$sess.state",
             "$sess.send.txt",
+            "$sess.ai-active",
+            "$sess.ai-shell",
             "$sess.pane-ai",
             "$sess.pane-editor",
             "$sess.pane-term",
@@ -1674,6 +2319,309 @@ function Write-PaneLauncherSet(
     }
 }
 
+function Format-SanitizedAgentMessage([string]$RawMessage) {
+    if (-not $RawMessage) { return '' }
+    $esc = [char]27
+    $bel = [char]7
+    $clean = [regex]::Replace($RawMessage, "${esc}\][^\x07\x1b]*(?:${bel}|${esc}\\)", '')
+    $clean = [regex]::Replace($clean, "${esc}\[[0-9;?]*[ -/]*[@-~]", '')
+    $clean = [regex]::Replace($clean, '[\x00-\x1F\x7F]+', ' ')
+    $clean = [regex]::Replace($clean, '\s+', ' ').Trim()
+    if ($clean.Length -gt 160) {
+        $clean = $clean.Substring(0, 159) + [char]0x2026
+    }
+    return $clean
+}
+
+function Invoke-AgentState([string[]]$StateArgs, [string]$PipedInput = '') {
+    $stdinRaw = ''
+    if ($env:WS_AGENT_STATE_STDIN) {
+        $stdinRaw = $env:WS_AGENT_STATE_STDIN
+    } elseif ($PipedInput) {
+        $stdinRaw = $PipedInput
+    } else {
+        try {
+            if ([Console]::IsInputRedirected) {
+                $readTask = [Console]::In.ReadToEndAsync()
+                if ($readTask.Wait(75)) {
+                    $stdinRaw = $readTask.Result
+                }
+            }
+        } catch {
+            $stdinRaw = ''
+        }
+    }
+
+    $rawState = if ($StateArgs.Count -gt 0) { [string]$StateArgs[0] } else { '' }
+    $state = $rawState.Trim().ToLowerInvariant()
+    if ($state -notin @('running', 'approval', 'quota', 'done', 'idle')) {
+        [Console]::Error.WriteLine("Error: Invalid '--agent-state' value '$rawState'. Expected: running, approval, quota, done, or idle.")
+        exit 1
+    }
+
+    $explicitMsg = ''
+    $sessArg = ''
+    $jsonPayloads = [System.Collections.Generic.List[string]]::new()
+    if ($stdinRaw -and $stdinRaw.Trim()) {
+        $jsonPayloads.Add($stdinRaw.Trim())
+    }
+
+    for ($idx = 1; $idx -lt $StateArgs.Count; $idx++) {
+        $nx = [string]$StateArgs[$idx]
+        if ($nx -eq '--message') {
+            if ($idx + 1 -ge $StateArgs.Count) {
+                [Console]::Error.WriteLine('Error: --message requires a text value.')
+                exit 1
+            }
+            $explicitMsg = [string]$StateArgs[++$idx]
+        } elseif ($nx.Trim().StartsWith('{') -and $nx.Trim().EndsWith('}')) {
+            $jsonPayloads.Add($nx.Trim())
+        } else {
+            $sessArg = $nx
+        }
+    }
+
+    $notifType = ''
+    $jsonMsg = ''
+    foreach ($jp in $jsonPayloads) {
+        try {
+            $obj = $jp | ConvertFrom-Json -ErrorAction Stop
+            if (-not $notifType) {
+                if ($obj.PSObject.Properties['notification_type'] -and $obj.notification_type) {
+                    $notifType = "$($obj.notification_type)".Trim()
+                } elseif ($obj.PSObject.Properties['type'] -and $obj.type) {
+                    $notifType = "$($obj.type)".Trim()
+                }
+            }
+            if (-not $jsonMsg) {
+                foreach ($prop in @('message', 'last-assistant-message', 'last_assistant_message', 'summary', 'title')) {
+                    if ($obj.PSObject.Properties[$prop] -and $obj.$prop) {
+                        $cand = "$($obj.$prop)".Trim()
+                        if ($cand) {
+                            $jsonMsg = $cand
+                            break
+                        }
+                    }
+                }
+            }
+        } catch {
+            Write-Verbose "Hook JSON parse skipped: $_"
+        }
+    }
+
+    if ($notifType -eq 'idle_prompt') {
+        exit 0
+    }
+
+    $rawMsg = if ($explicitMsg -and $explicitMsg.Trim()) { $explicitMsg.Trim() } else { $jsonMsg }
+    $cleanMsg = Format-SanitizedAgentMessage $rawMsg
+    $msgToPersist = if ($state -in @('approval', 'quota', 'done')) { $cleanMsg } else { '' }
+
+    if ($env:WS_AGY_HOOK_NO_TTY -ne '1') {
+        Write-Osc7501Status (Format-Osc7501Spec -StateName $state -Message $msgToPersist)
+    }
+
+    if (-not $sessArg -and -not $env:ZELLIJ_SESSION_NAME -and -not $env:IDE_SESSION) {
+        exit 0
+    }
+
+    $sess = Resolve-TargetSession $sessArg
+    $meta = Read-SessionState $sess
+    if (-not $meta) {
+        if ($sessArg) {
+            [Console]::Error.WriteLine("Error: No active IDE session named '$sess'.")
+            exit 1
+        }
+        exit 0
+    }
+
+    $nowEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $prevState = ([string]$meta['agent_state']).ToLowerInvariant()
+    $prevStateTs = if ($null -ne $meta['state_ts']) { [long]$meta['state_ts'] } else { 0L }
+    $prevAttnTs = if ($null -ne $meta['attn_ts']) { [long]$meta['attn_ts'] } else { 0L }
+    $prevMsg = if ($meta['agent_message']) { [string]$meta['agent_message'] } else { '' }
+
+    $nextStateTs = if ($prevState -eq $state -and $prevStateTs -gt 0) { $prevStateTs } else { $nowEpoch }
+    $nextAttnTs = if ($state -in @('approval', 'done')) {
+        if ($prevState -eq $state -and $prevAttnTs -gt 0) { $prevAttnTs } else { $nowEpoch }
+    } else {
+        0L
+    }
+    if (-not $msgToPersist -and $state -in @('approval', 'quota', 'done') -and $prevState -eq $state) {
+        $msgToPersist = $prevMsg
+    }
+
+    $meta['agent_state'] = $state
+    $meta['agent_message'] = $msgToPersist
+    $meta['state_ts'] = $nextStateTs
+    $meta['attn_ts'] = $nextAttnTs
+    Save-SessionState $meta
+    exit 0
+}
+
+function Invoke-OpenSessionPr([string]$SessArg) {
+    $sess = Resolve-TargetSession $SessArg
+    $meta = Read-SessionState $sess
+    $wdir = if ($meta -and $meta['workdir']) {
+        [string]$meta['workdir']
+    } elseif ($meta -and $meta['root']) {
+        [string]$meta['root']
+    } elseif (-not $SessArg) {
+        (Get-Location).ProviderPath
+    } else {
+        ''
+    }
+    if (-not $wdir -or -not (Test-Path -LiteralPath $wdir -PathType Container)) {
+        [Console]::Error.WriteLine("Error: No active IDE session or workspace directory for '$sess'.")
+        exit 1
+    }
+
+    $git = Get-FastGitSummary $wdir
+    $prUrl = ''
+    if ($git.PrUrl -and $git.PrUrl -match '^https?://\S+$') {
+        $prUrl = $git.PrUrl
+    }
+
+    if (-not $prUrl) {
+        $pushed = $false
+        Push-Location -LiteralPath $wdir
+        $pushed = $true
+        try {
+            $isGitLab = ($git.ForgeUrl -match '(?i)gitlab')
+            $ghCmd = Get-Command gh -ErrorAction SilentlyContinue | Select-Object -First 1
+            $glabCmd = Get-Command glab -ErrorAction SilentlyContinue | Select-Object -First 1
+            $prLabel = ''
+
+            if (-not $isGitLab -and $ghCmd) {
+                $ghJson = (& $ghCmd.Source pr view --json number,url,state 2>$null) -join "`n"
+                if ($LASTEXITCODE -eq 0 -and $ghJson) {
+                    try {
+                        $ghObj = $ghJson | ConvertFrom-Json
+                        if ($ghObj.url -and "$($ghObj.url)" -match '^https?://\S+$') {
+                            $prUrl = "$($ghObj.url)".Trim()
+                            if ($ghObj.number) { $prLabel = "@$($ghObj.number)" }
+                        }
+                    } catch { Write-Verbose "gh JSON parse skipped: $_" }
+                }
+            }
+            if (-not $prUrl -and $glabCmd) {
+                $glJson = (& $glabCmd.Source mr view -F json 2>$null) -join "`n"
+                if ($LASTEXITCODE -eq 0 -and $glJson) {
+                    try {
+                        $glObj = $glJson | ConvertFrom-Json
+                        if ($glObj.web_url -and "$($glObj.web_url)" -match '^https?://\S+$') {
+                            $prUrl = "$($glObj.web_url)".Trim()
+                            if ($glObj.iid) { $prLabel = "!$($glObj.iid)" }
+                        }
+                    } catch { Write-Verbose "glab JSON parse skipped: $_" }
+                }
+            }
+
+            if ($prUrl -and $prLabel -and $git.Root -and $git.Branch -and $git.Branch -notin @('main', 'master', 'trunk')) {
+                try {
+                    $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
+                    $prCacheDir = Join-Path (Join-Path $userHome '.cache') 'git-pr-prompt'
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("$($git.Root)|$($git.Branch)")
+                    $hashBytes = [System.Security.Cryptography.SHA256]::HashData($bytes)
+                    $key = [System.BitConverter]::ToString($hashBytes, 0, 8).Replace('-', '').ToLowerInvariant()
+                    Write-TextUtf8NoBom -Path (Join-Path $prCacheDir "$key.state") -Content "$prLabel`n$prUrl`n"
+                } catch {
+                    Write-Verbose "PR cache write skipped: $_"
+                }
+            }
+        } finally {
+            if ($pushed) { Pop-Location }
+        }
+    }
+
+    if (-not $prUrl) {
+        [Console]::Error.WriteLine("No pull or merge request found for session '$sess'.")
+        exit 1
+    }
+
+    if ($env:WS_IDE_DRY_OPEN_PR -eq '1') {
+        Write-Output $prUrl
+        exit 0
+    }
+
+    if ($env:IDE_BROWSER -and $env:IDE_BROWSER.Trim()) {
+        Start-Process -FilePath $env:IDE_BROWSER.Trim() -ArgumentList $prUrl
+    } else {
+        Start-Process $prUrl
+    }
+    exit 0
+}
+
+function Invoke-IdeRefresh([string]$TargetArg, [bool]$IsDryRun) {
+    $activeSlug = Get-ActiveThemeSlug
+    if ($IsDryRun) {
+        $scopeDesc = if ($TargetArg) { "session '$(Resolve-TargetSession $TargetArg)'" } else { 'all live IDE sessions' }
+        Write-Output "[DRY-RUN] Would re-apply active theme '$activeSlug', rebuild keys-cheatsheet.ans, reload windows-settings-bar, and heal Editor CWDs across $scopeDesc."
+        exit 0
+    }
+
+    $themePs1 = Join-Path $ScriptDir 'theme.ps1'
+    if (Test-Path -LiteralPath $themePs1 -PathType Leaf) {
+        & $themePs1 --set $activeSlug --no-live *> $null
+    }
+    Write-IdeKeysCheatsheetCache
+
+    $zellijBin = Resolve-ZellijExecutable
+    $liveZellij = Get-LiveZellijSessionMap
+    $curZellijSess = if ($env:ZELLIJ_SESSION_NAME) { Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    $targetSess = if ($TargetArg) { Resolve-TargetSession $TargetArg } else { '' }
+
+    if ($zellijBin) {
+        $wasmDeployed = Test-WasmBarDeployed
+        $zTargets = if ($targetSess) {
+            if ($liveZellij[$targetSess] -eq 'live') { @($targetSess) } else { @() }
+        } else {
+            @($liveZellij.Keys | Where-Object { $liveZellij[$_] -eq 'live' })
+        }
+        foreach ($zs in $zTargets) {
+            if ($wasmDeployed) {
+                if ($env:ZELLIJ -and [string]::Equals($zs, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    & $zellijBin action start-or-reload-plugin 'compact-bar' *> $null
+                } else {
+                    & $zellijBin --session $zs action start-or-reload-plugin 'compact-bar' *> $null
+                }
+            }
+            $zMeta = Read-SessionState $zs
+            $kvParts = [System.Collections.Generic.List[string]]::new()
+            $kvParts.Add("theme=$activeSlug")
+            if ($zMeta -and $zMeta['root']) { $kvParts.Add("root=$($zMeta['root'])") }
+            if ($zMeta -and $zMeta['workdir']) { $kvParts.Add("workdir=$($zMeta['workdir'])") }
+            [void](Invoke-ZellijPipe -SessionName $zs -PipeName 'ws-ide-state' -Payload ($kvParts -join ';'))
+        }
+    }
+
+    $pipeTargets = [ordered]@{}
+    if ($targetSess) {
+        $p = Get-SessionPipePath $targetSess
+        if (Test-IdePipeLive $p) { $pipeTargets[$targetSess] = $p }
+    } else {
+        $livePipes = Get-LiveIdePipeMap
+        foreach ($kv in $livePipes.GetEnumerator()) {
+            $pipeTargets[$kv.Key] = $kv.Value
+        }
+    }
+
+    foreach ($sKey in $pipeTargets.Keys) {
+        $pipe = $pipeTargets[$sKey]
+        $sMeta = Read-SessionState $sKey
+        $healDir = ''
+        if ($sMeta -and $sMeta['workdir'] -and (Test-Path -LiteralPath $sMeta['workdir'] -PathType Container)) {
+            $healDir = [string]$sMeta['workdir']
+        } elseif ($sMeta -and $sMeta['root'] -and (Test-Path -LiteralPath $sMeta['root'] -PathType Container)) {
+            $healDir = [string]$sMeta['root']
+        }
+        $vimDir = $healDir.Replace("'", "''")
+        $expr = "luaeval('(function(d) vim.schedule(function() if d ~= """" and vim.fn.getcwd() ~= d then pcall(vim.fn.chdir, d) end; pcall(vim.cmd, ""silent! checktime""); if _G.apply_home_settings_theme then pcall(_G.apply_home_settings_theme) end end); return ""OK"" end)(_A)', '$vimDir')"
+        [void](Invoke-NvimRemoteExpr -PipePath $pipe -Expr $expr)
+    }
+    exit 0
+}
+
 # ==============================================================================
 # CLI Argument Dispatch
 # ==============================================================================
@@ -1740,6 +2688,12 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         { $_ -in @('-s', '--sessions') } {
             Invoke-SessionSwitcher
         }
+        '--sessions-lines' {
+            foreach ($r in (Format-FzfSessionRowList)) {
+                Write-Output $r
+            }
+            exit 0
+        }
         '--next-attention' {
             $zBin = Resolve-ZellijExecutable
             if ($zBin) {
@@ -1763,6 +2717,20 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             $rName = $arg.Substring(7)
             $optSess = if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) { [string]$args[++$i] } else { '' }
             Invoke-FocusRole -Role $rName -SessionArg $optSess
+        }
+        { $_ -in @('--toggle-ai', '--toggle-editor', '--toggle-term') } {
+            $rName = $arg.Substring(9)
+            $optSess = if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) { [string]$args[++$i] } else { '' }
+            Invoke-ToggleRole -Role $rName -SessionArg $optSess
+        }
+        '--swap' {
+            if ($i + 1 -ge $args.Count) {
+                [Console]::Error.WriteLine('Error: --swap requires a direction (left, down, up, or right).')
+                exit 1
+            }
+            $swapDir = [string]$args[++$i]
+            $optSess = if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) { [string]$args[++$i] } else { '' }
+            Invoke-SwapPane -Direction $swapDir -SessionArg $optSess
         }
         '--focus-role' {
             $rName = if ($i + 1 -lt $args.Count) { [string]$args[++$i] } else { 'ai' }
@@ -1813,7 +2781,15 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             if ($i + 1 -lt $args.Count) {
                 $rem = @($args[($i + 1)..($args.Count - 1)] | ForEach-Object { [string]$_ })
             }
-            Invoke-IdeSend -SendArgs $rem
+            $pipedText = ''
+            if ($MyInvocation.ExpectingInput) {
+                $inEnum = Get-Variable -Name 'input' -Scope Local -ValueOnly -ErrorAction SilentlyContinue
+                if ($null -ne $inEnum) {
+                    $pipedArr = @($inEnum)
+                    if ($pipedArr.Count -gt 0) { $pipedText = $pipedArr -join "`n" }
+                }
+            }
+            Invoke-IdeSend -SendArgs $rem -PipedInput $pipedText
             exit 0
         }
         '--agy-hook' {
@@ -1821,26 +2797,19 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             Invoke-AgyHook -HookEventArg $evName
         }
         '--agent-state' {
-            $st = if ($i + 1 -lt $args.Count) { [string]$args[++$i] } else { 'idle' }
-            $msg = ''
-            $sessArg = ''
-            while ($i + 1 -lt $args.Count) {
-                $nx = [string]$args[++$i]
-                if ($nx -eq '--message' -and $i + 1 -lt $args.Count) {
-                    $msg = [string]$args[++$i]
-                } else {
-                    $sessArg = $nx
+            $remStateArgs = @()
+            if ($i + 1 -lt $args.Count) {
+                $remStateArgs = @($args[($i + 1)..($args.Count - 1)] | ForEach-Object { [string]$_ })
+            }
+            $pipedStateText = ''
+            if ($MyInvocation.ExpectingInput) {
+                $stateEnum = Get-Variable -Name 'input' -Scope Local -ValueOnly -ErrorAction SilentlyContinue
+                if ($null -ne $stateEnum) {
+                    $pipedStateArr = @($stateEnum)
+                    if ($pipedStateArr.Count -gt 0) { $pipedStateText = $pipedStateArr -join "`n" }
                 }
             }
-            Write-Osc7501Status (Format-Osc7501Spec -StateName $st -Message $msg)
-            $sess = Resolve-TargetSession $sessArg
-            $meta = Read-SessionState $sess
-            if ($meta) {
-                $meta['agent_state'] = $st
-                $meta['agent_message'] = $msg
-                Save-SessionState $meta
-            }
-            exit 0
+            Invoke-AgentState -StateArgs $remStateArgs -PipedInput $pipedStateText
         }
         '--ack-ai' {
             $ackTargets = @()
@@ -1850,74 +2819,32 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             if ($zBin -and $env:ZELLIJ) {
                 & $zBin action mark-all-seen *> $null
             }
+            $nowAck = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             foreach ($at in $ackTargets) {
                 $s = Resolve-TargetSession $at
                 $meta = Read-SessionState $s
                 if ($meta) {
-                    $meta['agent_state'] = 'idle'
-                    $meta['agent_message'] = ''
+                    $curSt = ([string]$meta['agent_state']).ToLowerInvariant()
+                    if ($curSt -eq 'done') {
+                        $meta['agent_state'] = 'idle'
+                        $meta['agent_message'] = ''
+                        $meta['state_ts'] = $nowAck
+                    }
+                    $meta['attn_ts'] = 0L
                     Save-SessionState $meta
                 }
             }
             exit 0
         }
         '--open-pr' {
-            $sessArg = if ($i + 1 -lt $args.Count) { [string]$args[++$i] } else { '' }
-            $sess = Resolve-TargetSession $sessArg
-            $meta = Read-SessionState $sess
-            $wdir = if ($meta -and $meta['workdir']) { [string]$meta['workdir'] } else { (Get-Location).ProviderPath }
-            $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
-            if (-not $ghCmd) {
-                [Console]::Error.WriteLine('Error: GitHub CLI (gh) is required for --open-pr.')
-                exit 1
-            }
-            $pushed = $false
-            if ($wdir -and (Test-Path -LiteralPath $wdir -PathType Container)) {
-                Push-Location -LiteralPath $wdir
-                $pushed = $true
-            }
-            try {
-                $prUrl = (& $ghCmd.Source pr view --json url -q .url 2>$null)
-            } finally {
-                if ($pushed) { Pop-Location }
-            }
-            if (-not $prUrl) {
-                [Console]::Error.WriteLine('No pull request found for current branch.')
-                exit 1
-            }
-            $urlStr = "$prUrl".Trim()
-            if ($env:IDE_BROWSER -and $env:IDE_BROWSER.Trim()) {
-                Start-Process -FilePath $env:IDE_BROWSER.Trim() -ArgumentList $urlStr
-            } else {
-                Start-Process $urlStr
-            }
-            exit 0
+            $sessArg = if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) { [string]$args[++$i] } else { '' }
+            Invoke-OpenSessionPr -SessArg $sessArg
         }
         { $_ -in @('refresh', '-r', '--refresh') } {
-            $targetArg = if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) { [string]$args[++$i] } else { '' }
-            $themePs1 = Join-Path $ScriptDir 'theme.ps1'
-            if (Test-Path -LiteralPath $themePs1 -PathType Leaf) {
-                & $themePs1 --sync-assets *> $null
+            $action = 'refresh'
+            if ($i + 1 -lt $args.Count -and -not ([string]$args[$i + 1]).StartsWith('-')) {
+                $targetDirArg = [string]$args[++$i]
             }
-            if ($env:ZELLIJ -and $env:APPDATA) {
-                $barWasm = Join-Path (Join-Path (Join-Path (Join-Path $env:APPDATA 'Zellij') 'data') 'plugins') 'windows-settings-bar.wasm'
-                if (Test-Path -LiteralPath $barWasm -PathType Leaf) {
-                    $zellijBin = Resolve-ZellijExecutable
-                    if ($zellijBin) {
-                        & $zellijBin action start-or-reload-plugin 'file:windows-settings-bar' *> $null
-                    }
-                }
-            }
-            if ($targetArg) {
-                $sess = Resolve-TargetSession $targetArg
-                [void](Invoke-NvimRemoteExpr -PipePath (Get-SessionPipePath $sess) -Expr 'v:lua.apply_home_settings_theme()')
-            } else {
-                $live = Get-LiveIdePipeMap
-                foreach ($p in $live.Values) {
-                    [void](Invoke-NvimRemoteExpr -PipePath $p -Expr 'v:lua.apply_home_settings_theme()')
-                }
-            }
-            exit 0
         }
         { $_ -in @('-l', '--list') } {
             $action = 'list'
@@ -1941,6 +2868,10 @@ for ($i = 0; $i -lt $args.Count; $i++) {
             }
         }
     }
+}
+
+if ($action -eq 'refresh') {
+    Invoke-IdeRefresh -TargetArg $targetDirArg -IsDryRun $dryRun
 }
 
 if ($action -eq 'list') {
@@ -2033,6 +2964,7 @@ if ($effectiveBackend -eq 'zellij') {
         $env:Path = "$ScriptDir;$env:Path"
     }
     $env:ZELLIJ_CONFIG_DIR = $zellijCfgDir
+    $env:WINDOWS_SETTINGS_THEME = Get-ActiveThemeSlug
     $env:IDE_SESSION = $sessionName
     $env:IDE_INITIAL_ROOT = $resolvedRoot
     $env:IDE_WORKDIR = $resolvedRoot
@@ -2040,6 +2972,7 @@ if ($effectiveBackend -eq 'zellij') {
     $env:IDE_AI_CLI = $aiInfo.Name
 
     $existingMeta = Read-SessionState $sessionName
+    $nowInitTs = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $metaObj = [ordered]@{
         session       = $sessionName
         root          = if ($existingMeta -and $existingMeta['root']) { [string]$existingMeta['root'] } else { $resolvedRoot }
@@ -2050,6 +2983,8 @@ if ($effectiveBackend -eq 'zellij') {
         ai_cli        = $aiInfo.Name
         agent_state   = if ($existingMeta -and $existingMeta['agent_state']) { [string]$existingMeta['agent_state'] } else { 'idle' }
         agent_message = if ($existingMeta -and $existingMeta['agent_message']) { [string]$existingMeta['agent_message'] } else { '' }
+        state_ts      = if ($existingMeta -and $existingMeta['state_ts']) { [long]$existingMeta['state_ts'] } else { $nowInitTs }
+        attn_ts       = if ($existingMeta -and $existingMeta['attn_ts']) { [long]$existingMeta['attn_ts'] } else { 0L }
         created_at    = if ($existingMeta -and $existingMeta['created_at']) { [string]$existingMeta['created_at'] } else { '' }
         updated_at    = ''
     }

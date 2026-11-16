@@ -22,11 +22,108 @@ struct State {
     previous_role: Option<IdeRole>,
     current_role: Option<IdeRole>,
     last_regions: Vec<HitRegion>,
+    theme_slug: String,
+    initial_root: String,
+    workdir: String,
 }
 
 register_plugin!(State);
 
+fn normalize_path_key(raw: &str) -> String {
+    raw.trim()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
+}
+
+fn compute_subdir_label(initial_root: &str, workdir: &str) -> Option<String> {
+    let root_norm = normalize_path_key(initial_root);
+    let work_norm = normalize_path_key(workdir);
+    if work_norm.is_empty() || root_norm == work_norm {
+        return None;
+    }
+    workdir
+        .trim()
+        .trim_end_matches(['\\', '/'])
+        .rsplit(['\\', '/'])
+        .find(|seg| !seg.is_empty())
+        .map(str::to_owned)
+}
+
+fn apply_kv_state_updates(
+    payload: Option<&str>,
+    args: &BTreeMap<String, String>,
+    theme_slug: &mut String,
+    initial_root: &mut String,
+    workdir: &mut String,
+) -> bool {
+    let mut changed = false;
+    let mut apply_pair = |k: &str, v: &str| {
+        let key = k.trim().to_ascii_lowercase();
+        let val = v.trim();
+        match key.as_str() {
+            "theme" if *theme_slug != val => {
+                *theme_slug = val.to_owned();
+                changed = true;
+            }
+            "root" if *initial_root != val => {
+                *initial_root = val.to_owned();
+                changed = true;
+            }
+            "workdir" if *workdir != val => {
+                *workdir = val.to_owned();
+                changed = true;
+            }
+            _ => {}
+        }
+    };
+
+    for (k, v) in args {
+        apply_pair(k, v);
+    }
+    if let Some(raw) = payload {
+        for entry in raw.split(['\n', ';']) {
+            if let Some((k, v)) = entry.split_once('=') {
+                apply_pair(k, v);
+            }
+        }
+    }
+    changed
+}
+
 impl State {
+    fn sync_session_env(&mut self) {
+        let env = get_session_environment_variables();
+        if self.theme_slug.is_empty() {
+            if let Some(t) = env
+                .get("WINDOWS_SETTINGS_THEME")
+                .or_else(|| env.get("HOME_SETTINGS_THEME"))
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                self.theme_slug = t.to_owned();
+            }
+        }
+        if self.initial_root.is_empty() {
+            if let Some(r) = env
+                .get("IDE_INITIAL_ROOT")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                self.initial_root = r.to_owned();
+            }
+        }
+        if self.workdir.is_empty() {
+            if let Some(w) = env
+                .get("IDE_WORKDIR")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                self.workdir = w.to_owned();
+            }
+        }
+    }
+
     fn active_tab_position(&self) -> usize {
         self.tabs
             .iter()
@@ -66,32 +163,23 @@ impl State {
     }
 
     fn bounce_target(&self, clicked: IdeRole, strip: &RoleStrip) -> IdeRole {
-        match clicked {
-            IdeRole::Ai => {
-                if strip.editor.is_some() {
-                    IdeRole::Editor
-                } else if let Some(prev) = self.previous_role.filter(|r| *r != clicked && strip.slot(*r).is_some()) {
-                    prev
-                } else {
-                    clicked
-                }
-            }
-            IdeRole::Editor => {
-                if strip.ai.is_some() {
-                    IdeRole::Ai
-                } else if let Some(prev) = self.previous_role.filter(|r| *r != clicked && strip.slot(*r).is_some()) {
-                    prev
-                } else {
-                    clicked
-                }
-            }
-            IdeRole::Shell => self
-                .previous_role
-                .filter(|r| *r != IdeRole::Shell && strip.slot(*r).is_some())
-                .or_else(|| strip.ai.as_ref().map(|_| IdeRole::Ai))
-                .or_else(|| strip.editor.as_ref().map(|_| IdeRole::Editor))
-                .unwrap_or(IdeRole::Shell),
+        if let Some(prev) = self
+            .previous_role
+            .filter(|r| *r != clicked && strip.slot(*r).is_some_and(|s| !s.hidden))
+        {
+            return prev;
         }
+        let candidates = match clicked {
+            IdeRole::Ai => [IdeRole::Editor, IdeRole::Shell],
+            IdeRole::Editor => [IdeRole::Ai, IdeRole::Shell],
+            IdeRole::Shell => [IdeRole::Ai, IdeRole::Editor],
+        };
+        for cand in candidates {
+            if strip.slot(cand).is_some_and(|s| !s.hidden) {
+                return cand;
+            }
+        }
+        clicked
     }
 
     fn activate_role(&self, clicked: IdeRole) {
@@ -99,13 +187,53 @@ impl State {
         let Some(slot) = strip.slot(clicked) else {
             return;
         };
-        let target_role = if slot.focused && !slot.hidden {
+        if slot.hidden {
+            show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
+            return;
+        }
+        let target_role = if slot.focused {
             self.bounce_target(clicked, &strip)
         } else {
             clicked
         };
         if let Some(target_slot) = strip.slot(target_role) {
-            focus_terminal_pane(target_slot.pane_id, false, false);
+            if target_slot.hidden {
+                show_pane_with_id(PaneId::Terminal(target_slot.pane_id), false, true);
+            } else {
+                focus_terminal_pane(target_slot.pane_id, false, false);
+            }
+        }
+    }
+
+    fn ensure_role(&self, role: IdeRole) {
+        let strip = self.compute_roles();
+        let Some(slot) = strip.slot(role) else {
+            return;
+        };
+        if slot.hidden {
+            show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
+        } else if !slot.focused {
+            focus_terminal_pane(slot.pane_id, false, false);
+        }
+    }
+
+    fn toggle_role(&self, role: IdeRole) {
+        let strip = self.compute_roles();
+        let Some(slot) = strip.slot(role) else {
+            return;
+        };
+        if slot.hidden {
+            show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
+        } else if strip.visible_tiled_count > 1 {
+            if slot.focused {
+                let fallback = self.bounce_target(role, &strip);
+                if fallback != role {
+                    if let Some(fb_slot) = strip.slot(fallback) {
+                        focus_terminal_pane(fb_slot.pane_id, false, false);
+                    }
+                }
+            }
+            hide_pane_with_id(PaneId::Terminal(slot.pane_id));
         }
     }
 
@@ -142,8 +270,8 @@ impl State {
             return;
         };
         match region.target {
-            ClickTarget::SessionCard => {
-                run_action(Action::ToggleSessionCard, BTreeMap::new());
+            ClickTarget::SessionCard | ClickTarget::SessionManager => {
+                Self::launch_session_manager();
             }
             ClickTarget::Role(role) => {
                 self.activate_role(role);
@@ -163,9 +291,6 @@ impl State {
             }
             ClickTarget::NextAttention => {
                 run_action(Action::GoToNextAttention, BTreeMap::new());
-            }
-            ClickTarget::SessionManager => {
-                Self::launch_session_manager();
             }
             ClickTarget::Monitor => {
                 Self::run_ide_background_flag("--toggle-monitor");
@@ -191,11 +316,20 @@ impl State {
 }
 
 impl ZellijPlugin for State {
-    fn load(&mut self, _configuration: BTreeMap<String, String>) {
+    fn load(&mut self, configuration: BTreeMap<String, String>) {
+        let _ = apply_kv_state_updates(
+            None,
+            &configuration,
+            &mut self.theme_slug,
+            &mut self.initial_root,
+            &mut self.workdir,
+        );
         set_selectable(false);
         request_permission(&[
             PermissionType::ReadApplicationState,
             PermissionType::ChangeApplicationState,
+            PermissionType::ReadCliPipes,
+            PermissionType::ReadSessionEnvironmentVariables,
             PermissionType::RunActionsAsUser,
             PermissionType::RunCommands,
         ]);
@@ -214,6 +348,7 @@ impl ZellijPlugin for State {
         match event {
             Event::PermissionRequestResult(PermissionStatus::Granted) => {
                 set_selectable(false);
+                self.sync_session_env();
                 true
             }
             Event::ModeUpdate(mode_info) => {
@@ -267,8 +402,46 @@ impl ZellijPlugin for State {
         }
     }
 
+    fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        if let PipeSource::Cli(input_pipe_id) = &pipe_message.source {
+            unblock_cli_pipe_input(input_pipe_id);
+        }
+        match pipe_message.name.as_str() {
+            "ws-ide-role" => {
+                let cmd = pipe_message
+                    .payload
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .to_ascii_lowercase();
+                match cmd.as_str() {
+                    "focus:ai" => self.activate_role(IdeRole::Ai),
+                    "focus:editor" => self.activate_role(IdeRole::Editor),
+                    "focus:shell" | "focus:term" => self.activate_role(IdeRole::Shell),
+                    "ensure:ai" => self.ensure_role(IdeRole::Ai),
+                    "ensure:editor" => self.ensure_role(IdeRole::Editor),
+                    "ensure:shell" | "ensure:term" => self.ensure_role(IdeRole::Shell),
+                    "toggle:ai" => self.toggle_role(IdeRole::Ai),
+                    "toggle:editor" => self.toggle_role(IdeRole::Editor),
+                    "toggle:shell" | "toggle:term" => self.toggle_role(IdeRole::Shell),
+                    _ => {}
+                }
+                false
+            }
+            "ws-ide-state" => apply_kv_state_updates(
+                pipe_message.payload.as_deref(),
+                &pipe_message.args,
+                &mut self.theme_slug,
+                &mut self.initial_root,
+                &mut self.workdir,
+            ),
+            _ => false,
+        }
+    }
+
     fn render(&mut self, _rows: usize, cols: usize) {
         let roles = self.compute_roles();
+        let subdir = compute_subdir_label(&self.initial_root, &self.workdir);
         let rendered = render_shelf(&RenderContext {
             cols,
             palette: &self.palette,
@@ -276,8 +449,103 @@ impl ZellijPlugin for State {
             tabs: &self.tabs,
             roles: &roles,
             global_attention: self.global_attention.as_ref(),
+            theme_slug: &self.theme_slug,
+            subdir_label: subdir.as_deref(),
         });
         self.last_regions = rendered.regions;
         print!("{}", rendered.ansi);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roles::RoleSlot;
+
+    #[test]
+    fn computes_subdir_label_only_when_workdir_diverges() {
+        assert_eq!(
+            compute_subdir_label(r"D:\src\repo", r"D:\src\repo"),
+            None
+        );
+        assert_eq!(
+            compute_subdir_label(r"D:\src\repo\", "d:/src/repo"),
+            None
+        );
+        assert_eq!(
+            compute_subdir_label(r"D:\src\repo", r"D:\src\repo\plugin\ws-bar\"),
+            Some("ws-bar".to_owned())
+        );
+    }
+
+    #[test]
+    fn parses_pipe_kv_state_updates_idempotently() {
+        let mut theme = String::new();
+        let mut root = String::new();
+        let mut workdir = String::new();
+        let args = BTreeMap::new();
+        assert!(apply_kv_state_updates(
+            Some("theme=christmas;root=D:\\repo;workdir=D:\\repo\\sub"),
+            &args,
+            &mut theme,
+            &mut root,
+            &mut workdir,
+        ));
+        assert_eq!(theme, "christmas");
+        assert_eq!(root, r"D:\repo");
+        assert_eq!(workdir, r"D:\repo\sub");
+        assert!(!apply_kv_state_updates(
+            Some("theme=christmas;root=D:\\repo;workdir=D:\\repo\\sub"),
+            &args,
+            &mut theme,
+            &mut root,
+            &mut workdir,
+        ));
+    }
+
+    #[test]
+    fn bounce_target_prefers_previous_visible_role() {
+        let mut state = State {
+            previous_role: Some(IdeRole::Shell),
+            current_role: Some(IdeRole::Editor),
+            ..Default::default()
+        };
+        let mut strip = RoleStrip {
+            ai: Some(RoleSlot {
+                role: IdeRole::Ai,
+                pane_id: 0,
+                focused: false,
+                hidden: false,
+                label: "AI".to_owned(),
+                attention: AttentionStatus::Idle,
+                quota: false,
+            }),
+            editor: Some(RoleSlot {
+                role: IdeRole::Editor,
+                pane_id: 1,
+                focused: true,
+                hidden: false,
+                label: "Editor".to_owned(),
+                attention: AttentionStatus::Idle,
+                quota: false,
+            }),
+            shell: Some(RoleSlot {
+                role: IdeRole::Shell,
+                pane_id: 2,
+                focused: false,
+                hidden: false,
+                label: "Shell".to_owned(),
+                attention: AttentionStatus::Idle,
+                quota: false,
+            }),
+            visible_tiled_count: 3,
+        };
+        assert_eq!(state.bounce_target(IdeRole::Editor, &strip), IdeRole::Shell);
+        if let Some(sh) = strip.shell.as_mut() {
+            sh.hidden = true;
+        }
+        assert_eq!(state.bounce_target(IdeRole::Editor, &strip), IdeRole::Ai);
+        state.previous_role = None;
+        assert_eq!(state.bounce_target(IdeRole::Editor, &strip), IdeRole::Ai);
     }
 }

@@ -580,6 +580,16 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
         }
     }
 }
+if (-not `$label -and (Get-Command glab -ErrorAction SilentlyContinue)) {
+    `$glJson = glab mr view -F json 2>`$null
+    if (`$LASTEXITCODE -eq 0 -and `$glJson) {
+        `$glObj = `$glJson | ConvertFrom-Json
+        if (`$glObj.iid -and `$glObj.web_url -and `$glObj.state -eq 'opened') {
+            `$label = "!`$(`$glObj.iid)"
+            `$url = [string]`$glObj.web_url
+        }
+    }
+}
 [System.IO.File]::WriteAllText('$($stateFile.Replace("'", "''"))', "`$label``n`$url``n")
 Remove-Item -LiteralPath '$($lockFile.Replace("'", "''"))' -Force -ErrorAction SilentlyContinue
 "@

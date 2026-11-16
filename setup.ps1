@@ -337,11 +337,20 @@ function Sync-ZellijPluginPermission([string]$PermissionsPath = '', [switch]$Rem
         Join-Path (Join-Path (Join-Path $HOME '.cache') 'zellij') 'permissions.kdl'
     }
 
-    $desiredPerms = @('ChangeApplicationState', 'ReadApplicationState', 'RunActionsAsUser', 'RunCommands')
+    $desiredPerms = @(
+        'ChangeApplicationState',
+        'ReadApplicationState',
+        'ReadCliPipes',
+        'ReadSessionEnvironmentVariables',
+        'RunActionsAsUser',
+        'RunCommands'
+    )
     $desiredBlock = (@(
         'windows-settings-bar {'
         '    ChangeApplicationState'
         '    ReadApplicationState'
+        '    ReadCliPipes'
+        '    ReadSessionEnvironmentVariables'
         '    RunActionsAsUser'
         '    RunCommands'
         '}'
@@ -440,6 +449,32 @@ function Deploy-ZellijConfig([string]$SourcePath, [string]$DestinationPath, [boo
         '(?s)[ \t]*// BEGIN WINDOWS-SETTINGS BAR PLUGIN.*?// END WINDOWS-SETTINGS BAR PLUGIN',
         $barBlock
     )
+    if (-not $UseWasmBar) {
+        $fallbackMenuRoles = @(
+            '        // BEGIN WINDOWS-SETTINGS BAR MENU ROLES'
+            '        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }'
+            '        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }'
+            '        item "Focus Shell" { MoveFocus "Down"; }'
+            '        // END WINDOWS-SETTINGS BAR MENU ROLES'
+        ) -join "`n"
+        $fallbackTabRoles = @(
+            '        // BEGIN WINDOWS-SETTINGS TAB MENU ROLES'
+            '        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }'
+            '        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }'
+            '        item "Focus Shell" { MoveFocus "Down"; }'
+            '        // END WINDOWS-SETTINGS TAB MENU ROLES'
+        ) -join "`n"
+        $fallbackRoleBinds = @(
+            '        // BEGIN WINDOWS-SETTINGS ROLE BINDS'
+            '        bind "Alt a" { MoveFocus "Up"; MoveFocus "Left"; }'
+            '        bind "Alt e" { MoveFocus "Up"; MoveFocus "Right"; }'
+            '        bind "Alt t" { MoveFocus "Down"; }'
+            '        // END WINDOWS-SETTINGS ROLE BINDS'
+        ) -join "`n"
+        $srcLf = [regex]::Replace($srcLf, '(?s)[ \t]*// BEGIN WINDOWS-SETTINGS BAR MENU ROLES.*?// END WINDOWS-SETTINGS BAR MENU ROLES', $fallbackMenuRoles)
+        $srcLf = [regex]::Replace($srcLf, '(?s)[ \t]*// BEGIN WINDOWS-SETTINGS TAB MENU ROLES.*?// END WINDOWS-SETTINGS TAB MENU ROLES', $fallbackTabRoles)
+        $srcLf = [regex]::Replace($srcLf, '(?s)[ \t]*// BEGIN WINDOWS-SETTINGS ROLE BINDS.*?// END WINDOWS-SETTINGS ROLE BINDS', $fallbackRoleBinds)
+    }
     $destDir = Split-Path -Parent $DestinationPath
     if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
         if (-not $DryRun) {

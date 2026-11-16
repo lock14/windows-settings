@@ -1328,6 +1328,75 @@ function Send-LiveNeovimReload {
     }
 }
 
+function Send-LiveZellijReload([hashtable]$Theme) {
+    if ($env:THEME_LIVE_ZELLIJ -eq '0') { return }
+    $zellijCmd = Get-Command zellij.exe, zellij -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $zellijCmd) { return }
+    $zellijExe = $zellijCmd.Source
+    if ($zellijExe -match '(?i)[\\/]mise[\\/]shims[\\/]') {
+        $miseRoot = Split-Path -Parent (Split-Path -Parent $zellijExe)
+        $zellijInstDir = Join-Path (Join-Path $miseRoot 'installs') 'zellij'
+        if ([System.IO.Directory]::Exists($zellijInstDir)) {
+            $directHit = Get-ChildItem -LiteralPath $zellijInstDir -Filter 'zellij.exe' -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+            if ($directHit) { $zellijExe = $directHit.FullName }
+        }
+    }
+
+    $sessions = [System.Collections.Generic.List[string]]::new()
+    if ($env:ZELLIJ_SESSION_NAME -and $env:ZELLIJ_SESSION_NAME.Trim()) {
+        $sessions.Add($env:ZELLIJ_SESSION_NAME.Trim())
+    }
+    try {
+        $rawList = @(& $zellijExe list-sessions -n 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $rawList.Count -gt 0) {
+            foreach ($ln in $rawList) {
+                $s = "$ln".Trim()
+                if (-not $s -or $s -match '^No active zellij sessions') { continue }
+                if ($s -match '^(\S+)\s*(.*)$') {
+                    $name = $Matches[1]
+                    $rest = $Matches[2]
+                    if ($rest -notmatch 'EXITED' -and -not $sessions.Contains($name)) {
+                        $sessions.Add($name)
+                    }
+                }
+            }
+        }
+    } catch {
+        Write-Verbose "Zellij session scan skipped: $_"
+    }
+
+    $payload = "theme=$($Theme['THEME_ID'])"
+    foreach ($sess in $sessions) {
+        try {
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = $zellijExe
+            $psi.ArgumentList.Add('--session')
+            $psi.ArgumentList.Add($sess)
+            $psi.ArgumentList.Add('pipe')
+            $psi.ArgumentList.Add('--name')
+            $psi.ArgumentList.Add('ws-ide-state')
+            $psi.ArgumentList.Add('--')
+            $psi.ArgumentList.Add($payload)
+            $psi.RedirectStandardInput = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            if ($proc) {
+                try { $proc.StandardInput.Close() } catch { Write-Verbose 'zellij pipe stdin close skipped' }
+                if (-not $proc.WaitForExit(1500)) {
+                    try { $proc.Kill($true) } catch { Write-Verbose 'Kill timed-out zellij pipe skipped' }
+                }
+            }
+        } catch {
+            Write-Verbose "Zellij theme pipe skipped on ${sess}: $_"
+        }
+    }
+}
+
 function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryRun = $false, [bool]$NoLive = $false) {
     $userHome = if ($HOME) { $HOME } else { $env:USERPROFILE }
     $cfgDir = Get-XdgConfigHome
@@ -1579,6 +1648,7 @@ function Invoke-ApplyTheme([hashtable]$Theme, [hashtable]$AllThemes, [bool]$DryR
         Sync-WindowsTerminalTheme -Theme $Theme -AllThemes $AllThemes
         Send-LiveOscSequence -Theme $Theme
         Send-LiveNeovimReload
+        Send-LiveZellijReload -Theme $Theme
     }
 
     Write-Output "Applied theme: $($Theme['THEME_LABEL']) ($($Theme['THEME_ID']))"

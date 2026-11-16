@@ -67,9 +67,11 @@ load_plugins {
 // IDE Workspace Right-Click Context Menus (shortcuts auto-resolved by Zellij from keybinds)
 context_menu {
     bar clear-defaults=true {
-        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }
-        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }
-        item "Focus Shell" { MoveFocus "Down"; }
+        // BEGIN WINDOWS-SETTINGS BAR MENU ROLES
+        item "Focus AI agent" { MessagePlugin { name "ws-ide-role"; payload "focus:ai"; }; }
+        item "Focus Editor" { MessagePlugin { name "ws-ide-role"; payload "focus:editor"; }; }
+        item "Focus Shell" { MessagePlugin { name "ws-ide-role"; payload "focus:shell"; }; }
+        // END WINDOWS-SETTINGS BAR MENU ROLES
         separator
         item "Session manager & inbox" {
             LaunchOrFocusPlugin "session-manager" {
@@ -86,14 +88,21 @@ context_menu {
         item "New tab" { NewTab; }
         item "Rename session…" { SwitchToMode "RenameSession"; SessionNameInput 0; }
         item "Open in a Zellij terminal" { OpenSessionInTerminal; }
+        item "Refresh all sessions" {
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--refresh" {
+                background true
+            }
+        }
         separator
         item "Hide top bar" { HideBars; }
         item "Detach" { Detach; }
     }
     tab clear-defaults=true {
-        item "Focus AI agent" { MoveFocus "Up"; MoveFocus "Left"; }
-        item "Focus Editor" { MoveFocus "Up"; MoveFocus "Right"; }
-        item "Focus Shell" { MoveFocus "Down"; }
+        // BEGIN WINDOWS-SETTINGS TAB MENU ROLES
+        item "Focus AI agent" { MessagePlugin { name "ws-ide-role"; payload "focus:ai"; }; }
+        item "Focus Editor" { MessagePlugin { name "ws-ide-role"; payload "focus:editor"; }; }
+        item "Focus Shell" { MessagePlugin { name "ws-ide-role"; payload "focus:shell"; }; }
+        // END WINDOWS-SETTINGS TAB MENU ROLES
         separator
         item "Session manager & inbox" {
             LaunchOrFocusPlugin "session-manager" {
@@ -290,7 +299,13 @@ keybinds clear-defaults=true {
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
         bind "Space" { NextSwapLayout; SwitchToMode "Normal"; }
         bind "b" { ToggleBars; SwitchToMode "Normal"; }
-        bind "r" { SwitchToMode "Resize"; }
+        bind "r" {
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--refresh" {
+                background true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "R" "Shift r" { SwitchToMode "Resize"; }
         bind "g" { SwitchToMode "Locked"; }
         bind "m" {
             Run "cmd.exe" "/d" "/c" "ide.cmd" "--toggle-monitor" {
@@ -395,10 +410,14 @@ keybinds clear-defaults=true {
         bind "Alt k" { MoveFocus "Up"; }
         bind "Alt l" { MoveFocus "Right"; }
 
-        // Layer 2 Instant IDE Role Jumps & Bounce (<0.1ms native actions)
-        bind "Alt a" { MoveFocus "Up"; MoveFocus "Left"; }
-        bind "Alt e" { MoveFocus "Up"; MoveFocus "Right"; }
-        bind "Alt t" { MoveFocus "Down"; }
+        // Layer 2 Instant IDE Role Jumps, Bounce & Non-Destructive Parking (<0.1ms WASM pipe)
+        // BEGIN WINDOWS-SETTINGS ROLE BINDS
+        bind "Alt a" { MessagePlugin { name "ws-ide-role"; payload "focus:ai"; }; }
+        bind "Alt e" { MessagePlugin { name "ws-ide-role"; payload "focus:editor"; }; }
+        bind "Alt t" { MessagePlugin { name "ws-ide-role"; payload "focus:shell"; }; }
+        bind "Alt E" "Alt Shift e" { MessagePlugin { name "ws-ide-role"; payload "toggle:editor"; }; }
+        bind "Alt T" "Alt Shift t" { MessagePlugin { name "ws-ide-role"; payload "toggle:shell"; }; }
+        // END WINDOWS-SETTINGS ROLE BINDS
         bind "Alt ;" { FocusLastPane; }
 
         // Layer 2 Session Manager + OSC 7501 Attention Inbox & Session Flipping
@@ -415,7 +434,7 @@ keybinds clear-defaults=true {
 
         // Layer 2 Zoom, Floating Drawer & Tabs
         bind "Alt z" { ToggleFocusFullscreen; }
-        bind "Alt f" "Alt T" "Alt Shift t" { ToggleFloatingPanes; }
+        bind "Alt f" { ToggleFloatingPanes; }
         bind "Alt F" "Alt Shift f" { TogglePaneEmbedOrFloating; }
         bind "Alt n" { NewPane; }
         bind "Alt 1" { GoToTab 1; }
