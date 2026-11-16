@@ -73,10 +73,9 @@ context_menu {
         item "Focus Shell" { MessagePlugin { name "ws-ide-role"; payload "focus:shell"; }; }
         // END WINDOWS-SETTINGS BAR MENU ROLES
         separator
-        item "Session manager & inbox" {
-            LaunchOrFocusPlugin "session-manager" {
-                floating true
-                move_to_focused_tab true
+        item "IDE fleet switcher" {
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--toggle-sessions" {
+                background true
             }
         }
         item "Next attention agent" { GoToNextAttention; }
@@ -104,10 +103,9 @@ context_menu {
         item "Focus Shell" { MessagePlugin { name "ws-ide-role"; payload "focus:shell"; }; }
         // END WINDOWS-SETTINGS TAB MENU ROLES
         separator
-        item "Session manager & inbox" {
-            LaunchOrFocusPlugin "session-manager" {
-                floating true
-                move_to_focused_tab true
+        item "IDE fleet switcher" {
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--toggle-sessions" {
+                background true
             }
         }
         item "Next attention agent" { GoToNextAttention; }
@@ -261,6 +259,12 @@ keybinds clear-defaults=true {
         bind "Ctrl b" { Write 2; SwitchToMode "Normal"; }
         bind "d" { Detach; }
         bind "s" {
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--toggle-sessions" {
+                background true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
                 move_to_focused_tab true
@@ -420,11 +424,10 @@ keybinds clear-defaults=true {
         // END WINDOWS-SETTINGS ROLE BINDS
         bind "Alt ;" { FocusLastPane; }
 
-        // Layer 2 Session Manager + OSC 7501 Attention Inbox & Session Flipping
+        // Layer 2 IDE Fleet Switcher + OSC 7501 Attention Jumping & Session Flipping
         bind "Alt s" {
-            LaunchOrFocusPlugin "session-manager" {
-                floating true
-                move_to_focused_tab true
+            Run "cmd.exe" "/d" "/c" "ide.cmd" "--toggle-sessions" {
+                background true
             }
             SwitchToMode "Normal"
         }

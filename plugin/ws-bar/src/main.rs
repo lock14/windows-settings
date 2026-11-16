@@ -182,12 +182,22 @@ impl State {
         clicked
     }
 
+    fn focus_tiled_pane(&self, pane_id: u32) {
+        if self.are_floating_visible() {
+            let _ = hide_floating_panes(None);
+        }
+        focus_terminal_pane(pane_id, false, false);
+    }
+
     fn activate_role(&self, clicked: IdeRole) {
         let strip = self.compute_roles();
         let Some(slot) = strip.slot(clicked) else {
             return;
         };
         if slot.hidden {
+            if self.are_floating_visible() {
+                let _ = hide_floating_panes(None);
+            }
             show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
             return;
         }
@@ -198,9 +208,12 @@ impl State {
         };
         if let Some(target_slot) = strip.slot(target_role) {
             if target_slot.hidden {
+                if self.are_floating_visible() {
+                    let _ = hide_floating_panes(None);
+                }
                 show_pane_with_id(PaneId::Terminal(target_slot.pane_id), false, true);
             } else {
-                focus_terminal_pane(target_slot.pane_id, false, false);
+                self.focus_tiled_pane(target_slot.pane_id);
             }
         }
     }
@@ -211,9 +224,12 @@ impl State {
             return;
         };
         if slot.hidden {
+            if self.are_floating_visible() {
+                let _ = hide_floating_panes(None);
+            }
             show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
         } else if !slot.focused {
-            focus_terminal_pane(slot.pane_id, false, false);
+            self.focus_tiled_pane(slot.pane_id);
         }
     }
 
@@ -223,13 +239,16 @@ impl State {
             return;
         };
         if slot.hidden {
+            if self.are_floating_visible() {
+                let _ = hide_floating_panes(None);
+            }
             show_pane_with_id(PaneId::Terminal(slot.pane_id), false, true);
         } else if strip.visible_tiled_count > 1 {
             if slot.focused {
                 let fallback = self.bounce_target(role, &strip);
                 if fallback != role {
                     if let Some(fb_slot) = strip.slot(fallback) {
-                        focus_terminal_pane(fb_slot.pane_id, false, false);
+                        self.focus_tiled_pane(fb_slot.pane_id);
                     }
                 }
             }
@@ -242,36 +261,13 @@ impl State {
         let _ = open_command_pane_background(cmd, BTreeMap::new());
     }
 
-    fn launch_session_manager() {
-        let initial = actions::initial_panes_from_cli(
-            Vec::new(),
-            Some("session-manager".to_owned()),
-            None,
-            std::path::PathBuf::new(),
-            false,
-            false,
-        );
-        if let Some(Some(CommandOrPlugin::Plugin(plugin))) = initial.map(|mut v| v.pop()) {
-            let action = Action::LaunchOrFocusPlugin {
-                plugin,
-                should_float: true,
-                move_to_focused_tab: true,
-                should_open_in_place: false,
-                close_replaced_pane: false,
-                skip_cache: false,
-                tab_id: None,
-            };
-            run_action(action, BTreeMap::new());
-        }
-    }
-
     fn handle_left_click(&self, col: usize) {
         let Some(region) = self.last_regions.iter().find(|r| r.contains(col)) else {
             return;
         };
         match region.target {
             ClickTarget::SessionCard | ClickTarget::SessionManager => {
-                Self::launch_session_manager();
+                Self::run_ide_background_flag("--toggle-sessions");
             }
             ClickTarget::Role(role) => {
                 self.activate_role(role);

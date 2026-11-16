@@ -890,9 +890,9 @@ end, { desc = "Toggle Focus: Editor <-> AI Agent" })
 
 map("n", "<leader>s", function()
     if in_ide_workspace() then
-        ide_job("--sessions")
+        ide_job("--toggle-sessions")
     end
-end, { desc = "Open IDE Session Manager & Attention Inbox" })
+end, { desc = "Toggle IDE Fleet Switcher" })
 
 local function send_to_ai_pane(kind, payload, opts)
     opts = opts or {}

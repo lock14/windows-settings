@@ -28,7 +28,7 @@ Options:
   --new-window             Open workspace in a new Windows Terminal window
   --backend <zellij|wt>    Select multiplexer backend: zellij (default) or wt (split-pane fallback)
   --ai, --agent <CLI>      Select AI CLI agent: agy (default), claude, or codex (overrides `$env:IDE_AI_CLI)
-  -s, --sessions           Open Zellij Session Manager + Attention Inbox (or fzf session switcher outside Zellij)
+  -s, --sessions           Open interactive IDE Fleet Switcher + live pane preview (Alt+s / Space s)
   --next-attention         Jump directly to the next agent pane needing attention across all sessions
   --toggle                 Bounce focus between Editor and AI Agent panes (unparking if hidden)
   --focus-role <ROLE>      Focus pane role (ai, editor, or term), unparking or bouncing back if focused
@@ -686,7 +686,16 @@ function Invoke-ToggleZellijModal([string]$ModalName) {
     $zellijBin = Resolve-ZellijExecutable
     if (-not $env:ZELLIJ -or -not $zellijBin) {
         if ($ModalName -eq 'keys') { Show-IdeKeysCheatsheet; exit 0 }
+        if ($ModalName -eq 'sessions') { Invoke-SessionSwitcher; exit 0 }
         Invoke-SystemMonitor
+    }
+
+    if ($ModalName -eq 'sessions') {
+        $ideCmd = Join-Path $ScriptDir 'ide.cmd'
+        if (Test-Path -LiteralPath $ideCmd -PathType Leaf) {
+            & cmd.exe /d /c $ideCmd --toggle-sessions *> $null
+            exit 0
+        }
     }
 
     $rawSess = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME } elseif ($env:IDE_SESSION) { $env:IDE_SESSION } else { 'default' }
@@ -720,6 +729,9 @@ function Invoke-ToggleZellijModal([string]$ModalName) {
     $env:IDE_MODAL_SIZED = '1'
     if ($ModalName -eq 'keys') {
         & $zellijBin action new-pane --floating --close-on-exit -x 6% -y 10% --width 88% --height 80% --name 'Keybindings' -- $pwshBin -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath --keys *> $null
+    } elseif ($ModalName -eq 'sessions') {
+        $env:IDE_SESSIONS_MODAL = '1'
+        & $zellijBin action new-pane --floating --close-on-exit -x 5% -y 8% --width 90% --height 84% --name 'IDE Fleet Switcher' -- $pwshBin -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath --sessions *> $null
     } else {
         & $zellijBin action new-pane --floating --close-on-exit -x 5% -y 5% --width 90% --height 90% --name 'System Monitor' -- $pwshBin -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath --monitor *> $null
     }
@@ -754,7 +766,7 @@ function Get-IdeKeysCheatsheetText {
     $rule    = '─' * 98
 
     $rowsPanes = @(
-        @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'Session Manager & Inbox'),
+        @('Alt+h / j / k / l', 'Move focus between panes', 'Alt+s / Space s', 'IDE Fleet Switcher & Preview'),
         @('Alt+a / e / t', 'Jump/bounce AI/Editor/Shell', 'Alt+Shift+S', 'Jump to Next Attention'),
         @('Alt+Shift+E / T', 'Hide/restore Editor / Shell', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
         @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
@@ -1666,25 +1678,199 @@ function Format-FzfSessionRowList {
     return $rows.ToArray()
 }
 
+function Show-IdeSessionPreview([string]$TargetArg) {
+    $sess = Resolve-TargetSession $TargetArg
+    $meta = Read-SessionState $sess
+    $liveZellij = Get-LiveZellijSessionMap
+    $pal = Get-ActivePaletteMap
+    $isLive = ($liveZellij[$sess] -eq 'live')
+    $curSess = if ($env:ZELLIJ_SESSION_NAME) { Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+    $isCurrent = ($isLive -and $curSess -and [string]::Equals($sess, $curSess, [System.StringComparison]::OrdinalIgnoreCase))
+
+    $statusTag = if ($isCurrent) {
+        "$($pal.E_CYN)LIVE (current)$($pal.E_RST)"
+    } elseif ($isLive) {
+        "$($pal.E_GRN)LIVE$($pal.E_RST)"
+    } else {
+        "$($pal.E_B01)SAVED (stopped)$($pal.E_RST)"
+    }
+
+    $workDir = if ($meta -and $meta['workdir']) { [string]$meta['workdir'] } elseif ($meta -and $meta['root']) { [string]$meta['root'] } else { '' }
+    $initRoot = if ($meta -and $meta['root']) { [string]$meta['root'] } else { $workDir }
+    $aiCli = if ($meta -and $meta['ai_cli']) { [string]$meta['ai_cli'] } else { 'agy' }
+    $layout = if ($meta -and $meta['layout']) { [string]$meta['layout'] } else { '3pane' }
+    $rawSt = if ($meta -and $meta['agent_state']) { ([string]$meta['agent_state']).ToUpperInvariant() } else { 'IDLE' }
+    if ($rawSt -eq 'RUNNING') { $rawSt = 'WORKING' }
+    if ($rawSt -eq 'APPROVAL') { $rawSt = 'ATTN' }
+    $cSt = switch ($rawSt) {
+        'ATTN'     { $pal.E_ORG }
+        'QUOTA'    { $pal.E_YLW }
+        'ERROR'    { $pal.E_RED }
+        'DONE'     { $pal.E_GRN }
+        'WORKING'  { $pal.E_BLU }
+        default    { $pal.E_CYN }
+    }
+    $agentMsg = if ($meta -and $meta['agent_message']) { [string]$meta['agent_message'] } else { '' }
+    $git = if ($workDir) { Get-FastGitSummary $workDir } else { @{ Branch = ''; PrBadge = ''; PrUrl = '' } }
+
+    $cols = 64
+    $parsedCols = 0
+    if ($env:FZF_PREVIEW_COLUMNS -and [int]::TryParse($env:FZF_PREVIEW_COLUMNS.Trim(), [ref]$parsedCols)) {
+        $cols = [Math]::Max(36, $parsedCols - 2)
+    }
+    $previewRows = 28
+    $parsedRows = 0
+    if ($env:FZF_PREVIEW_LINES -and [int]::TryParse($env:FZF_PREVIEW_LINES.Trim(), [ref]$parsedRows)) {
+        $previewRows = [Math]::Max(12, $parsedRows)
+    }
+
+    $headerLines = [System.Collections.Generic.List[string]]::new()
+    $headerLines.Add(" $($pal.E_BLU) $sess$($pal.E_RST)  $statusTag  $($pal.E_B01)·$($pal.E_RST)  $($pal.E_B0)$layout$($pal.E_RST)  $($pal.E_B01)·$($pal.E_RST)  $($pal.E_YLW)$aiCli$($pal.E_RST) (${cSt}${rawSt}$($pal.E_RST))")
+    if ($workDir) {
+        $divNote = if ($initRoot -and -not [string]::Equals($initRoot.TrimEnd('\', '/'), $workDir.TrimEnd('\', '/'), [System.StringComparison]::OrdinalIgnoreCase)) {
+            " $($pal.E_B01)(root: $initRoot)$($pal.E_RST)"
+        } else {
+            ''
+        }
+        $headerLines.Add(" $($pal.E_B01)Dir   :$($pal.E_RST) $($pal.E_B0)$workDir$($pal.E_RST)$divNote")
+    }
+    if ($git.Branch) {
+        $prInfo = if ($git.PrBadge) { "  $($pal.E_CYN)$($git.PrBadge)$($pal.E_RST)" } else { '' }
+        $prLink = if ($git.PrUrl) { " $($pal.E_B01)($($git.PrUrl))$($pal.E_RST)" } else { '' }
+        $headerLines.Add(" $($pal.E_B01)Branch:$($pal.E_RST) $($pal.E_GRN)$($git.Branch)$($pal.E_RST)${prInfo}${prLink}")
+    }
+    if ($agentMsg) {
+        $headerLines.Add(" $($pal.E_B01)Note  :$($pal.E_RST) $($pal.E_B0)$agentMsg$($pal.E_RST)")
+    }
+    $headerLines.Add(" $($pal.E_B01)$('─' * [Math]::Max(20, $cols))$($pal.E_RST)")
+
+    foreach ($hl in $headerLines) {
+        Write-Output $hl
+    }
+
+    $availBodyRows = [Math]::Max(6, $previewRows - $headerLines.Count - 1)
+    if ($isLive) {
+        $zellijBin = Resolve-ZellijExecutable
+        $aiPane = Get-RolePaneId -SessionName $sess -Role 'ai'
+        if (-not $aiPane) { $aiPane = 'terminal_0' }
+        if ($zellijBin) {
+            try {
+                $psi = [System.Diagnostics.ProcessStartInfo]::new($zellijBin)
+                if (-not ($env:ZELLIJ -and $isCurrent)) {
+                    $psi.ArgumentList.Add('--session')
+                    $psi.ArgumentList.Add($sess)
+                }
+                foreach ($a in @('action', 'dump-screen', '--ansi', '--pane-id', $aiPane)) {
+                    $psi.ArgumentList.Add($a)
+                }
+                $psi.RedirectStandardInput = $true
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $proc = [System.Diagnostics.Process]::Start($psi)
+                if ($proc) {
+                    try { $proc.StandardInput.Close() } catch { Write-Verbose 'dump-screen stdin close skipped' }
+                    $dumpRaw = $proc.StandardOutput.ReadToEnd()
+                    if (-not $proc.WaitForExit(1500)) {
+                        try { $proc.Kill($true) } catch { Write-Verbose 'Timed-out dump-screen terminated' }
+                    } elseif ($dumpRaw) {
+                        $rawLines = @($dumpRaw -split "`r?`n")
+                        $lastNonBlank = $rawLines.Count - 1
+                        while ($lastNonBlank -ge 0) {
+                            $stripped = [regex]::Replace($rawLines[$lastNonBlank], "\x1b\[[0-9;?]*[ -/]*[@-~]", '').Trim()
+                            if ($stripped.Length -gt 0) { break }
+                            $lastNonBlank--
+                        }
+                        if ($lastNonBlank -ge 0) {
+                            $trimmed = $rawLines[0..$lastNonBlank]
+                            $startIdx = [Math]::Max(0, $trimmed.Count - $availBodyRows)
+                            foreach ($dl in $trimmed[$startIdx..($trimmed.Count - 1)]) {
+                                Write-Output $dl
+                            }
+                            return
+                        }
+                    }
+                }
+            } catch {
+                Write-Verbose "Live pane dump skipped: $_"
+            }
+        }
+        Write-Output " $($pal.E_B01)(Live AI pane buffer is empty)$($pal.E_RST)"
+        return
+    }
+
+    if ($workDir -and [System.IO.Directory]::Exists($workDir)) {
+        $gitBin = Get-Command git.exe, git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($gitBin -and $git.Branch) {
+            Write-Output " $($pal.E_B01)Recent commits (press Enter to launch workspace):$($pal.E_RST)"
+            $logLines = @(& $gitBin.Source -C $workDir log -n ([Math]::Max(4, $availBodyRows - 2)) --color=always '--pretty=format: %C(yellow)%h%Creset %s %C(cyan)(%cr)%Creset' 2>$null)
+            foreach ($ll in $logLines) { Write-Output $ll }
+            return
+        }
+        Write-Output " $($pal.E_B01)Workspace files (press Enter to launch workspace):$($pal.E_RST)"
+        Get-ChildItem -LiteralPath $workDir -Force -ErrorAction SilentlyContinue |
+            Select-Object -First ([Math]::Max(4, $availBodyRows - 2)) |
+            ForEach-Object {
+                $prefix = if ($_.PSIsContainer) { "$($pal.E_BLU)󰉋 " } else { "$($pal.E_B0)  " }
+                Write-Output " ${prefix}$($_.Name)$($pal.E_RST)"
+            }
+    }
+}
+
+function Invoke-ZoxideNewWorkspacePicker([hashtable]$Pal, [string]$FzfPath, [string]$HeightArg) {
+    $zoxCmd = Get-Command zoxide -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $zoxCmd) { return }
+    $dirs = @(& $zoxCmd.Source query -l 2>$null)
+    if ($dirs.Count -eq 0) { return }
+    $fzfColors = "--color=bg+:$($Pal.BASE02),bg:$($Pal.BASE03),spinner:$($Pal.GREEN),hl:$($Pal.BASE01),fg:$($Pal.BASE0),header:$($Pal.BASE01),info:$($Pal.YELLOW),pointer:$($Pal.GREEN),marker:$($Pal.GREEN),fg+:$($Pal.BASE1),prompt:$($Pal.YELLOW),hl+:$($Pal.BLUE),label:$($Pal.BASE01)"
+    $pickedDir = ($dirs | & $FzfPath --layout=reverse $HeightArg --border=rounded '--prompt=New IDE Dir > ' '--border-label= Enter: launch IDE workspace | Esc: cancel ' --border-label-pos=bottom $fzfColors | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $pickedDir -and (Test-Path -LiteralPath $pickedDir -PathType Container)) {
+        $pwshExe = (Get-Process -Id $PID).Path
+        if (-not $pwshExe) { $pwshExe = 'pwsh' }
+        & $pwshExe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath $pickedDir
+        exit $LASTEXITCODE
+    }
+}
+
 function Invoke-SessionSwitcher {
     $zellijBin = Resolve-ZellijExecutable
-    if ($zellijBin -and $env:ZELLIJ -and $env:IDE_FZF_SESSIONS -ne '1') {
+    if ($zellijBin -and $env:ZELLIJ -and $env:IDE_NATIVE_ZELLIJ_SESSIONS -eq '1') {
         & $zellijBin action launch-or-focus-plugin --floating --move-to-focused-tab 'zellij:session-manager' *> $null
         exit 0
     }
     $fzfCmd = Get-Command fzf -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($zellijBin -and $fzfCmd -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) {
-        $rows = @(Format-FzfSessionRowList)
-        if ($rows.Count -eq 0) {
-            Write-Output 'No IDE workspace sessions found.'
+        $pal = Get-ActivePaletteMap
+        $heightArg = if ($env:IDE_SESSIONS_MODAL -eq '1') { '--height=100%' } else { '--height=75%' }
+        $fleet = Get-ClassifiedIdeFleet -IncludeGit $true
+        if ($fleet.Count -eq 0) {
+            Invoke-ZoxideNewWorkspacePicker -Pal $pal -FzfPath $fzfCmd.Source -HeightArg $heightArg
             exit 0
         }
-        $pal = Get-ActivePaletteMap
+        $sessW = 7
+        $cliW = 5
+        $stateW = 5
+        $gitW = 6
+        foreach ($e in $fleet) {
+            if ($e.Session.Length -gt $sessW) { $sessW = [Math]::Min(28, $e.Session.Length) }
+            if ($e.AiCli.Length -gt $cliW) { $cliW = [Math]::Min(12, $e.AiCli.Length) }
+            if ($e.StateLabel.Length -gt $stateW) { $stateW = [Math]::Min(16, $e.StateLabel.Length) }
+            if ($e.BranchLabel.Length -gt $gitW) { $gitW = [Math]::Min(28, $e.BranchLabel.Length) }
+        }
+        $rows = [System.Collections.Generic.List[string]]::new()
+        foreach ($e in $fleet) {
+            $line = Format-FleetTableLine -Entry $e -Pal $pal -SessW $sessW -CliW $cliW -StateW $stateW -GitW $gitW -UseColor $true
+            $rows.Add("$($e.Session)`t$line")
+        }
+        $hdrLine = ('  {0}  {1}  {2}  {3}  WORKSPACE' -f 'SESSION'.PadRight($sessW), 'AGENT'.PadRight($cliW), 'STATE'.PadRight($stateW), 'BRANCH'.PadRight($gitW))
+
         $pwshExe = (Get-Process -Id $PID).Path
         if (-not $pwshExe) { $pwshExe = 'pwsh' }
         $selfQuoted = "`"$PSCommandPath`""
         $pwshQuoted = "`"$pwshExe`" -NoProfile -ExecutionPolicy Bypass -File $selfQuoted"
         $reloadCmd = "$pwshQuoted --sessions-lines"
+        $previewCmd = "$pwshQuoted --session-preview {1}"
         $fzfColors = "--color=bg+:$($pal.BASE02),bg:$($pal.BASE03),spinner:$($pal.GREEN),hl:$($pal.BASE01),fg:$($pal.BASE0),header:$($pal.BASE01),info:$($pal.YELLOW),pointer:$($pal.GREEN),marker:$($pal.GREEN),fg+:$($pal.BASE1),prompt:$($pal.YELLOW),hl+:$($pal.BLUE),label:$($pal.BASE01)"
 
         $rawOut = @($rows | & $fzfCmd.Source `
@@ -1693,13 +1879,16 @@ function Invoke-SessionSwitcher {
             --with-nth=2.. `
             --multi `
             --layout=reverse `
-            --height=70% `
+            $heightArg `
+            "--header=$hdrLine" `
             --info=inline-right `
             '--prompt=IDE > ' `
             --border=rounded `
-            '--border-label= Enter: attach | C-a/e/t: role | C-y: ack | C-o: PR | M-n: new | C-x: quit | C-r: reload ' `
+            '--border-label= Enter: switch | C-a/e/t: role | C-n: new | C-o: PR | C-y: ack | C-x: quit | C-r: reload ' `
             --border-label-pos=bottom `
-            --expect=ctrl-a,ctrl-e,ctrl-t,alt-n `
+            "--preview=$previewCmd" `
+            --preview-window=right:52%:wrap:border-left `
+            --expect=ctrl-a,ctrl-e,ctrl-t,ctrl-n,alt-n `
             "--bind=ctrl-r:reload($reloadCmd)" `
             "--bind=ctrl-y:execute-silent($pwshQuoted --ack-ai {+1})+reload($reloadCmd)" `
             "--bind=ctrl-o:execute-silent($pwshQuoted --open-pr {1})" `
@@ -1710,35 +1899,34 @@ function Invoke-SessionSwitcher {
             exit 0
         }
         $keyPressed = "$($rawOut[0])".Trim()
-        if ($keyPressed -eq 'alt-n') {
-            $zoxCmd = Get-Command zoxide -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($zoxCmd) {
-                $dirs = @(& $zoxCmd.Source query -l 2>$null)
-                if ($dirs.Count -gt 0) {
-                    $pickedDir = ($dirs | & $fzfCmd.Source --layout=reverse --height=60% --border=rounded '--prompt=New IDE Dir > ' $fzfColors | Out-String).Trim()
-                    if ($LASTEXITCODE -eq 0 -and $pickedDir -and (Test-Path -LiteralPath $pickedDir -PathType Container)) {
-                        & $pwshExe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath $pickedDir
-                        exit $LASTEXITCODE
-                    }
-                }
-            }
+        if ($keyPressed -in @('ctrl-n', 'alt-n')) {
+            Invoke-ZoxideNewWorkspacePicker -Pal $pal -FzfPath $fzfCmd.Source -HeightArg $heightArg
             exit 0
         }
 
         $selLine = if ($rawOut.Count -ge 2) { "$($rawOut[1])" } else { '' }
         $chosen = ($selLine -split "`t")[0].Trim()
         if ($chosen) {
-            $env:ZELLIJ_CONFIG_DIR = Get-ZellijConfigDir
-            $meta = Read-SessionState $chosen
-            $wdir = if ($meta -and $meta['workdir'] -and (Test-Path -LiteralPath $meta['workdir'])) { [string]$meta['workdir'] } else { (Get-Location).ProviderPath }
-            $lay = if ($meta -and $meta['layout'] -eq '2pane') { 'ide-2pane' } else { 'ide-3pane' }
             $focusRole = switch ($keyPressed) {
                 'ctrl-a' { 'ai' }
                 'ctrl-e' { 'editor' }
                 'ctrl-t' { 'shell' }
                 default  { '' }
             }
-            if ($focusRole) {
+            $curZellijSess = if ($env:ZELLIJ_SESSION_NAME) { Get-SanitizedToken $env:ZELLIJ_SESSION_NAME.Trim() } else { '' }
+            if ($env:ZELLIJ -and $curZellijSess -and [string]::Equals($chosen, $curZellijSess, [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($focusRole) {
+                    [void](Invoke-ZellijPipe -SessionName $chosen -PipeName 'ws-ide-role' -Payload "ensure:$focusRole")
+                }
+                exit 0
+            }
+
+            $env:ZELLIJ_CONFIG_DIR = Get-ZellijConfigDir
+            $meta = Read-SessionState $chosen
+            $wdir = if ($meta -and $meta['workdir'] -and (Test-Path -LiteralPath $meta['workdir'])) { [string]$meta['workdir'] } else { (Get-Location).ProviderPath }
+            $lay = if ($meta -and $meta['layout'] -eq '2pane') { 'ide-2pane' } else { 'ide-3pane' }
+            $liveZellij = Get-LiveZellijSessionMap
+            if ($focusRole -and $liveZellij[$chosen] -eq 'live') {
                 [void](Invoke-ZellijPipe -SessionName $chosen -PipeName 'ws-ide-role' -Payload "ensure:$focusRole")
             }
             if ($env:ZELLIJ) {
@@ -2231,7 +2419,10 @@ function Close-IdeSessionList([string[]]$TargetArgs, [bool]$Force) {
             "$sess.pane-term",
             "launch-$sess-ai.ps1",
             "launch-$sess-editor.ps1",
-            "launch-$sess-term.ps1"
+            "launch-$sess-term.ps1",
+            "sessions-$sess.pane",
+            "sessions-$sess.lock",
+            "modal-sessions-$sess.json"
         )) {
             $p = Join-Path $stateDir $artifact
             if (Test-Path -LiteralPath $p) {
@@ -2660,6 +2851,9 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         '--toggle-monitor' {
             Invoke-ToggleZellijModal -ModalName 'monitor'
         }
+        '--toggle-sessions' {
+            Invoke-ToggleZellijModal -ModalName 'sessions'
+        }
         { $_ -in @('--monitor', '--top', '--btop', 'top') } {
             Invoke-SystemMonitor
         }
@@ -2687,6 +2881,11 @@ for ($i = 0; $i -lt $args.Count; $i++) {
         }
         { $_ -in @('-s', '--sessions') } {
             Invoke-SessionSwitcher
+        }
+        '--session-preview' {
+            $pSess = if ($i + 1 -lt $args.Count) { [string]$args[++$i] } else { '' }
+            Show-IdeSessionPreview -TargetArg $pSess
+            exit 0
         }
         '--sessions-lines' {
             foreach ($r in (Format-FzfSessionRowList)) {
