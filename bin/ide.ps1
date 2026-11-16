@@ -4,8 +4,8 @@
 .DESCRIPTION
     Windows & cross-platform counterpart to home-settings/bin/ide powered by Zellij 0.46+ (with
     Windows Terminal wt.exe fallback). Provides persistent multi-repo AI agent sessions, native
-    OSC 7501 Attention Inbox & live session previews (Alt+s / Alt+Shift+S), opt-in 1-hop GPU
-    desktop window + OS System Tray & notifications (--desktop), Neovim Named Pipe RPC
+    OSC 7501 Attention Inbox & live session previews (Alt+s / Alt+Shift+S), opt-in standalone
+    1-hop GPU desktop window (--desktop, no background tray daemon), Neovim Named Pipe RPC
     (\\.\pipe\nvim-ide-<session>), direct bracketed-paste context dispatch (--send), synchronized
     directory diving (icd / :IdeCd), and unsaved-buffer protected workspace exit (:Q / qide / quit).
 #>
@@ -24,7 +24,7 @@ Options:
   --3pane                  Launch default 3-pane Inverted-T layout (Top-Left AI, Top-Right Editor, Bottom Shell)
   --2pane                  Launch 2-pane side-by-side layout (Left AI, Right Editor)
   -d, --detach             Start or ensure the workspace session runs detached in the background
-  --desktop                Open in Zellij's 1-hop GPU desktop terminal (with System Tray & OS notifications)
+  --desktop                Open in a standalone Zellij 1-hop GPU desktop window (no system tray or daemon)
   --new-window             Open workspace in a new Windows Terminal window
   --backend <zellij|wt>    Select multiplexer backend: zellij (default) or wt (split-pane fallback)
   --ai, --agent <CLI>      Select AI CLI agent: agy (default), claude, or codex (overrides `$env:IDE_AI_CLI)
@@ -771,7 +771,7 @@ function Get-IdeKeysCheatsheetText {
         @('Alt+Shift+E / T', 'Hide/restore Editor / Shell', 'Alt+[ / Alt+]', 'Prev / next IDE session'),
         @('Alt+z / Alt+f', 'Zoom 100% / Floating drawer', 'Ctrl+b d', 'Detach (agents keep running)'),
         @('Alt+Arrows', 'Resize active pane', 'ide -d [dir]', 'Spawn detached session'),
-        @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', '1-Hop GPU app + Tray icon'),
+        @('Alt+Shift+H/J/K/L', 'Move / swap active pane', 'ide --desktop', 'Standalone 1-Hop GPU window'),
         @('Alt+? / Alt+m', 'Toggle keys / system monitor', ':Q / Alt+q / qide', 'Safe-quit IDE (checks saves)'),
         @('Right-click bar/pane', 'IDE workspace context menu', 'Ctrl+b r / b', 'Refresh all / toggle top bar')
     )
@@ -2899,7 +2899,15 @@ for ($i = 0; $i -lt $args.Count; $i++) {
                 if ($env:ZELLIJ) {
                     & $zBin action go-to-next-attention *> $null
                 } else {
-                    & $zBin terminal --inbox *> $null
+                    $fleet = Get-ClassifiedIdeFleet -IncludeGit $false
+                    $topAttn = $fleet | Where-Object { $_.Status -eq 'live' -and $_.NeedsAttn } | Select-Object -First 1
+                    if ($topAttn) {
+                        $env:ZELLIJ_CONFIG_DIR = Get-ZellijConfigDir
+                        [void](Invoke-ZellijPipe -SessionName $topAttn.Session -PipeName 'ws-ide-role' -Payload 'ensure:ai')
+                        & $zBin attach $topAttn.Session
+                        exit $LASTEXITCODE
+                    }
+                    Invoke-SessionSwitcher
                 }
             }
             exit 0
@@ -3129,7 +3137,7 @@ if ($effectiveBackend -eq 'zellij') {
     $zellijPreviewCmd = if ($detachFlag) {
         "zellij attach --create-background $sessionName options --default-layout $zellijLayout --default-cwd `"$resolvedRoot`""
     } elseif ($desktopFlag) {
-        "zellij terminal --create --working-directory `"$resolvedRoot`" $sessionName options --default-layout $zellijLayout"
+        "zellij terminal --standalone --create --working-directory `"$resolvedRoot`" $sessionName options --default-layout $zellijLayout"
     } elseif ($env:ZELLIJ -and -not $newWindow) {
         "zellij action switch-session --layout $zellijLayout --cwd `"$resolvedRoot`" $sessionName"
     } else {
@@ -3213,12 +3221,12 @@ if ($effectiveBackend -eq 'zellij') {
         $zPsi = [System.Diagnostics.ProcessStartInfo]::new()
         $zPsi.FileName = $zellijBin
         $zPsi.WorkingDirectory = $resolvedRoot
-        foreach ($a in @('terminal', '--create', '--working-directory', $resolvedRoot, $sessionName, 'options', '--default-layout', $zellijLayout)) {
+        foreach ($a in @('terminal', '--standalone', '--create', '--working-directory', $resolvedRoot, $sessionName, 'options', '--default-layout', $zellijLayout)) {
             $zPsi.ArgumentList.Add($a)
         }
         $zPsi.UseShellExecute = $false
         [void][System.Diagnostics.Process]::Start($zPsi)
-        Write-Output "Opened Zellij desktop IDE window for '$sessionName' ($layout)"
+        Write-Output "Opened standalone Zellij desktop IDE window for '$sessionName' ($layout)"
         exit 0
     }
 

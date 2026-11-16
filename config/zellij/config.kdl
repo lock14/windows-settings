@@ -86,7 +86,6 @@ context_menu {
         item "Cycle swap layout" { NextSwapLayout; }
         item "New tab" { NewTab; }
         item "Rename session…" { SwitchToMode "RenameSession"; SessionNameInput 0; }
-        item "Open in a Zellij terminal" { OpenSessionInTerminal; }
         item "Refresh all sessions" {
             Run "cmd.exe" "/d" "/c" "ide.cmd" "--refresh" {
                 background true
@@ -161,13 +160,13 @@ context_menu {
     }
 }
 
-// Native OSC 7501 Agent Attention Inbox, Tray Badges & Desktop Notifications
+// Native OSC 7501 Agent Attention Inbox (in-terminal only; OS tray & popups disabled)
 attention {
     enabled true
     frame_markers true
     tab_markers true
     host_status true
-    tray_icon true
+    tray_icon false
     idle_rule "all"
     done_threshold_secs 10
     track_commands false
@@ -175,15 +174,15 @@ attention {
     idle_silence_secs 3
     startup_card "attention"
     desktop_notifications {
-        needs_you true
-        failed true
-        done true
+        needs_you false
+        failed false
+        done false
     }
     tray_badge {
-        needs_you true
-        failed true
-        done true
-        working true
+        needs_you false
+        failed false
+        done false
+        working false
         quiet false
         new_output false
     }
@@ -197,10 +196,10 @@ attention {
         new_output "#2AA198"
     }
     // END WINDOWS-SETTINGS TRAY COLORS
-    notification_details true
+    notification_details false
 }
 
-// 1-Hop GPU Desktop Terminal (`ide --desktop` / `zellij terminal`)
+// Standalone 1-Hop GPU Desktop Terminal (`ide --desktop` / `zellij terminal --standalone`)
 terminal {
     font "MesloLGS Nerd Font Mono"
     font_size 11
