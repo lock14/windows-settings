@@ -1361,12 +1361,18 @@ try {
 
     $listRich = (& $ideScript --list) -join "`n"
     $listPlain = @(& $ideScript --list --plain)
+    $previewOut = (& $ideScript --session-preview $mockFleetSess) -join "`n"
+    $ideCmdRaw = Get-Content -LiteralPath (Join-Path $RootDir 'bin\ide.cmd') -Raw
     if ($listRich -match [regex]::Escape($mockFleetSess) -and
         $listRich -match 'feat/zellij-parity@152' -and
-        ($listPlain -contains $mockFleetSess)) {
-        Pass "ide.ps1 --list & --list --plain render urgency-sorted fleet table with <branch>@<PR> metadata"
+        ($listPlain -contains $mockFleetSess) -and
+        $previewOut -match [regex]::Escape($mockFleetSess) -and
+        $previewOut -match 'QUOTA' -and
+        $previewOut -match 'https://github\.com/lock14/windows-settings/pull/152' -and
+        $ideCmdRaw -match '--toggle-sessions') {
+        Pass "ide.ps1 --list, --session-preview & ide.cmd --toggle-sessions render urgency-sorted fleet metadata and preview"
     } else {
-        Fail "ide.ps1 --list" "Expected $mockFleetSess and feat/zellij-parity@152 in --list output"
+        Fail "ide.ps1 --list / --session-preview" "Expected $mockFleetSess, QUOTA, PR URL, and --toggle-sessions support"
     }
 } finally {
     $env:WS_AGY_HOOK_NO_TTY = $prevNoTty2

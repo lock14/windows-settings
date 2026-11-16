@@ -244,7 +244,7 @@ pub fn classify_ide_roles(
 
     let build_slot = |role: IdeRole, pane: &PaneInfo| -> RoleSlot {
         let hidden = pane.is_suppressed || (pane.is_floating && !are_floating_visible);
-        let focused = pane.is_focused && !hidden;
+        let focused = pane.is_focused && !hidden && (pane.is_floating || !are_floating_visible);
         let (attention, quota, app) = pane_attention_state(pane.id, attn_items);
         let label = match role {
             IdeRole::Ai => detect_ai_label(pane, app.as_deref()),
@@ -392,5 +392,16 @@ mod tests {
         assert!(ai.quota);
         assert!(strip.editor.unwrap().hidden);
         assert_eq!(strip.visible_tiled_count, 1);
+    }
+
+    #[test]
+    fn floating_layer_marks_tiled_roles_unfocused() {
+        let panes = vec![
+            sample_pane(0, "AI", Some("ide.cmd --pane-init ai"), true, 0, 1),
+            sample_pane(1, "Editor", Some("ide.cmd --pane-init editor"), false, 90, 1),
+        ];
+        let strip = classify_ide_roles(&panes, true, &[]);
+        assert!(!strip.ai.unwrap().focused);
+        assert!(!strip.editor.unwrap().focused);
     }
 }

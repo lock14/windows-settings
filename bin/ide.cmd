@@ -12,8 +12,10 @@ if /i "%~1"=="--kill" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_qui
 if /i "%~1"=="-k" if "%~2"=="" if defined ZELLIJ_SESSION_NAME goto :fast_quit_force
 if /i "%~1"=="--run-btop" goto :run_btop
 if /i "%~1"=="--run-keys" goto :run_keys
+if /i "%~1"=="--run-sessions" goto :run_sessions
 if /i "%~1"=="--toggle-monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if defined ZELLIJ goto :toggle_monitor
 if /i "%~1"=="--toggle-keys" if "%~2"=="" if defined ZELLIJ goto :toggle_keys
+if /i "%~1"=="--toggle-sessions" if "%~2"=="" if defined ZELLIJ goto :toggle_sessions
 if /i "%~1"=="--monitor" if "%~2"=="" if not "%IDE_FORCE_BUILTIN_MONITOR%"=="1" if not "%IDE_MONITOR_ONCE%"=="1" goto :direct_monitor
 goto :run_pwsh
 
@@ -119,6 +121,13 @@ del /f /q "%KEYS_LOCK_FILE%" "%KEYS_PANE_FILE%" >nul 2>nul
 call :exec_pwsh --keys
 exit /b %ERRORLEVEL%
 
+:run_sessions
+call :init_sessions_state
+set "IDE_SESSIONS_MODAL=1"
+9>"%SESSIONS_LOCK_FILE%" call :exec_pwsh --sessions
+del /f /q "%SESSIONS_LOCK_FILE%" "%SESSIONS_PANE_FILE%" >nul 2>nul
+exit /b 0
+
 :toggle_monitor
 call :find_btop
 if not defined BTOP_EXE goto :run_pwsh
@@ -164,6 +173,27 @@ del /f /q "%KEYS_PANE_FILE%" >nul 2>nul
 "%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 6%% -y 10%% --width 88%% --height 80%% --name "Keybindings" -- cmd.exe /d /c "%~f0" --run-keys >"%KEYS_PANE_FILE%" 2>nul
 exit /b 0
 
+:toggle_sessions
+call :find_zellij
+if not defined ZELLIJ_EXE goto :run_pwsh
+call :init_sessions_state
+
+if not exist "%SESSIONS_PANE_FILE%" goto :open_sessions
+set "SESSIONS_PANE="
+set /p SESSIONS_PANE=<"%SESSIONS_PANE_FILE%"
+del /f /q "%SESSIONS_LOCK_FILE%" >nul 2>nul
+if not exist "%SESSIONS_LOCK_FILE%" goto :stale_sessions
+if defined SESSIONS_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %SESSIONS_PANE% >nul 2>nul
+del /f /q "%SESSIONS_PANE_FILE%" "%SESSIONS_LOCK_FILE%" >nul 2>nul
+exit /b 0
+
+:stale_sessions
+del /f /q "%SESSIONS_PANE_FILE%" >nul 2>nul
+
+:open_sessions
+"%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 5%% -y 8%% --width 90%% --height 84%% --name "IDE Fleet Switcher" -- cmd.exe /d /c "%~f0" --run-sessions >"%SESSIONS_PANE_FILE%" 2>nul
+exit /b 0
+
 :fast_quit_safe
 call :find_zellij
 if not defined ZELLIJ_EXE goto :run_pwsh
@@ -195,7 +225,7 @@ set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
 if defined NVIM_EXE "%NVIM_EXE%" --headless --server "\\.\pipe\nvim-ide-%SESS%" --remote-expr "luaeval('_G.try_ide_quit and _G.try_ide_quit(true) or 0')" >nul 2>nul
 
 :fast_quit_cleanup
-del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.ai-active" "%STATE_DIR%\%SESS%.ai-shell" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" >nul 2>nul
+del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.ai-active" "%STATE_DIR%\%SESS%.ai-shell" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" "%STATE_DIR%\sessions-%SESS%.*" >nul 2>nul
 "%ZELLIJ_EXE%" delete-session --force "%SESS%" >nul 2>nul
 exit /b 0
 
@@ -216,6 +246,15 @@ if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
 set "KEYS_PANE_FILE=%STATE_DIR%\keys-%SESS%.pane"
 set "KEYS_LOCK_FILE=%STATE_DIR%\keys-%SESS%.lock"
 set "KEYS_CACHE=%STATE_DIR%\keys-cheatsheet.ans"
+exit /b 0
+
+:init_sessions_state
+set "SESS=%ZELLIJ_SESSION_NAME%"
+if not defined SESS set "SESS=default"
+set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
+if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
+set "SESSIONS_PANE_FILE=%STATE_DIR%\sessions-%SESS%.pane"
+set "SESSIONS_LOCK_FILE=%STATE_DIR%\sessions-%SESS%.lock"
 exit /b 0
 
 :find_btop
