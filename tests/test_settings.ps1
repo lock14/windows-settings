@@ -829,10 +829,27 @@ $nvimInit = Join-Path $RootDir "config\nvim\init.lua"
 $nvimLock = Join-Path $RootDir "config\nvim\lazy-lock.json"
 if ((Test-Path $nvimInit) -and (Test-Path $nvimLock)) {
     $devRaw = Get-Content (Join-Path $RootDir "module\Developer.ps1") -Raw
-    if ($devRaw -match 'p\.workdir' -and $devRaw -match 'p\.cmds' -and $devRaw -match '\$afterDoubleDash') {
-        Pass "Smart RPC-aware editor opener 'v' supports multi-file, +N/+cmd, -c cmd, --, and CWD healing"
+    $rpcModPath = Join-Path $RootDir "bin\lib\ide\Rpc.ps1"
+    $coreModPath = Join-Path $RootDir "bin\lib\ide\Core.ps1"
+    $rpcRaw = if (Test-Path $rpcModPath) { Get-Content $rpcModPath -Raw } else { '' }
+    $parsedV = & {
+        . $coreModPath
+        . $rpcModPath
+        ConvertFrom-EditorCliArgList -RawArgs @('+42', '+/search', '-c', 'set wrap', '--', '-dash.txt', 'sample.go:18:4') -BaseCwd $RootDir
+    }
+    if ($devRaw -match 'Send-IdeEditorBatch' -and
+        $rpcRaw -match 'p\.workdir' -and
+        $rpcRaw -match 'p\.cmds' -and
+        $rpcRaw -match '\$afterDoubleDash' -and
+        $parsedV.CanRouteRpc -and
+        $parsedV.GlobalLine -eq 42 -and
+        $parsedV.ExCmds.Count -eq 2 -and
+        $parsedV.FileTargets.Count -eq 2 -and
+        $parsedV.FileTargets[0].path.EndsWith('-dash.txt') -and
+        $parsedV.FileTargets[1].line -eq 18) {
+        Pass "Smart RPC-aware editor opener 'v' supports multi-file, +N/+cmd, -c cmd, --, and CWD healing via Rpc.ps1"
     } else {
-        Fail "v RPC multi-file & CWD healing" "Expected multi-file, +cmd/-c, --, and workdir healing in module/Developer.ps1"
+        Fail "v RPC multi-file & CWD healing" "Expected shared ConvertFrom-EditorCliArgList / Send-IdeEditorBatch in Developer.ps1 & Rpc.ps1"
     }
 
     $nvimContent = Get-Content $nvimInit -Raw
@@ -1158,19 +1175,45 @@ try {
     }
 }
 
-# Test bin/ide.ps1 --dry-run (Zellij default, detached, desktop & Windows Terminal fallback), --agy-hook, --send & --keys
+# Test bin/ide.ps1 + bin/lib/ide/*.ps1 modular architecture, --dry-run, --agy-hook, --send & --keys
 $ideScript = Join-Path $RootDir "bin\ide.ps1"
+$ideLibDir = Join-Path $RootDir "bin\lib\ide"
+$expectedIdeModules = @('Core.ps1', 'Rpc.ps1', 'Attention.ps1', 'Fleet.ps1', 'Modals.ps1', 'Workspace.ps1')
+$missingIdeModules = @($expectedIdeModules | Where-Object { -not (Test-Path -LiteralPath (Join-Path $ideLibDir $_) -PathType Leaf) })
+$ideAllSource = (@($ideScript) + @($expectedIdeModules | ForEach-Object { Join-Path $ideLibDir $_ }) |
+    Where-Object { Test-Path -LiteralPath $_ } |
+    ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
+if ($missingIdeModules.Count -eq 0) {
+    $unitCheck = & {
+        . (Join-Path $ideLibDir 'Core.ps1')
+        . (Join-Path $ideLibDir 'Fleet.ps1')
+        $rShell = ConvertTo-CanonicalIdeRole 'shell'
+        $rNvim = ConvertTo-CanonicalIdeRole 'nvim'
+        $metaSample = Build-IdeSessionRecord -SessionName 'unit-ws' -Root 'C:\repo' -Workdir 'C:\repo'
+        $widthsSample = Measure-FleetColumnWidth @(@{ Session = 'alpha-workspace'; AiCli = 'claude'; StateLabel = 'ATTN 5m'; BranchLabel = 'feat/mod@61' })
+        return ($rShell.Internal -eq 'term' -and $rShell.Pipe -eq 'shell' -and
+            $rNvim.Internal -eq 'editor' -and $metaSample['pipe'] -eq '\\.\pipe\nvim-ide-unit-ws' -and
+            $widthsSample.SessW -eq 15 -and $widthsSample.CliW -eq 6 -and $widthsSample.StateW -eq 7 -and $widthsSample.GitW -eq 11)
+    }
+    if ($unitCheck) {
+        Pass "bin/lib/ide/ modular layout valid (Core, Rpc, Attention, Fleet, Modals, Workspace)"
+    } else {
+        Fail "bin/lib/ide/ helper unit checks" "Unexpected role, metadata, or fleet width output"
+    }
+} else {
+    Fail "bin/lib/ide/ module presence" "Missing IDE library modules: $($missingIdeModules -join ', ')"
+}
+
 $ideDry3 = (& $ideScript --backend zellij --3pane --dry-run) -join "`n"
 $ideDry2 = (& $ideScript --backend zellij --2pane --detach --ai claude --dry-run) -join "`n"
 $ideDryDesktop = (& $ideScript --backend zellij --desktop --dry-run) -join "`n"
-$ideRawSource = Get-Content $ideScript -Raw
 if ($ideDry3 -match 'Backend\s*:\s*zellij' -and
     $ideDry3 -match 'ide-3pane' -and
     $ideDry3 -match '\\\\\.\\pipe\\nvim-ide-' -and
     $ideDry2 -match 'Layout\s*:\s*2pane' -and
     $ideDry2 -match '--create-background' -and
     $ideDryDesktop -match 'zellij terminal --standalone --create' -and
-    $ideRawSource -notmatch 'terminal --inbox') {
+    $ideAllSource -notmatch 'terminal --inbox') {
     Pass "ide.ps1 --dry-run builds Zellij 3-pane, detached 2-pane, and standalone 1-hop desktop GPU layouts"
 } else {
     Fail "ide.ps1 Zellij --dry-run" "Unexpected output: $ideDry3 | $ideDry2 | $ideDryDesktop"
@@ -1237,8 +1280,7 @@ try {
 }
 
 $ideRefreshDry = (& $ideScript --refresh --dry-run) -join "`n"
-$ideRawForRefresh = Get-Content -LiteralPath $ideScript -Raw
-if ($LASTEXITCODE -eq 0 -and $ideRefreshDry -match 'Would re-apply active theme' -and $ideRawForRefresh -notmatch '--sync-assets') {
+if ($LASTEXITCODE -eq 0 -and $ideRefreshDry -match 'Would re-apply active theme' -and $ideAllSource -notmatch '--sync-assets') {
     Pass "ide.ps1 --refresh --dry-run re-applies active theme and heals live sessions without --sync-assets mutation"
 } else {
     Fail "ide.ps1 --refresh --dry-run" "Unexpected refresh output ($LASTEXITCODE): $ideRefreshDry"

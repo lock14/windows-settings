@@ -91,107 +91,84 @@ exit /b %RC%
 :run_btop
 call :find_btop
 if not defined BTOP_EXE goto :run_pwsh_monitor
-call :init_state
+call :init_modal_paths "monitor"
 pushd "%BTOP_DIR%"
-9>"%LOCK_FILE%" "%BTOP_EXE%"
+9>"%MODAL_LOCK_FILE%" "%BTOP_EXE%"
 popd
-del /f /q "%LOCK_FILE%" "%PANE_FILE%" >nul 2>nul
+del /f /q "%MODAL_LOCK_FILE%" "%MODAL_PANE_FILE%" >nul 2>nul
 exit /b 0
 
 :run_pwsh_monitor
-call :init_state
-del /f /q "%LOCK_FILE%" "%PANE_FILE%" >nul 2>nul
+call :init_modal_paths "monitor"
+del /f /q "%MODAL_LOCK_FILE%" "%MODAL_PANE_FILE%" >nul 2>nul
 call :exec_pwsh --monitor
 exit /b %ERRORLEVEL%
 
 :run_keys
-call :init_keys_state
+call :init_modal_paths "keys"
 if not exist "%KEYS_CACHE%" call :exec_pwsh --write-keys-cache >nul 2>nul
 if not exist "%KEYS_CACHE%" goto :run_pwsh_keys
-9>"%KEYS_LOCK_FILE%" (
+9>"%MODAL_LOCK_FILE%" (
     type "%KEYS_CACHE%"
     pause >nul
 )
-del /f /q "%KEYS_LOCK_FILE%" "%KEYS_PANE_FILE%" >nul 2>nul
+del /f /q "%MODAL_LOCK_FILE%" "%MODAL_PANE_FILE%" >nul 2>nul
 exit /b 0
 
 :run_pwsh_keys
-call :init_keys_state
-del /f /q "%KEYS_LOCK_FILE%" "%KEYS_PANE_FILE%" >nul 2>nul
+call :init_modal_paths "keys"
+del /f /q "%MODAL_LOCK_FILE%" "%MODAL_PANE_FILE%" >nul 2>nul
 call :exec_pwsh --keys
 exit /b %ERRORLEVEL%
 
 :run_sessions
-call :init_sessions_state
+call :init_modal_paths "sessions"
 set "IDE_SESSIONS_MODAL=1"
-9>"%SESSIONS_LOCK_FILE%" call :exec_pwsh --sessions
-del /f /q "%SESSIONS_LOCK_FILE%" "%SESSIONS_PANE_FILE%" >nul 2>nul
+9>"%MODAL_LOCK_FILE%" call :exec_pwsh --sessions
+del /f /q "%MODAL_LOCK_FILE%" "%MODAL_PANE_FILE%" >nul 2>nul
 exit /b 0
 
 :toggle_monitor
 call :find_btop
 if not defined BTOP_EXE goto :run_pwsh
-call :find_zellij
-if not defined ZELLIJ_EXE goto :run_pwsh
-call :init_state
-
-if not exist "%PANE_FILE%" goto :open_monitor
-set "MON_PANE="
-set /p MON_PANE=<"%PANE_FILE%"
-del /f /q "%LOCK_FILE%" >nul 2>nul
-if not exist "%LOCK_FILE%" goto :stale_monitor
-if defined MON_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %MON_PANE% >nul 2>nul
-del /f /q "%PANE_FILE%" "%LOCK_FILE%" >nul 2>nul
-exit /b 0
-
-:stale_monitor
-del /f /q "%PANE_FILE%" >nul 2>nul
-
-:open_monitor
-"%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 5%% -y 5%% --width 90%% --height 90%% --name "System Monitor" --cwd "%BTOP_DIR%" -- cmd.exe /d /c "%~f0" --run-btop >"%PANE_FILE%" 2>nul
+call :toggle_modal "monitor" "System Monitor" "5" "5" "90" "90" "--run-btop" "%BTOP_DIR%"
+if errorlevel 1 goto :run_pwsh
 exit /b 0
 
 :toggle_keys
-call :find_zellij
-if not defined ZELLIJ_EXE goto :run_pwsh
-call :init_keys_state
+call :init_modal_paths "keys"
 if not exist "%KEYS_CACHE%" call :exec_pwsh --write-keys-cache >nul 2>nul
-
-if not exist "%KEYS_PANE_FILE%" goto :open_keys
-set "KEYS_PANE="
-set /p KEYS_PANE=<"%KEYS_PANE_FILE%"
-del /f /q "%KEYS_LOCK_FILE%" >nul 2>nul
-if not exist "%KEYS_LOCK_FILE%" goto :stale_keys
-if defined KEYS_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %KEYS_PANE% >nul 2>nul
-del /f /q "%KEYS_PANE_FILE%" "%KEYS_LOCK_FILE%" >nul 2>nul
-exit /b 0
-
-:stale_keys
-del /f /q "%KEYS_PANE_FILE%" >nul 2>nul
-
-:open_keys
-"%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 6%% -y 10%% --width 88%% --height 80%% --name "Keybindings" -- cmd.exe /d /c "%~f0" --run-keys >"%KEYS_PANE_FILE%" 2>nul
+call :toggle_modal "keys" "Keybindings" "6" "10" "88" "80" "--run-keys" ""
+if errorlevel 1 goto :run_pwsh
 exit /b 0
 
 :toggle_sessions
-call :find_zellij
-if not defined ZELLIJ_EXE goto :run_pwsh
-call :init_sessions_state
-
-if not exist "%SESSIONS_PANE_FILE%" goto :open_sessions
-set "SESSIONS_PANE="
-set /p SESSIONS_PANE=<"%SESSIONS_PANE_FILE%"
-del /f /q "%SESSIONS_LOCK_FILE%" >nul 2>nul
-if not exist "%SESSIONS_LOCK_FILE%" goto :stale_sessions
-if defined SESSIONS_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %SESSIONS_PANE% >nul 2>nul
-del /f /q "%SESSIONS_PANE_FILE%" "%SESSIONS_LOCK_FILE%" >nul 2>nul
+call :toggle_modal "sessions" "IDE Fleet Switcher" "5" "8" "90" "84" "--run-sessions" ""
+if errorlevel 1 goto :run_pwsh
 exit /b 0
 
-:stale_sessions
-del /f /q "%SESSIONS_PANE_FILE%" >nul 2>nul
+:toggle_modal
+call :find_zellij
+if not defined ZELLIJ_EXE exit /b 1
+call :init_modal_paths "%~1"
+if not exist "%MODAL_PANE_FILE%" goto :open_modal
+set "ACTIVE_PANE="
+set /p ACTIVE_PANE=<"%MODAL_PANE_FILE%"
+del /f /q "%MODAL_LOCK_FILE%" >nul 2>nul
+if not exist "%MODAL_LOCK_FILE%" (
+    del /f /q "%MODAL_PANE_FILE%" >nul 2>nul
+    goto :open_modal
+)
+if defined ACTIVE_PANE "%ZELLIJ_EXE%" action close-pane --pane-id %ACTIVE_PANE% >nul 2>nul
+del /f /q "%MODAL_PANE_FILE%" "%MODAL_LOCK_FILE%" >nul 2>nul
+exit /b 0
 
-:open_sessions
-"%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x 5%% -y 8%% --width 90%% --height 84%% --name "IDE Fleet Switcher" -- cmd.exe /d /c "%~f0" --run-sessions >"%SESSIONS_PANE_FILE%" 2>nul
+:open_modal
+if not "%~8"=="" (
+    "%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x %~3%% -y %~4%% --width %~5%% --height %~6%% --name "%~2" --cwd "%~8" -- cmd.exe /d /c "%~f0" %~7 >"%MODAL_PANE_FILE%" 2>nul
+) else (
+    "%ZELLIJ_EXE%" action new-pane --floating --close-on-exit -x %~3%% -y %~4%% --width %~5%% --height %~6%% --name "%~2" -- cmd.exe /d /c "%~f0" %~7 >"%MODAL_PANE_FILE%" 2>nul
+)
 exit /b 0
 
 :fast_quit_safe
@@ -225,36 +202,18 @@ set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
 if defined NVIM_EXE "%NVIM_EXE%" --headless --server "\\.\pipe\nvim-ide-%SESS%" --remote-expr "luaeval('_G.try_ide_quit and _G.try_ide_quit(true) or 0')" >nul 2>nul
 
 :fast_quit_cleanup
-del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.ai-active" "%STATE_DIR%\%SESS%.ai-shell" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" "%STATE_DIR%\sessions-%SESS%.*" >nul 2>nul
+del /f /q "%STATE_DIR%\%SESS%.json" "%STATE_DIR%\%SESS%.state" "%STATE_DIR%\%SESS%.send.txt" "%STATE_DIR%\%SESS%.quit-check" "%STATE_DIR%\%SESS%.ai-active" "%STATE_DIR%\%SESS%.ai-shell" "%STATE_DIR%\%SESS%.pane-ai" "%STATE_DIR%\%SESS%.pane-editor" "%STATE_DIR%\%SESS%.pane-term" "%STATE_DIR%\launch-%SESS%-*.ps1" "%STATE_DIR%\monitor-%SESS%.*" "%STATE_DIR%\keys-%SESS%.*" "%STATE_DIR%\sessions-%SESS%.*" "%STATE_DIR%\modal-*-%SESS%.json" >nul 2>nul
 "%ZELLIJ_EXE%" delete-session --force "%SESS%" >nul 2>nul
 exit /b 0
 
-:init_state
+:init_modal_paths
 set "SESS=%ZELLIJ_SESSION_NAME%"
 if not defined SESS set "SESS=default"
 set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
 if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
-set "PANE_FILE=%STATE_DIR%\monitor-%SESS%.pane"
-set "LOCK_FILE=%STATE_DIR%\monitor-%SESS%.lock"
-exit /b 0
-
-:init_keys_state
-set "SESS=%ZELLIJ_SESSION_NAME%"
-if not defined SESS set "SESS=default"
-set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
-if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
-set "KEYS_PANE_FILE=%STATE_DIR%\keys-%SESS%.pane"
-set "KEYS_LOCK_FILE=%STATE_DIR%\keys-%SESS%.lock"
+set "MODAL_PANE_FILE=%STATE_DIR%\%~1-%SESS%.pane"
+set "MODAL_LOCK_FILE=%STATE_DIR%\%~1-%SESS%.lock"
 set "KEYS_CACHE=%STATE_DIR%\keys-cheatsheet.ans"
-exit /b 0
-
-:init_sessions_state
-set "SESS=%ZELLIJ_SESSION_NAME%"
-if not defined SESS set "SESS=default"
-set "STATE_DIR=%USERPROFILE%\.cache\windows-settings\ide"
-if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
-set "SESSIONS_PANE_FILE=%STATE_DIR%\sessions-%SESS%.pane"
-set "SESSIONS_LOCK_FILE=%STATE_DIR%\sessions-%SESS%.lock"
 exit /b 0
 
 :find_btop

@@ -24,7 +24,7 @@ All contributions must respect the repository invariants:
 Keep components uniform across shells and tools, and never commit ad-hoc scratch scripts, patch files, or `.bak` backups into the repository tree:
 
 1. **Adding or updating a CLI utility**:
-   * **PowerShell script**: Implement `bin/<name>.ps1` (`CRLF`) with `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, pipeline input support where applicable, and `--dry-run` for stateful operations.
+   * **PowerShell script**: Implement `bin/<name>.ps1` (`CRLF`) with `[CmdletBinding()]`, `$ErrorActionPreference = 'Stop'`, pipeline input support where applicable, and `--dry-run` for stateful operations. Keep top-level `bin/` restricted to user-facing executables and place internal domain submodules under `bin/lib/<name>/` (`CRLF`).
    * **Batch wrapper**: Add `bin/<name>.cmd` (`CRLF`) invoking `pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0<name>.ps1" %*`.
    * **Shell integration**: Register a wrapper or alias in `module/Utilities.ps1` or `module/Developer.ps1`, export it in `module/WindowsSettings.psd1`, add tab completion in `module/Completions.ps1`, add a `doskey` macro in `config/cmd/macros.doskey`, and add test coverage in `tests/test_settings.ps1`.
 2. **Adding or updating a built-in theme palette**:
