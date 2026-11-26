@@ -360,8 +360,12 @@ if ($nvimApp) {
     $prevIdeLinkRules = $env:IDE_LINK_RULES
     $prevDryOpenUrl = $env:WS_IDE_DRY_OPEN_URL
     $prevZellij = $env:ZELLIJ
+    $prevSkipTsRpc = $env:NVIM_TS_SKIP_AUTO_INSTALL
+    $prevGitRefRpc = $env:GIT_DEFAULT_REF_FORMAT
     $rpcMetaPath = Join-Path (Join-Path $HOME '.cache\windows-settings\ide') "$pipeSess.json"
     New-Item -ItemType Directory -Force -Path $rpcStateDir | Out-Null
+    $env:NVIM_TS_SKIP_AUTO_INSTALL = '1'
+    $env:GIT_DEFAULT_REF_FORMAT = 'files'
     $nvimProc = Start-Process -FilePath $nvimApp.Source -ArgumentList @('-u', $nvimInit, '-i', 'NONE', '--headless', '--listen', $pipeFull) -PassThru -WindowStyle Hidden
     try {
         $ready = $false
@@ -433,6 +437,8 @@ function Resolve-IdeLink {
         $env:IDE_LINK_RULES = $prevIdeLinkRules
         $env:WS_IDE_DRY_OPEN_URL = $prevDryOpenUrl
         $env:ZELLIJ = $prevZellij
+        $env:NVIM_TS_SKIP_AUTO_INSTALL = $prevSkipTsRpc
+        $env:GIT_DEFAULT_REF_FORMAT = $prevGitRefRpc
         if ($nvimProc -and -not $nvimProc.HasExited) {
             Stop-Process -Id $nvimProc.Id -Force -ErrorAction SilentlyContinue
         }

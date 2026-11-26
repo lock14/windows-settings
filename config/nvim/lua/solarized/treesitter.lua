@@ -212,7 +212,11 @@ function M.plugin_spec(ctx)
         "nvim-treesitter/nvim-treesitter",
         branch = "main",
         build = function()
-            if vim.env.NVIM_TS_SKIP_AUTO_INSTALL == "1" or package.loaded["nvim-treesitter.configs"] then
+            if
+                vim.env.NVIM_TS_SKIP_AUTO_INSTALL == "1"
+                or package.loaded["nvim-treesitter.configs"]
+                or vim.fn.executable("tree-sitter") ~= 1
+            then
                 return
             end
             M.ensure_ts_compiler_configured()
@@ -259,7 +263,7 @@ function M.plugin_spec(ctx)
                         install_dir = site_dir,
                     })
                 end)
-                if vim.env.NVIM_TS_SKIP_AUTO_INSTALL ~= "1" then
+                if vim.env.NVIM_TS_SKIP_AUTO_INSTALL ~= "1" and vim.fn.executable("tree-sitter") == 1 then
                     local uv = vim.uv or vim.loop
                     local installed = {}
                     local scan_req = uv and uv.fs_scandir and uv.fs_scandir(site_dir .. "/parser") or nil

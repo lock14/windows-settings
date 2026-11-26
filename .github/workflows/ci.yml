@@ -128,13 +128,15 @@ jobs:
           $env:Path = "$nvimBin;$env:Path"
           $nvimBin | Out-File -FilePath $env:GITHUB_PATH -Append
           nvim --version | Select-Object -First 3
+          $env:GIT_DEFAULT_REF_FORMAT = 'files'
+          $env:NVIM_TS_SKIP_AUTO_INSTALL = '1'
           nvim -i NONE --headless -u ./config/nvim/init.lua '+Theme dracula' '+Theme rose-pine' '+Theme solarized-dark' '+qa'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Test Suite
         shell: pwsh
         run: |
-          $null | ./tests/test_settings.ps1
+          $null | pwsh -NoProfile -File ./tests/test_settings.ps1
 
       - name: Measure Module Import Latency and Publish Summary
         shell: pwsh

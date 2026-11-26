@@ -116,15 +116,19 @@ if ($missingLuaMods.Count -eq 0 -and
 
 $nvimCmd = Get-Command nvim.exe, nvim -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($nvimCmd) {
-    $nvimSmoke = (& $nvimCmd.Source -i NONE --headless -u (Join-Path $nvimDir 'init.lua') '+Theme dracula' '+Theme rose-pine' '+Theme solarized-dark' '+qa' 2>&1) -join "`n"
-    if ($LASTEXITCODE -eq 0) {
-        Add-TestPass 'Headless Neovim (-i NONE) loads all 11 solarized modules and switches across 22 themes cleanly'
-    } else {
-        Add-TestFail 'Headless Neovim theme smoke check' "Exit=$($LASTEXITCODE): $nvimSmoke"
-    }
-
     $prevIdeWorkdir = $env:IDE_WORKDIR
+    $prevSkipTs = $env:NVIM_TS_SKIP_AUTO_INSTALL
+    $prevGitRefFmt = $env:GIT_DEFAULT_REF_FORMAT
     try {
+        $env:NVIM_TS_SKIP_AUTO_INSTALL = '1'
+        $env:GIT_DEFAULT_REF_FORMAT = 'files'
+        $nvimSmoke = (& $nvimCmd.Source -i NONE --headless -u (Join-Path $nvimDir 'init.lua') '+Theme dracula' '+Theme rose-pine' '+Theme solarized-dark' '+qa' 2>&1) -join "`n"
+        if ($LASTEXITCODE -eq 0) {
+            Add-TestPass 'Headless Neovim (-i NONE) loads all 11 solarized modules and switches across 22 themes cleanly'
+        } else {
+            Add-TestFail 'Headless Neovim theme smoke check' "Exit=$($LASTEXITCODE): $nvimSmoke"
+        }
+
         $env:IDE_WORKDIR = $RootDir
         $linkTestLua = "vim.api.nvim_buf_set_lines(0, 0, -1, false, { 'See [arch](docs/ide-architecture.md#links-inline-images-clipboard-and-portable-shell-parity)' }); vim.api.nvim_win_set_cursor(0, { 1, 8 }); local ok = require('solarized.links').follow_editor_link(false, false); assert(ok == true, 'link failed'); assert(vim.api.nvim_buf_get_name(0):find('ide%-architecture%.md') ~= nil, 'wrong buf'); assert(vim.api.nvim_win_get_cursor(0)[1] > 10, 'anchor jump failed')"
         $nvimLinkOut = (& $nvimCmd.Source -i NONE --headless -u (Join-Path $nvimDir 'init.lua') "+lua $linkTestLua" '+qa!' 2>&1) -join "`n"
@@ -135,5 +139,7 @@ if ($nvimCmd) {
         }
     } finally {
         $env:IDE_WORKDIR = $prevIdeWorkdir
+        $env:NVIM_TS_SKIP_AUTO_INSTALL = $prevSkipTs
+        $env:GIT_DEFAULT_REF_FORMAT = $prevGitRefFmt
     }
 }
