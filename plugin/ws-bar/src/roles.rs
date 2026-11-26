@@ -17,6 +17,7 @@ pub struct RoleSlot {
     pub hidden: bool,
     pub label: String,
     pub attention: AttentionStatus,
+    pub attention_unseen: bool,
     pub quota: bool,
 }
 
@@ -56,10 +57,11 @@ impl RoleStrip {
 
 fn match_role_from_command(cmd: &str) -> Option<IdeRole> {
     let lower = cmd.to_ascii_lowercase();
-    if lower.contains("--pane-init") {
+    if lower.contains("pane-init") {
         let tokens: Vec<&str> = lower.split_whitespace().collect();
         for window in tokens.windows(2) {
-            if window[0].trim_matches('"') == "--pane-init" {
+            let key = window[0].trim_matches('"');
+            if key == "pane-init" || key == "--pane-init" {
                 match window[1].trim_matches('"') {
                     "ai" => return Some(IdeRole::Ai),
                     "editor" => return Some(IdeRole::Editor),
@@ -79,7 +81,9 @@ fn match_role_from_title(title: &str) -> Option<IdeRole> {
     }
     let lower = trimmed.to_ascii_lowercase();
     let head = lower
-        .split(|c: char| c.is_whitespace() || c == ':' || c == '-' || c == '(' || c == '\\' || c == '/')
+        .split(|c: char| {
+            c.is_whitespace() || c == ':' || c == '-' || c == '(' || c == '\\' || c == '/'
+        })
         .find(|s| !s.is_empty())
         .unwrap_or(&lower);
     let head_stem = head.strip_suffix(".exe").unwrap_or(head);
@@ -92,6 +96,22 @@ fn match_role_from_title(title: &str) -> Option<IdeRole> {
     }
 }
 
+pub fn find_role_pane_id_including_exited(panes: &[PaneInfo], target: IdeRole) -> Option<u32> {
+    for pane in panes.iter().filter(|p| !p.is_plugin && p.is_selectable) {
+        if let Some(cmd) = pane.terminal_command.as_deref() {
+            if match_role_from_command(cmd) == Some(target) {
+                return Some(pane.id);
+            }
+        }
+    }
+    for pane in panes.iter().filter(|p| !p.is_plugin && p.is_selectable) {
+        if match_role_from_title(&pane.title) == Some(target) {
+            return Some(pane.id);
+        }
+    }
+    None
+}
+
 fn detect_ai_label(pane: &PaneInfo, attn_app: Option<&str>) -> String {
     if let Some(app) = attn_app {
         let trimmed = app.trim();
@@ -100,8 +120,19 @@ fn detect_ai_label(pane: &PaneInfo, attn_app: Option<&str>) -> String {
         }
     }
     let lower = pane.title.trim().to_ascii_lowercase();
+    if let Some((_, inside)) = lower.split_once("ai (") {
+        if let Some((cli_tok, _)) = inside.split_once(')') {
+            let norm = normalize_ai_name(cli_tok);
+            if norm != "AI" {
+                return norm;
+            }
+        }
+    }
     for known in ["agy", "claude", "codex", "gemini"] {
-        if lower == known || lower.starts_with(&format!("{known} ")) || lower.starts_with(&format!("{known}:")) {
+        if lower == known
+            || lower.starts_with(&format!("{known} "))
+            || lower.starts_with(&format!("{known}:"))
+        {
             return known.to_owned();
         }
     }
@@ -122,24 +153,29 @@ fn normalize_ai_name(raw: &str) -> String {
 fn pane_attention_state(
     pane_id: u32,
     items: &[AttentionItem],
-) -> (AttentionStatus, bool, Option<String>) {
+) -> (AttentionStatus, bool, bool, Option<String>) {
     let target = PaneId::Terminal(pane_id);
     for item in items {
         if item.pane_id == target {
             let app = item.attention.detail.app.clone();
             if item.attention.is_muted() {
-                return (AttentionStatus::Idle, false, app);
+                return (AttentionStatus::Idle, false, false, app);
             }
+            let unseen = !item.attention.seen
+                && matches!(
+                    item.attention.status,
+                    AttentionStatus::Done | AttentionStatus::NeedsYou
+                );
             let status = match item.attention.status {
                 AttentionStatus::Done if item.attention.seen => AttentionStatus::Idle,
                 other => other,
             };
             let quota = status == AttentionStatus::NeedsYou
                 && item.attention.detail.kind == Some(BlockedKind::Auth);
-            return (status, quota, app);
+            return (status, unseen, quota, app);
         }
     }
-    (AttentionStatus::Idle, false, None)
+    (AttentionStatus::Idle, false, false, None)
 }
 
 pub fn current_session_items(global: Option<&GlobalAttention>) -> &[AttentionItem] {
@@ -169,7 +205,7 @@ pub fn classify_ide_roles(
     let mut sh_pane: Option<&PaneInfo> = None;
     let mut used_ids = Vec::with_capacity(3);
 
-    // Pass 1: Explicit `--pane-init <role>` command arguments from ide-3pane.kdl / ide-2pane.kdl.
+    // Pass 1: Explicit `_internal pane-init <role>` command arguments from ide-3pane.kdl / ide-2pane.kdl.
     for pane in &candidates {
         if let Some(cmd) = pane.terminal_command.as_deref() {
             if let Some(role) = match_role_from_command(cmd) {
@@ -245,7 +281,7 @@ pub fn classify_ide_roles(
     let build_slot = |role: IdeRole, pane: &PaneInfo| -> RoleSlot {
         let hidden = pane.is_suppressed || (pane.is_floating && !are_floating_visible);
         let focused = pane.is_focused && !hidden && (pane.is_floating || !are_floating_visible);
-        let (attention, quota, app) = pane_attention_state(pane.id, attn_items);
+        let (attention, attention_unseen, quota, app) = pane_attention_state(pane.id, attn_items);
         let label = match role {
             IdeRole::Ai => detect_ai_label(pane, app.as_deref()),
             IdeRole::Editor => "Editor".to_owned(),
@@ -258,6 +294,7 @@ pub fn classify_ide_roles(
             hidden,
             label,
             attention,
+            attention_unseen,
             quota,
         }
     };
@@ -299,12 +336,13 @@ mod tests {
     #[test]
     fn classifies_standard_3pane_ide_layout() {
         let panes = vec![
-            sample_pane(0, "AI", Some("ide.cmd --pane-init ai"), false, 0, 1),
-            sample_pane(1, "nvim", Some("ide.cmd --pane-init editor"), true, 60, 1),
-            sample_pane(2, "pwsh", Some("ide.cmd --pane-init term"), false, 0, 30),
+            sample_pane(0, "AI (claude)", Some("ide.cmd _internal pane-init ai"), false, 0, 1),
+            sample_pane(1, "nvim", Some("ide.cmd _internal pane-init editor"), true, 60, 1),
+            sample_pane(2, "pwsh", Some("ide.cmd _internal pane-init term"), false, 0, 30),
         ];
         let strip = classify_ide_roles(&panes, false, &[]);
         assert_eq!(strip.ai.as_ref().map(|s| s.pane_id), Some(0));
+        assert_eq!(strip.ai.as_ref().map(|s| s.label.as_str()), Some("claude"));
         assert_eq!(strip.editor.as_ref().map(|s| s.pane_id), Some(1));
         assert_eq!(strip.shell.as_ref().map(|s| s.pane_id), Some(2));
         assert_eq!(strip.focused_role(), Some(IdeRole::Editor));
@@ -313,8 +351,8 @@ mod tests {
     #[test]
     fn classifies_2pane_layout_without_shell() {
         let panes = vec![
-            sample_pane(4, "claude", Some("ide.cmd --pane-init ai"), true, 0, 1),
-            sample_pane(5, "Editor", Some("ide.cmd --pane-init editor"), false, 60, 1),
+            sample_pane(4, "claude", Some("ide.cmd _internal pane-init ai"), true, 0, 1),
+            sample_pane(5, "Editor", Some("ide.cmd _internal pane-init editor"), false, 60, 1),
         ];
         let strip = classify_ide_roles(&panes, false, &[]);
         assert_eq!(strip.ai.as_ref().map(|s| s.label.as_str()), Some("claude"));
@@ -326,8 +364,8 @@ mod tests {
     #[test]
     fn maps_unseen_attention_and_ignores_seen_done_or_muted() {
         let panes = vec![
-            sample_pane(10, "AI", Some("ide.cmd --pane-init ai"), false, 0, 1),
-            sample_pane(11, "Editor", Some("ide.cmd --pane-init editor"), true, 60, 1),
+            sample_pane(10, "AI", Some("ide.cmd _internal pane-init ai"), false, 0, 1),
+            sample_pane(11, "Editor", Some("ide.cmd _internal pane-init editor"), true, 60, 1),
         ];
         let mut ai_attn = PaneAttention {
             status: AttentionStatus::NeedsYou,
@@ -359,6 +397,7 @@ mod tests {
         let strip = classify_ide_roles(&panes, false, &items);
         let ai = strip.ai.unwrap();
         assert_eq!(ai.attention, AttentionStatus::NeedsYou);
+        assert!(ai.attention_unseen);
         assert!(!ai.quota);
         assert_eq!(ai.label, "agy");
         assert_eq!(strip.editor.unwrap().attention, AttentionStatus::Idle);
@@ -367,10 +406,10 @@ mod tests {
 
     #[test]
     fn distinguishes_quota_auth_blocks_and_suppressed_panes() {
-        let mut ed = sample_pane(21, "Editor", Some("ide.cmd --pane-init editor"), false, 60, 1);
+        let mut ed = sample_pane(21, "Editor", Some("ide.cmd _internal pane-init editor"), false, 60, 1);
         ed.is_suppressed = true;
         let panes = vec![
-            sample_pane(20, "claude", Some("ide.cmd --pane-init ai"), true, 0, 1),
+            sample_pane(20, "claude", Some("ide.cmd _internal pane-init ai"), true, 0, 1),
             ed,
         ];
         let mut quota_attn = PaneAttention {
@@ -395,13 +434,19 @@ mod tests {
     }
 
     #[test]
-    fn floating_layer_marks_tiled_roles_unfocused() {
+    fn floating_layer_marks_tiled_roles_unfocused_and_locates_exited_ai() {
+        let mut exited_ai = sample_pane(7, "AI", Some("ide.cmd _internal pane-init ai"), false, 0, 1);
+        exited_ai.exited = true;
         let panes = vec![
-            sample_pane(0, "AI", Some("ide.cmd --pane-init ai"), true, 0, 1),
-            sample_pane(1, "Editor", Some("ide.cmd --pane-init editor"), false, 90, 1),
+            sample_pane(0, "AI", Some("ide.cmd _internal pane-init ai"), true, 0, 1),
+            sample_pane(1, "Editor", Some("ide.cmd _internal pane-init editor"), false, 90, 1),
         ];
         let strip = classify_ide_roles(&panes, true, &[]);
         assert!(!strip.ai.unwrap().focused);
         assert!(!strip.editor.unwrap().focused);
+        assert_eq!(
+            find_role_pane_id_including_exited(&[exited_ai], IdeRole::Ai),
+            Some(7)
+        );
     }
 }

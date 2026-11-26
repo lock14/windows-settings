@@ -96,6 +96,7 @@ pub struct RenderContext<'a> {
     pub global_attention: Option<&'a GlobalAttention>,
     pub theme_slug: &'a str,
     pub subdir_label: Option<&'a str>,
+    pub holiday_icon: Option<&'a str>,
 }
 
 #[derive(Debug, Default)]
@@ -119,6 +120,14 @@ fn displayed_session_name(mode_info: &ModeInfo) -> String {
         .to_owned()
 }
 
+fn resolve_session_icon<'a>(ctx: &'a RenderContext<'a>) -> &'a str {
+    ctx.holiday_icon
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| holiday_emblem(ctx.theme_slug).map(|(ic, _)| ic))
+        .unwrap_or("\u{EBC8}")
+}
+
 fn truncate_to_cols(text: &str, max_cols: usize) -> String {
     if max_cols == 0 {
         return String::new();
@@ -127,7 +136,7 @@ fn truncate_to_cols(text: &str, max_cols: usize) -> String {
         return text.to_owned();
     }
     if max_cols == 1 {
-        return "…".to_owned();
+        return "\u{2026}".to_owned();
     }
     let mut out = String::new();
     let mut used = 0;
@@ -140,7 +149,7 @@ fn truncate_to_cols(text: &str, max_cols: usize) -> String {
         out.push(ch);
         used += w;
     }
-    out.push('…');
+    out.push('\u{2026}');
     out
 }
 
@@ -163,7 +172,7 @@ fn push_role_badge(
     level: DetailLevel,
 ) {
     let (icon, active_accent, key_normal, key_parked) = match slot.role {
-        IdeRole::Ai => ("\u{F06A9}", p.cyan, "(Alt+a)", "[Alt+a]"),
+        IdeRole::Ai => ("\u{F06A9}", p.cyan, "(Alt+a)", "[Alt+A]"),
         IdeRole::Editor => ("\u{E6AE}", p.blue, "(Alt+e)", "[Alt+E]"),
         IdeRole::Shell => ("\u{F489}", p.green, "(Alt+t)", "[Alt+T]"),
     };
@@ -171,7 +180,11 @@ fn push_role_badge(
     let target = ClickTarget::Role(slot.role);
 
     if slot.focused {
-        spans.push(Span::clickable(format!("▸ {icon} "), active_accent, target));
+        spans.push(Span::clickable(
+            format!("\u{25B8} {icon} "),
+            active_accent,
+            target,
+        ));
         let suffix = if show_keys {
             format!("{} {key_normal}", slot.label)
         } else if level == DetailLevel::Minimal {
@@ -206,9 +219,7 @@ fn build_left_and_center(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Spa
             DetailLevel::CompactPills => 20,
             _ => 28,
         };
-        let sess_icon = holiday_emblem(ctx.theme_slug)
-            .map(|(ic, _)| ic)
-            .unwrap_or("\u{EBC8}");
+        let sess_icon = resolve_session_icon(ctx);
         let sess = truncate_to_cols(&displayed_session_name(ctx.mode_info), max_sess);
         spans.push(Span::clickable(
             format!(" {sess_icon} {sess} "),
@@ -238,7 +249,7 @@ fn build_left_and_center(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Spa
 
         for (idx, slot) in present_slots.iter().enumerate() {
             if idx > 0 {
-                spans.push(Span::plain(" · ", p.base01));
+                spans.push(Span::plain(" \u{00B7} ", p.base01));
             }
             push_role_badge(&mut spans, slot, p, level);
         }
@@ -272,17 +283,21 @@ fn build_left_and_center(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Spa
     } else if !ctx.tabs.is_empty() {
         for (idx, tab) in ctx.tabs.iter().enumerate() {
             if idx > 0 {
-                spans.push(Span::plain(" · ", p.base01));
+                spans.push(Span::plain(" \u{00B7} ", p.base01));
             }
             let name = truncate_to_cols(&tab.name, 16);
             if tab.active {
                 spans.push(Span::clickable(
-                    format!("▸ {}:{name}", tab.position + 1),
+                    format!("\u{25B8} {}:{name}", tab.position + 1),
                     p.base1,
                     ClickTarget::Tab(tab.position),
                 ));
                 if tab.is_fullscreen_active {
-                    spans.push(Span::clickable(" \u{F004C} ZOOM", p.orange, ClickTarget::Zoom));
+                    spans.push(Span::clickable(
+                        " \u{F004C} ZOOM",
+                        p.orange,
+                        ClickTarget::Zoom,
+                    ));
                 }
             } else {
                 spans.push(Span::clickable(
@@ -297,15 +312,34 @@ fn build_left_and_center(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Spa
     spans
 }
 
-fn attention_summary(global: Option<&GlobalAttention>, p: &ThemePalette) -> Option<(String, Rgb)> {
+pub(crate) fn attention_summary(
+    global: Option<&GlobalAttention>,
+    current_session: Option<&str>,
+    p: &ThemePalette,
+) -> Option<(String, Rgb)> {
     let global = global?;
     if global.attention_disabled {
         return None;
     }
 
+    let eff_current = current_session
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let cur = global.current_session.trim();
+            if cur.is_empty() {
+                None
+            } else {
+                Some(cur)
+            }
+        });
+
     let mut sessions: Vec<(&str, AttentionStatus)> = Vec::new();
     for item in &global.items {
-        if item.is_muted() {
+        if item.is_muted() || item.is_current {
+            continue;
+        }
+        if eff_current.is_some_and(|cur| item.session == cur) {
             continue;
         }
         let status = item.item.attention.status;
@@ -337,7 +371,10 @@ fn attention_summary(global: Option<&GlobalAttention>, p: &ThemePalette) -> Opti
     Some((label, fg))
 }
 
-fn mode_overlay(mode: InputMode, p: &ThemePalette) -> Option<(&'static str, Rgb, &'static str, &'static str)> {
+fn mode_overlay(
+    mode: InputMode,
+    p: &ThemePalette,
+) -> Option<(&'static str, Rgb, &'static str, &'static str)> {
     match mode {
         InputMode::Normal => None,
         InputMode::Locked => Some((
@@ -349,68 +386,68 @@ fn mode_overlay(mode: InputMode, p: &ThemePalette) -> Option<(&'static str, Rgb,
         InputMode::Tmux => Some((
             "\u{F0633} TMUX",
             p.orange,
-            "HJKL resize · |/- split · r refresh · b bar · ? keys · Esc",
-            "? keys · Esc",
+            "HJKL resize \u{00B7} |/- split \u{00B7} n/o ws \u{00B7} r refresh \u{00B7} b bar \u{00B7} ? keys \u{00B7} Esc",
+            "? keys \u{00B7} Esc",
         )),
         InputMode::Resize => Some((
             "\u{F0655} RESIZE",
             p.orange,
-            "h/j/k/l grow · H/J/K/L shrink · =/+/- · Esc normal",
-            "hjkl · Esc",
+            "h/j/k/l grow \u{00B7} H/J/K/L shrink \u{00B7} =/+/- \u{00B7} Esc normal",
+            "hjkl \u{00B7} Esc",
         )),
         InputMode::Pane => Some((
             "\u{EB26} PANE",
             p.orange,
-            "n new · d/r split · x close · z zoom · f float · Esc normal",
-            "n/x/z · Esc",
+            "n new \u{00B7} d/r split \u{00B7} x close \u{00B7} z zoom \u{00B7} f float \u{00B7} Esc normal",
+            "n/x/z \u{00B7} Esc",
         )),
         InputMode::Tab => Some((
             "\u{F0681} TAB",
             p.orange,
-            "n new · r rename · x close · h/l switch · s sync · Esc normal",
-            "n/r/x · Esc",
+            "n new \u{00B7} r rename \u{00B7} x close \u{00B7} h/l switch \u{00B7} s sync \u{00B7} Esc normal",
+            "n/r/x \u{00B7} Esc",
         )),
         InputMode::Move => Some((
             "\u{F01DB} MOVE",
             p.orange,
-            "h/j/k/l move pane · n/Tab cycle · Esc normal",
-            "hjkl · Esc",
+            "h/j/k/l move pane \u{00B7} n/Tab cycle \u{00B7} Esc normal",
+            "hjkl \u{00B7} Esc",
         )),
         InputMode::Scroll => Some((
             "\u{F018F} SCROLL",
             p.magenta,
-            "j/k scroll · d/u half-page · / search · e edit · Esc clear",
-            "j/k · / · Esc",
+            "j/k scroll \u{00B7} d/u half-page \u{00B7} / search \u{00B7} e edit \u{00B7} Esc clear",
+            "j/k \u{00B7} / \u{00B7} Esc",
         )),
         InputMode::EnterSearch => Some((
             "\u{F0349} SEARCH?",
             p.magenta,
-            "type query · Enter search · Esc cancel",
-            "Enter · Esc",
+            "type query \u{00B7} Enter search \u{00B7} Esc cancel",
+            "Enter \u{00B7} Esc",
         )),
         InputMode::Search => Some((
             "\u{F0349} SEARCH",
             p.magenta,
-            "n/p next/prev · c case · w wrap · Esc clear",
-            "n/p · Esc",
+            "n/p next/prev \u{00B7} c case \u{00B7} w wrap \u{00B7} Esc clear",
+            "n/p \u{00B7} Esc",
         )),
         InputMode::Session => Some((
             "\u{EBC8} SESSION",
             p.orange,
-            "w manager · d detach · c config · Esc normal",
-            "w/d · Esc",
+            "w manager \u{00B7} d detach \u{00B7} c config \u{00B7} Esc normal",
+            "w/d \u{00B7} Esc",
         )),
         InputMode::RenameTab | InputMode::RenamePane | InputMode::RenameSession => Some((
             "\u{F03EB} RENAME",
             p.yellow,
-            "Enter confirm · Esc cancel",
-            "Enter · Esc",
+            "Enter confirm \u{00B7} Esc cancel",
+            "Enter \u{00B7} Esc",
         )),
         InputMode::Prompt => Some((
             "\u{F02FD} PROMPT",
             p.yellow,
-            "Enter confirm · Esc cancel",
-            "Enter · Esc",
+            "Enter confirm \u{00B7} Esc cancel",
+            "Enter \u{00B7} Esc",
         )),
     }
 }
@@ -455,7 +492,9 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
         }
     }
 
-    if let Some((attn_label, attn_fg)) = attention_summary(ctx.global_attention, p) {
+    let current_session = ctx.mode_info.session_name.as_deref();
+    if let Some((attn_label, attn_fg)) = attention_summary(ctx.global_attention, current_session, p)
+    {
         spans.push(Span::plain(" \u{E0B3} ", p.base00));
         spans.push(Span::clickable(
             format!("{attn_label} "),
@@ -465,7 +504,7 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
     }
 
     let hol = holiday_emblem(ctx.theme_slug);
-    let sess_icon = hol.map(|(ic, _)| ic).unwrap_or("\u{EBC8}");
+    let sess_icon = resolve_session_icon(ctx);
 
     let total_sessions = ctx
         .global_attention
@@ -485,7 +524,7 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
     match level {
         DetailLevel::Full | DetailLevel::NoMonitor => {
             spans.push(Span::clickable(
-                format!("{sess_icon} {total_sessions} · "),
+                format!("{sess_icon} {total_sessions} \u{00B7} "),
                 p.base0,
                 ClickTarget::SessionManager,
             ));
@@ -503,7 +542,7 @@ fn build_right(ctx: &RenderContext<'_>, level: DetailLevel) -> Vec<Span> {
         }
         DetailLevel::NoKeyHints => {
             spans.push(Span::clickable(
-                format!("{sess_icon} {total_sessions} · "),
+                format!("{sess_icon} {total_sessions} \u{00B7} "),
                 p.base0,
                 ClickTarget::SessionManager,
             ));
@@ -586,7 +625,8 @@ fn emit_spans(
             let start = *cursor_col;
             let end = start + w;
             if let Some(last) = regions.last_mut() {
-                if last.end_col == start && last.target == target && last.tab_index == span.tab_index {
+                if last.end_col == start && last.target == target && last.tab_index == span.tab_index
+                {
                     last.end_col = end;
                 } else {
                     regions.push(HitRegion {
@@ -618,8 +658,8 @@ pub fn render_shelf(ctx: &RenderContext<'_>) -> RenderedBar {
     for level in DetailLevel::ALL {
         let left = build_left_and_center(ctx, level);
         let right = build_right(ctx, level);
-        let needed = spans_width(&left)
-            + if right.is_empty() { 0 } else { 1 + spans_width(&right) };
+        let needed =
+            spans_width(&left) + if right.is_empty() { 0 } else { 1 + spans_width(&right) };
         chosen = (left, right);
         if needed <= ctx.cols {
             break;
@@ -716,6 +756,7 @@ mod tests {
                 hidden: false,
                 label: "AI".to_owned(),
                 attention: AttentionStatus::Idle,
+                attention_unseen: false,
                 quota: false,
             }),
             editor: Some(RoleSlot {
@@ -725,6 +766,7 @@ mod tests {
                 hidden: false,
                 label: "Editor".to_owned(),
                 attention: AttentionStatus::Idle,
+                attention_unseen: false,
                 quota: false,
             }),
             shell: Some(RoleSlot {
@@ -734,6 +776,7 @@ mod tests {
                 hidden: false,
                 label: "Shell".to_owned(),
                 attention: AttentionStatus::Idle,
+                attention_unseen: false,
                 quota: false,
             }),
             visible_tiled_count: 3,
@@ -771,6 +814,7 @@ mod tests {
                 global_attention: None,
                 theme_slug: "",
                 subdir_label: None,
+                holiday_icon: None,
             });
             let plain = strip_ansi(&bar.ansi);
             assert_eq!(display_width(&plain), cols, "width mismatch at cols={cols}");
@@ -830,6 +874,7 @@ mod tests {
             global_attention: Some(&global),
             theme_slug: "",
             subdir_label: None,
+            holiday_icon: None,
         });
         let plain = strip_ansi(&bar.ansi);
         assert!(plain.contains("windows-settings"));
@@ -855,6 +900,55 @@ mod tests {
     }
 
     #[test]
+    fn suppresses_self_session_alerts_on_right_shelf() {
+        let palette = ThemePalette::default();
+        let item = AttentionItem {
+            pane_id: PaneId::Terminal(0),
+            tab_id: 0,
+            tab_name: "ide".to_owned(),
+            pane_title: "AI".to_owned(),
+            attention: PaneAttention {
+                status: AttentionStatus::NeedsYou,
+                ..Default::default()
+            },
+        };
+        let self_only = GlobalAttention {
+            current_session: "windows-settings".to_owned(),
+            items: vec![GlobalAttentionItem {
+                session: "windows-settings".to_owned(),
+                is_current: false,
+                item: item.clone(),
+            }],
+            ..Default::default()
+        };
+        assert_eq!(
+            attention_summary(Some(&self_only), Some("windows-settings"), &palette),
+            None
+        );
+
+        let mixed = GlobalAttention {
+            current_session: "windows-settings".to_owned(),
+            items: vec![
+                GlobalAttentionItem {
+                    session: "windows-settings".to_owned(),
+                    is_current: true,
+                    item: item.clone(),
+                },
+                GlobalAttentionItem {
+                    session: "peer-ws".to_owned(),
+                    is_current: false,
+                    item,
+                },
+            ],
+            ..Default::default()
+        };
+        let (lbl, fg) = attention_summary(Some(&mixed), Some("windows-settings"), &palette)
+            .expect("peer session alert should render");
+        assert_eq!(lbl, "\u{F009A} peer-ws");
+        assert_eq!(fg, palette.orange);
+    }
+
+    #[test]
     fn tmux_mode_replaces_right_shelf_with_contextual_hints() {
         let palette = ThemePalette::default();
         let mode = ModeInfo {
@@ -874,6 +968,7 @@ mod tests {
             global_attention: None,
             theme_slug: "",
             subdir_label: None,
+            holiday_icon: None,
         });
         let plain = strip_ansi(&bar.ansi);
         assert!(plain.contains("TMUX"));
@@ -913,10 +1008,11 @@ mod tests {
             global_attention: None,
             theme_slug: "halloween",
             subdir_label: Some("ws-bar"),
+            holiday_icon: None,
         });
         let plain = strip_ansi(&bar.ansi);
-        assert!(plain.contains("🎃 ws"));
-        assert!(plain.contains("🎃 👻 Halloween"));
+        assert!(plain.contains("\u{1F383} ws"));
+        assert!(plain.contains("\u{1F383} \u{1F47B} Halloween"));
         assert!(plain.contains("\u{F024B} ws-bar"));
         assert!(plain.contains("Shell [Alt+T]"));
         let Rgb(yr, yg, yb) = palette.yellow;

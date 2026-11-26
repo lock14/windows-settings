@@ -89,14 +89,16 @@ impl ThemePalette {
 pub fn holiday_emblem(theme_slug: &str) -> Option<(&'static str, &'static str)> {
     let norm = theme_slug.trim().to_ascii_lowercase().replace('_', "-");
     match norm.as_str() {
-        "new-years" => Some(("🥂", "🥂 🎆 New Year's")),
-        "valentines" => Some(("💘", "💘 🌹 Valentine's")),
-        "st-patricks" => Some(("🍀", "🍀 🪙 St. Patrick's")),
-        "easter" => Some(("🐣", "🐣 🌷 Easter")),
-        "independence-day" => Some(("🎆", "🎆 🗽 4th of July")),
-        "halloween" => Some(("🎃", "🎃 👻 Halloween")),
-        "thanksgiving" => Some(("🦃", "🦃 🍂 Thanksgiving")),
-        "christmas" => Some(("🎄", "🎄 🎅 Christmas")),
+        // BEGIN GENERATED HOLIDAY EMBLEMS
+        "new-years" => Some(("\u{1F942}", "\u{1F942} \u{1F386} New Year's")),
+        "valentines" => Some(("\u{1F498}", "\u{1F498} \u{1F339} Valentine's")),
+        "st-patricks" => Some(("\u{1F340}", "\u{1F340} \u{1FA99} St. Patrick's")),
+        "easter" => Some(("\u{1F423}", "\u{1F423} \u{1F337} Easter")),
+        "independence-day" => Some(("\u{1F386}", "\u{1F386} \u{1F5FD} 4th of July")),
+        "halloween" => Some(("\u{1F383}", "\u{1F383} \u{1F47B} Halloween")),
+        "thanksgiving" => Some(("\u{1F983}", "\u{1F983} \u{1F342} Thanksgiving")),
+        "christmas" => Some(("\u{1F384}", "\u{1F384} \u{1F385} Christmas")),
+        // END GENERATED HOLIDAY EMBLEMS
         _ => None,
     }
 }
@@ -162,9 +164,18 @@ mod tests {
 
     #[test]
     fn maps_all_eight_us_holiday_emblems() {
-        assert_eq!(holiday_emblem("halloween"), Some(("🎃", "🎃 👻 Halloween")));
-        assert_eq!(holiday_emblem("christmas"), Some(("🎄", "🎄 🎅 Christmas")));
-        assert_eq!(holiday_emblem("independence_day"), Some(("🎆", "🎆 🗽 4th of July")));
+        assert_eq!(
+            holiday_emblem("halloween"),
+            Some(("\u{1F383}", "\u{1F383} \u{1F47B} Halloween"))
+        );
+        assert_eq!(
+            holiday_emblem("christmas"),
+            Some(("\u{1F384}", "\u{1F384} \u{1F385} Christmas"))
+        );
+        assert_eq!(
+            holiday_emblem("independence_day"),
+            Some(("\u{1F386}", "\u{1F386} \u{1F5FD} 4th of July"))
+        );
         assert_eq!(holiday_emblem("solarized-dark"), None);
     }
 }

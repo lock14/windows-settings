@@ -91,8 +91,8 @@ function gpushf  {
         git push --force-with-lease origin HEAD @args
     }
 }
-function gpull   { git pull --rebase --autostash origin HEAD @args }
-function gup     { git fetch --prune && git pull --rebase --autostash origin HEAD @args }
+function gpull   { git pull --rebase --autostash @args }
+function gup     { git pull --rebase --autostash --prune @args }
 
 function gprune {
     $currentBranch = Get-GitCurrentBranch
@@ -117,11 +117,29 @@ function gprune {
 }
 
 function gpurge {
+    [CmdletBinding()]
+    param(
+        [Alias('y')]
+        [switch]$Force
+    )
+
     $currentBranch = Get-GitCurrentBranch
     if (-not $currentBranch) { return }
 
     $targetBranch = Resolve-GitPrimaryBranch
     if (-not $targetBranch) { return }
+
+    $branches = @(git branch --format="%(refname:short)" |
+        Where-Object { $_ -and $_ -notmatch '^(main|master|trunk)$' -and $_ -ne $targetBranch })
+
+    if ($branches.Count -gt 0 -and -not $Force -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $branchSummary = $branches -join ', '
+        $reply = Read-Host "Force-delete $($branches.Count) local branch(es) ($branchSummary)? [y/N]"
+        if ($reply -notmatch '^(?i)y(es)?$') {
+            Write-Host 'Aborted.' -ForegroundColor Yellow
+            return
+        }
+    }
 
     git checkout $targetBranch
     if ($LASTEXITCODE -ne 0) {
@@ -129,9 +147,7 @@ function gpurge {
         return
     }
 
-    $branches = git branch --format="%(refname:short)" |
-        Where-Object { $_ -and $_ -notmatch '^(main|master|trunk)$' -and $_ -ne $targetBranch }
-    if ($branches) {
+    if ($branches.Count -gt 0) {
         $branches | ForEach-Object { git branch -D $_ }
     }
 }

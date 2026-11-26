@@ -6,7 +6,7 @@
     RootModule = 'WindowsSettings.psm1'
 
     # Version number of this module.
-    ModuleVersion = '3.0.0'
+    ModuleVersion = '3.1.0'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Core')
@@ -18,7 +18,7 @@
     Author = 'Brian Bechtel'
 
     # Description of the functionality provided by this module
-    Description = 'Modern Windows Developer Workstation Shell Module (17-Theme Engine, Oh My Posh, Git, eza, zoxide, uutils, IDE, completions)'
+    Description = 'Modern Windows Developer Workstation Shell Module (22-Theme Engine, Oh My Posh, Git, eza, zoxide, uutils, IDE, completions)'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '7.0'
@@ -48,7 +48,8 @@
         'LS_COLORS', 'EZA_COLORS', 'EXA_COLORS', 'JQ_COLORS',
         'BAT_THEME', 'BAT_OPTS', 'COLORTERM', 'FORCE_HYPERLINK',
         'EDITOR', 'VISUAL', 'IDE_AI_CLI',
-        'FZF_DEFAULT_OPTS', 'FZF_DEFAULT_COMMAND', 'FZF_CTRL_T_COMMAND'
+        'GOPATH', 'GOCACHE', 'ELAN_HOME',
+        'FZF_DEFAULT_OPTS', 'FZF_DEFAULT_COMMAND', 'FZF_CTRL_T_COMMAND', '_ZO_FZF_OPTS'
     )
 
     # Aliases to export from this module

@@ -134,7 +134,8 @@ function theme {
     if ($rc -eq 0) {
         $isReadOnly = $false
         foreach ($a in $args) {
-            if ("$a" -in @('-l', '--list', '-c', '--current', '-p', '--preview', '--env', '--path', '-n', '--dry-run', '-h', '--help', '--plain')) {
+            if ("$a" -in @('-l', '--list', '-c', '--current', '-p', '--preview', '--env', '--path', '--check-assets', '--sync-assets', '--create', '-n', '--dry-run', '-h', '--help', '--plain') -or
+                "$a" -match '^--(preview|env|create|dry-run)=') {
                 $isReadOnly = $true
                 break
             }

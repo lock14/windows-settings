@@ -16,20 +16,25 @@ permissions:
 
 jobs:
   lint-and-hygiene:
-    name: Lint & Repository Hygiene
+    name: Lint and Repository Hygiene
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Check Line Endings & Personal-Path Hygiene
+      - name: Check Line Endings, AGENTS.md Budget, and Personal-Path Hygiene
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $crlfExts = @('.ps1', '.psm1', '.psd1', '.cmd', '.bat', '.doskey')
           $lfExts   = @('.md', '.json', '.kdl', '.yml', '.yaml', '.toml', '.lock', '.rs', '.lua', '.scm', '.theme', '.tmTheme', '.sublime-syntax', '.gitconfig', '.conf', '.txt')
           $violations = [System.Collections.Generic.List[string]]::new()
+
+          $agentsBytes = (Get-Item -LiteralPath './AGENTS.md').Length
+          if ($agentsBytes -ge 24576) {
+              $violations.Add("AGENTS.md exceeds 24 KB context budget ($agentsBytes bytes)")
+          }
 
           foreach ($file in (Get-ChildItem -Path . -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](\.git|tests[\\/]temp|plugin[\\/]ws-bar[\\/]target)[\\/]' })) {
               $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -46,10 +51,8 @@ jobs:
                   }
               }
 
-              if ($file.Name -ne 'AGENTS.md') {
-                  if ($text -match 'C:\\Users\\(?!<)[a-zA-Z0-9_-]+' -or $text -match '/Users/(?!<)[a-zA-Z0-9_-]+' -or $text -match '/home/(?!<)[a-zA-Z0-9_-]+') {
-                      $violations.Add("Hardcoded personal user path detected: $($file.FullName)")
-                  }
+              if ($text -match 'C:\\Users\\(?!<)[a-zA-Z0-9_-]+' -or $text -match '/Users/(?!<)[a-zA-Z0-9_-]+' -or $text -match '/home/(?!<)[a-zA-Z0-9_-]+') {
+                  $violations.Add("Hardcoded personal user path detected: $($file.FullName)")
               }
           }
 
@@ -58,7 +61,12 @@ jobs:
               Write-Error "Repository hygiene check failed with $($violations.Count) issue(s)."
               exit 1
           }
-          Write-Host "Hygiene: Line endings and path invariants verified cleanly." -ForegroundColor Green
+          Write-Host "Hygiene: Line endings, AGENTS.md budget, and path invariants verified cleanly." -ForegroundColor Green
+
+      - name: Verify Managed Theme Assets (--check-assets)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./bin/theme.ps1 --check-assets
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
@@ -107,12 +115,30 @@ jobs:
           $zellijDir | Out-File -FilePath $env:GITHUB_PATH -Append
           zellij --version
 
+      - name: Install Neovim and Run Headless Theme Smoke Check
+        shell: pwsh
+        run: |
+          $nvimRoot = Join-Path $env:RUNNER_TEMP 'nvim-bin'
+          New-Item -ItemType Directory -Force -Path $nvimRoot | Out-Null
+          $nvimZip = Join-Path $nvimRoot 'nvim-win64.zip'
+          Invoke-WebRequest -Uri 'https://github.com/neovim/neovim/releases/latest/download/nvim-win64.zip' -OutFile $nvimZip
+          Expand-Archive -Path $nvimZip -DestinationPath $nvimRoot -Force
+          Remove-Item -Path $nvimZip -Force
+          $nvimBin = Join-Path (Join-Path $nvimRoot 'nvim-win64') 'bin'
+          $env:Path = "$nvimBin;$env:Path"
+          $nvimBin | Out-File -FilePath $env:GITHUB_PATH -Append
+          nvim --version | Select-Object -First 3
+          $env:GIT_DEFAULT_REF_FORMAT = 'files'
+          $env:NVIM_TS_SKIP_AUTO_INSTALL = '1'
+          nvim -i NONE --headless -u ./config/nvim/init.lua '+Theme dracula' '+Theme rose-pine' '+Theme solarized-dark' '+qa'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Test Suite
         shell: pwsh
         run: |
-          $null | ./tests/test_settings.ps1
+          $null | pwsh -NoProfile -File ./tests/test_settings.ps1
 
-      - name: Measure Module Import Latency & Publish Summary
+      - name: Measure Module Import Latency and Publish Summary
         shell: pwsh
         run: |
           $coldMs = (Measure-Command {
@@ -128,13 +154,13 @@ jobs:
               ''
               '| Metric | Result |'
               '| :--- | :--- |'
-              ('| Subprocess and cold import (`pwsh -NoProfile` + `Import-Module`) | `{0:N1} ms` |' -f $coldMs)
+              ('| Subprocess and cold import (`pwsh -NoProfile` and `Import-Module`) | `{0:N1} ms` |' -f $coldMs)
               ('| In-session re-import (`Import-Module -Force` with disk cache) | `{0:N1} ms` |' -f $warmMs)
           ) -join "`n"
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   wasm-plugin:
-    name: Build & Test WASM Top-Bar Plugin
+    name: Build and Test WASM Top-Bar Plugin
     runs-on: ubuntu-latest
 
     steps:
@@ -165,8 +191,6 @@ jobs:
           cargo build --release --manifest-path plugin/ws-bar/Cargo.toml --target wasm32-wasip1 --locked
           ls -lh plugin/ws-bar/target/wasm32-wasip1/release/windows-settings-bar.wasm
 
-  # CI Gatekeeper Aggregator Job
-  # Acts as the single required status check for branch protection rules.
   ci-gatekeeper:
     name: ci-gatekeeper
     runs-on: ubuntu-latest
