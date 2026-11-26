@@ -1,5 +1,5 @@
 # Christmas TrueColor theme for btop
-# Matches the 16-slot semantic palette architecture
+# Matches the 16-color semantic palette architecture
 
 # Main background, empty for terminal default, need to be empty if you want transparent background
 theme[main_bg]="#062012"
@@ -8,7 +8,7 @@ theme[main_bg]="#062012"
 theme[main_fg]="#f0faf4"
 
 # Title color for boxes
-theme[title]="#ffffff"
+theme[title]="#f7fdf9"
 
 # Highlight color for keyboard shortcuts
 theme[hi_fg]="#38e5ff"
@@ -17,12 +17,12 @@ theme[hi_fg]="#38e5ff"
 theme[selected_bg]="#0e3820"
 
 # Foreground color of selected item in processes box
-theme[selected_fg]="#ffffff"
+theme[selected_fg]="#f7fdf9"
 
 # Color of inactive/disabled text
 theme[inactive_fg]="#5c9e78"
 
-# Color of text appearing on top of graphs, i.e uptime and current network graph scaling
+# Color of text appearing on top of graphs, such as uptime and current network graph scaling
 theme[graph_text]="#78b894"
 
 # Background color of the percentage meters

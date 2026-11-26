@@ -187,7 +187,7 @@ while ($true) {
             }
         } else {
             $exe = $cmdTokens[0]
-            $exeArgs = if ($cmdTokens.Count -gt 1) { @($cmdTokens[1..($cmdTokens.Count - 1)]) } else { @() }
+            [string[]]$exeArgs = @(if ($cmdTokens.Count -gt 1) { $cmdTokens[1..($cmdTokens.Count - 1)] })
             $global:LASTEXITCODE = 0
             & $exe @exeArgs
             if ($? -and ($LASTEXITCODE -eq 0 -or $null -eq $LASTEXITCODE)) {

@@ -16,14 +16,14 @@ layout {
     ide_ui name="ide" focus=true {
         pane size="75%" split_direction="vertical" {
             pane size="50%" name="AI" focus=true command="ide.cmd" {
-                args "--pane-init" "ai"
+                args "_internal" "pane-init" "ai"
             }
             pane size="50%" name="Editor" attention_muted=true command="ide.cmd" {
-                args "--pane-init" "editor"
+                args "_internal" "pane-init" "editor"
             }
         }
         pane size="25%" name="Shell" command="ide.cmd" {
-            args "--pane-init" "term"
+            args "_internal" "pane-init" "term"
         }
     }
 

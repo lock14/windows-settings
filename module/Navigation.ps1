@@ -145,22 +145,44 @@ function b {
     }
 }
 
-# Synchronized IDE Workspace Directory Dive (`icd [dir|--reset]`)
+# Synchronized IDE Workspace Directory Dive (`icd [dir|--reset|~]`)
 function icd {
-    $ideScript = Resolve-WsBinScript 'ide'
-    if ($ideScript) {
-        $resolved = & $ideScript --cd @args
-        if ($LASTEXITCODE -eq 0 -and $resolved) {
-            $targetDir = ("$resolved").Trim()
-            if (Test-Path -LiteralPath $targetDir -PathType Container) {
-                $env:IDE_WORKDIR = $targetDir
-                Set-Location -LiteralPath $targetDir
+    if ($args.Count -gt 0 -and "$($args[0])" -in @('--reset', '~')) {
+        $initRoot = if ($env:IDE_INITIAL_ROOT -and $env:IDE_INITIAL_ROOT.Trim()) {
+            $env:IDE_INITIAL_ROOT.Trim()
+        } else {
+            ''
+        }
+        if (-not $initRoot) {
+            $sessName = if ($env:ZELLIJ_SESSION_NAME) { $env:ZELLIJ_SESSION_NAME } elseif ($env:IDE_SESSION) { $env:IDE_SESSION } else { '' }
+            if ($sessName) {
+                $stateJson = Join-Path (Join-Path (Join-Path $HOME '.cache') 'windows-settings\ide') "$sessName.json"
+                if ([System.IO.File]::Exists($stateJson)) {
+                    try {
+                        $metaObj = [System.IO.File]::ReadAllText($stateJson) | ConvertFrom-Json
+                        if ($metaObj.root) { $initRoot = "$($metaObj.root)" }
+                    } catch {
+                        $null = $_
+                    }
+                }
             }
         }
+        $destRoot = if ($initRoot -and (Test-Path -LiteralPath $initRoot -PathType Container)) { $initRoot } else { $HOME }
+        Set-Location -LiteralPath $destRoot
     } elseif ($args.Count -gt 0) {
         Set-Location $args[0]
-    } else {
-        Set-Location $HOME
+    }
+
+    $currentDir = (Get-Location).Path
+    $env:IDE_WORKDIR = $currentDir
+    if (($env:ZELLIJ -or $env:IDE_SESSION -or $env:ZELLIJ_SESSION_NAME -or $env:NVIM_IDE_SOCKET) -and (Resolve-WsBinScript 'ide')) {
+        $prevSkip = $env:IDE_CD_SKIP_SHELL
+        $env:IDE_CD_SKIP_SHELL = '1'
+        try {
+            ide cd $currentDir | Out-Null
+        } finally {
+            $env:IDE_CD_SKIP_SHELL = $prevSkip
+        }
     }
 }
 

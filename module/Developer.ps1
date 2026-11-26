@@ -64,17 +64,59 @@ if ($hasNvimFast) {
     Set-Alias -Name vi -Value vim -ErrorAction SilentlyContinue
 }
 
+function Import-WsIdeRpcModule {
+    if ($null -ne ${function:ConvertFrom-EditorCliArgList}) {
+        return $true
+    }
+    $ideScript = Resolve-WsBinScript 'ide'
+    $candidateRoots = [System.Collections.Generic.List[string]]::new()
+    if ($ideScript) {
+        $candidateRoots.Add((Split-Path -Parent (Split-Path -Parent $ideScript)))
+    }
+    $candidateRoots.Add((Split-Path -Parent $PSScriptRoot))
+    $candidateRoots.Add((Join-Path $HOME 'windows-settings'))
+
+    foreach ($root in $candidateRoots) {
+        if (-not $root) { continue }
+        $ideLibDir = Join-Path (Join-Path $root 'libexec') 'ide'
+        $corePath = Join-Path $ideLibDir 'Core.ps1'
+        $rpcPath = Join-Path $ideLibDir 'Rpc.ps1'
+        if ([System.IO.File]::Exists($corePath) -and [System.IO.File]::Exists($rpcPath)) {
+            . $corePath
+            . $rpcPath
+            return ($null -ne ${function:ConvertFrom-EditorCliArgList})
+        }
+    }
+    return $false
+}
+
+function Test-WsNamedPipeLive([string]$PipePath) {
+    if (-not $PipePath) { return $false }
+    if ($null -ne ${function:Test-IdePipeLive}) {
+        return (Test-IdePipeLive $PipePath)
+    }
+    if ($PipePath -match '^\\\\\.\\pipe\\(.+)$') {
+        $pipeLeaf = $Matches[1]
+        try {
+            if ([System.IO.Directory]::GetFiles('\\.\pipe\', $pipeLeaf).Count -gt 0) {
+                return $true
+            }
+        } catch {
+            $null = $_
+        }
+    }
+    try {
+        return [System.IO.File]::Exists($PipePath)
+    } catch {
+        return $false
+    }
+}
+
 # RPC-Aware Smart Editor Opener (`v [+line|+cmd] [-c cmd] [--] <file>...`)
 function v {
     $nvimApp = Get-Command nvim.exe, nvim -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($nvimApp -and $args.Count -ge 1 -and ($env:NVIM_IDE_SOCKET -or $env:IDE_SESSION -or $env:ZELLIJ_SESSION_NAME)) {
-        $ideScript = Resolve-WsBinScript 'ide'
-        $ideLibDir = if ($ideScript) { Join-Path (Join-Path (Split-Path -Parent $ideScript) 'lib') 'ide' } else { '' }
-        $corePath = if ($ideLibDir) { Join-Path $ideLibDir 'Core.ps1' } else { '' }
-        $rpcPath = if ($ideLibDir) { Join-Path $ideLibDir 'Rpc.ps1' } else { '' }
-        if ($corePath -and $rpcPath -and [System.IO.File]::Exists($corePath) -and [System.IO.File]::Exists($rpcPath)) {
-            . $corePath
-            . $rpcPath
+    if ($null -ne $nvimApp -and $args.Count -ge 1 -and ($env:NVIM_IDE_SOCKET -or $env:IDE_SESSION -or $env:ZELLIJ_SESSION_NAME)) {
+        if (Import-WsIdeRpcModule) {
             $parsed = ConvertFrom-EditorCliArgList -RawArgs $args -BaseCwd (Get-Location).ProviderPath
             if ($parsed.CanRouteRpc) {
                 $sent = Send-IdeEditorBatch `
@@ -88,15 +130,46 @@ function v {
                     return
                 }
             }
+        } elseif ($args.Count -eq 1 -and -not ("$($args[0])").StartsWith('-')) {
+            $ideScript = Resolve-WsBinScript 'ide'
+            if ($ideScript) {
+                & $ideScript open $args[0] 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    return
+                }
+            }
         }
     }
 
-    if ($nvimApp) {
-        & $nvimApp.Source @args
+    if ($null -ne $nvimApp) {
+        $sock = if ($env:NVIM_IDE_SOCKET) { $env:NVIM_IDE_SOCKET.Trim() } else { '' }
+        $shouldListen = ($env:IDE_ROLE -eq 'editor') -and (-not $env:NVIM) -and ($sock.Length -gt 0) -and (-not (Test-WsNamedPipeLive $sock))
+        if ($shouldListen) {
+            $skipNext = $false
+            foreach ($vArg in $args) {
+                $sArg = "$vArg"
+                if ($skipNext) { $skipNext = $false; continue }
+                if ($sArg -eq '--') { break }
+                if ($sArg -in @('-c', '--cmd', '-u', '-i', '-s', '-S', '--startuptime')) {
+                    $skipNext = $true
+                    continue
+                }
+                if ($sArg -match '^(--listen|--server|--remote|--headless|--embed|--api-info|-l$|-v$|--version$|-h$|--help$|-e$|-E$|-es$|-Es$)') {
+                    $shouldListen = $false
+                    break
+                }
+            }
+        }
+        if ($shouldListen) {
+            & $nvimApp.Source --listen $sock @args
+        } else {
+            & $nvimApp.Source @args
+        }
         return
     }
+
     $vimAppFallback = Get-Command vim.exe, vim -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($vimAppFallback) {
+    if ($null -ne $vimAppFallback) {
         & $vimAppFallback.Source @args
     } else {
         Write-Error "Error: Neither 'nvim' nor 'vim' is installed."
@@ -109,15 +182,15 @@ function ide {
     if ($ideScript) {
         & $ideScript @args
     } else {
-        Write-Error "Error: bin/ide.ps1 was not found."
+        Write-Error 'Error: bin/ide.ps1 was not found.'
     }
 }
 
 function ide2 { ide --2pane @args }
-function ide3 { ide --3pane @args }
-function idek { ide --kill @args }
-function qide { ide --quit @args }
-function quit { ide --quit @args }
+function ide3 { ide @args }
+function idek { ide quit --force @args }
+function qide { ide quit @args }
+function quit { ide quit @args }
 
 # Backward Compatibility Wrappers for legacy snake_case aliases
 function go_testall  { go-testall @args }

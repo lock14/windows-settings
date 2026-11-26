@@ -37,19 +37,28 @@ if ([System.IO.Directory]::Exists($repoBinCandidate) -and -not $env:Path.Contain
     $env:Path = "$repoBinCandidate;$env:Path"
 }
 
+# Go & Lean 4 toolchain homes (XDG & Windows LocalAppData compliant when unset)
+if (-not $env:GOPATH) { $env:GOPATH = Join-Path $HOME '.local\share\go' }
+if (-not $env:GOCACHE) {
+    $env:GOCACHE = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'go-build' } else { Join-Path $HOME '.cache\go-build' }
+}
+if (-not $env:ELAN_HOME) { $env:ELAN_HOME = Join-Path $HOME '.local\share\elan' }
+
 # Go binary directories (GOBIN, GOPATH/bin, ~/.local/share/go/bin, ~/go/bin)
-$goBinPrimary = if ($env:GOBIN) { $env:GOBIN } elseif ($env:GOPATH) { Join-Path $env:GOPATH 'bin' } else { Join-Path $HOME 'go\bin' }
+$goBinPrimary = if ($env:GOBIN) { $env:GOBIN } else { Join-Path $env:GOPATH 'bin' }
 if (-not $env:Path.Contains($goBinPrimary, [System.StringComparison]::OrdinalIgnoreCase)) {
     $env:Path = "$env:Path;$goBinPrimary"
 }
-$goXdgBin = Join-Path $HOME '.local\share\go\bin'
-if ([System.IO.Directory]::Exists($goXdgBin) -and -not $env:Path.Contains($goXdgBin, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $env:Path = "$env:Path;$goXdgBin"
+foreach ($extraGoBin in @((Join-Path $HOME '.local\share\go\bin'), (Join-Path $HOME 'go\bin'))) {
+    if ([System.IO.Directory]::Exists($extraGoBin) -and -not $env:Path.Contains($extraGoBin, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $env:Path = "$env:Path;$extraGoBin"
+    }
 }
 
 # Cargo & Elan (Lean 4) binary directories
 foreach ($toolBin in @(
     (Join-Path $HOME '.cargo\bin'),
+    (Join-Path $env:ELAN_HOME 'bin'),
     (Join-Path $HOME '.local\share\elan\bin'),
     (Join-Path $HOME '.elan\bin')
 )) {
@@ -220,8 +229,8 @@ $env:LS_COLORS = 'no=00:fi=00:rs=0:di=34:ow=34;40:ln=36:mh=00:pi=33:so=35:do=35:
 $env:EZA_COLORS = 'di=38;2;38;139;210:ex=38;2;133;153;0:fi=38;2;131;148;150:pi=38;2;181;137;0:so=38;2;211;54;130:bd=38;2;211;54;130:cd=38;2;211;54;130:ln=38;2;42;161;152:or=38;2;220;50;47:xx=38;2;88;110;117:da=38;2;131;148;150:hd=4;38;2;147;161;161:lp=38;2;131;148;150:cc=38;2;203;75;22:bO=38;2;220;50;47:in=38;2;88;110;117:bl=38;2;88;110;117:oc=38;2;131;148;150:ur=38;2;131;148;150:uw=38;2;131;148;150:ux=38;2;131;148;150:ue=38;2;131;148;150:gr=38;2;131;148;150:gw=38;2;131;148;150:gx=38;2;131;148;150:tr=38;2;131;148;150:tw=38;2;131;148;150:tx=38;2;131;148;150:su=38;2;131;148;150:sf=38;2;131;148;150:xa=38;2;131;148;150:sn=38;2;131;148;150:nb=38;2;88;110;117:nk=38;2;131;148;150:nm=38;2;181;137;0:ng=38;2;203;75;22:nt=38;2;220;50;47:sb=38;2;131;148;150:ub=38;2;88;110;117:uk=38;2;131;148;150:um=38;2;181;137;0:ug=38;2;203;75;22:ut=38;2;220;50;47:df=38;2;131;148;150:ds=38;2;131;148;150:uu=38;2;131;148;150:uR=38;2;220;50;47:un=38;2;131;148;150:gu=38;2;131;148;150:gR=38;2;220;50;47:gn=38;2;131;148;150:lc=38;2;131;148;150:lm=38;2;181;137;0:ga=38;2;133;153;0:gm=38;2;181;137;0:gd=38;2;220;50;47:gv=38;2;131;148;150:gt=38;2;131;148;150:gi=38;2;88;110;117:gc=38;2;220;50;47:Gm=38;2;133;153;0:Go=38;2;38;139;210:Gc=38;2;133;153;0:Gd=38;2;181;137;0:sp=38;2;203;75;22:mp=38;2;38;139;210:im=38;2;108;113;196:vi=38;2;108;113;196:mu=38;2;108;113;196:lo=38;2;108;113;196:cr=38;2;211;54;130:do=38;2;131;148;150:co=38;2;203;75;22:tm=38;2;88;110;117:cm=38;2;88;110;117:bu=38;2;133;153;0:sc=38;2;131;148;150:Sn=38;2;88;110;117:Su=38;2;131;148;150:Sr=38;2;131;148;150:St=38;2;131;148;150:Sl=38;2;131;148;150:ff=38;2;131;148;150'
 $env:EXA_COLORS = $env:EZA_COLORS
 
-# JQ_COLORS matching Universal Semantic Color Contract (null/bool/num Magenta, str Cyan, keys Green)
-$env:JQ_COLORS = '0;35:0;35:0;35:0;39:0;36:0;39:0;39:0;32'
+# JQ_COLORS matching Universal Semantic Color Contract (24-bit TrueColor Magenta, Cyan, Base0, Green)
+$env:JQ_COLORS = '38;2;211;54;130:38;2;211;54;130:38;2;211;54;130:38;2;211;54;130:38;2;42;161;152:38;2;131;148;150:38;2;131;148;150:38;2;133;153;0'
 
 # BAT, TrueColor, OSC 8 Hyperlinks, Editor, IDE & Zoxide defaults
 $env:BAT_THEME = 'Solarized-Dark-TrueColor'
@@ -241,8 +250,8 @@ if (-not $env:CC) { $env:CC = 'gcc' }
 if (-not $env:CXX) { $env:CXX = 'g++' }
 
 # FZF Solarized Dark baseline & ripgrep / fd integration
-$env:FZF_DEFAULT_OPTS = '--color=bg+:#073642,bg:#002B36,spinner:#859900,hl:#586E75 --color=fg:#839496,header:#586E75,info:#B58900,pointer:#859900 --color=marker:#859900,fg+:#93A1A1,prompt:#B58900,hl+:#268BD2 --layout=reverse --border=rounded --info=inline'
-$env:_ZO_FZF_OPTS = $env:FZF_DEFAULT_OPTS
+$env:FZF_DEFAULT_OPTS = '--color=bg+:#073642,bg:#002B36,spinner:#859900,hl:#586E75 --color=fg:#839496,header:#586E75,info:#B58900,pointer:#859900 --color=marker:#859900,fg+:#93A1A1,prompt:#B58900,hl+:#268BD2 --color=border:#586E75,separator:#586E75,label:#586E75,gutter:#002B36 --layout=reverse --border=rounded --info=inline'
+$env:_ZO_FZF_OPTS = "$env:FZF_DEFAULT_OPTS --height=50% --preview=`"eza -la --icons=auto --color=always --group-directories-first {2..} 2>nul || ls -la {2..}`" --preview-window=right:50%:wrap"
 
 if (-not $env:FZF_DEFAULT_COMMAND) {
     if (Test-WsExeOnPath 'rg.exe') {
@@ -691,6 +700,11 @@ function global:prompt {
 . "$PSScriptRoot\Navigation.ps1"
 . "$PSScriptRoot\Utilities.ps1"
 . "$PSScriptRoot\Completions.ps1"
+
+$completionsCache = Join-Path $psCacheDir 'completions_cache.ps1'
+if ([System.IO.File]::Exists($completionsCache)) {
+    . $completionsCache
+}
 
 # Local machine untracked aliases & functions drop-in hooks (~/.config/windows-settings/{aliases,functions}.d/*.ps1)
 foreach ($subDrop in @('aliases.d', 'functions.d')) {

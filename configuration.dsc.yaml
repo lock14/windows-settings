@@ -77,6 +77,20 @@ properties:
 
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
+        description: Install bat (TrueColor syntax-highlighted file viewer)
+      settings:
+        id: sharkdp.bat
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install eza (Modern ls replacement with Nerd Font icons)
+      settings:
+        id: eza-community.eza
+        source: winget
+
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
         description: Install fzf (Fuzzy finder)
       settings:
         id: junegunn.fzf
